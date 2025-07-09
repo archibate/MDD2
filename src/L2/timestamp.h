@@ -4,6 +4,10 @@
 #include <cstdint>
 
 
+
+namespace L2
+{
+
 inline int64_t timestampToMilliseconds(int32_t timestamp)
 {
     int hours = timestamp / 10000000;
@@ -57,4 +61,6 @@ inline int32_t absoluteMillisecondsToTimestamp(int64_t time, int32_t interval)
     }
     time += timestampToMilliseconds(9'30'00'000);
     return millisecondsToTimestamp(time);
+}
+
 }

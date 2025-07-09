@@ -4,8 +4,10 @@
 #include <cstdint>
 
 
-const int32_t kBookLevels = 5;
+namespace L2
+{
 
+constexpr int32_t kBookLevels = 5;
 
 struct Snap
 {
@@ -21,3 +23,5 @@ struct Snap
     int32_t askPrice[kBookLevels];
     int32_t askQuantity[kBookLevels];
 };
+
+}

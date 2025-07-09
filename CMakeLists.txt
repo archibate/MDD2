@@ -9,13 +9,13 @@ if (NOT DEFINED CMAKE_BUILD_TYPE)
 endif()
 find_program(CMAKE_CXX_COMPILER clang++)
 
-project(${PROJECT_NAME} LANGUAGES CXX)
+project(mdd_v2 LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 
-file(GLOB ${PROJECT_NAME}_SOURCES *.cpp *.h)
-add_library(${PROJECT_NAME} SHARED ${${PROJECT_NAME}_SOURCES})
+file(GLOB ${PROJECT_NAME}_SOURCES src/*.cpp src/*.h)
+add_executable(${PROJECT_NAME} ${${PROJECT_NAME}_SOURCES})
 
 find_package(Threads REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
@@ -33,15 +33,17 @@ target_link_libraries(${PROJECT_NAME} PRIVATE absl::btree absl::hash)
 find_package(Eigen3 CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
 
-configure_file(config.h.in include/config.h @ONLY)
+configure_file(src/config.h.in include/config.h @ONLY)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
 
-add_subdirectory(3rd/header-only)
-target_link_libraries(${PROJECT_NAME} PRIVATE 3rd/header-only)
+add_subdirectory(3rd/XeleAPI)
+target_link_libraries(${PROJECT_NAME} PRIVATE XeleAPI)
+add_subdirectory(3rd/XeleMD)
+target_link_libraries(${PROJECT_NAME} PRIVATE XeleMD)
 add_subdirectory(3rd/Disruptor)
 target_link_libraries(${PROJECT_NAME} PRIVATE Disruptor::Disruptor)
-add_subdirectory(3rd/XeleAPI)
-target_link_libraries(${PROJECT_NAME} PRIVATE Disruptor::Disruptor)
+add_subdirectory(3rd/header-only)
+target_link_libraries(${PROJECT_NAME} PRIVATE header-only)
 
 if (CMAKE_BUILD_TYPE MATCHES "Release")
     include(CheckIPOSupported)
@@ -71,4 +73,10 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_
 
 if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo" OR CMAKE_BUILD_TYPE MATCHES "Debug")
     target_compile_options(${PROJECT_NAME} PRIVATE -ggdb -Werror=return-type)
+endif()
+
+if (BUILD_FOR_SZ)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE -DSZ)
+else()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE -DSH)
 endif()

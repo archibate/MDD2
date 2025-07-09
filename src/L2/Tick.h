@@ -3,6 +3,10 @@
 #include <cstdint>
 #include <cmath>
 
+
+namespace L2
+{
+
 struct Tick
 {
     int32_t stock;
@@ -72,3 +76,5 @@ struct Tick
         return std::abs(quantity);
     }
 };
+
+}

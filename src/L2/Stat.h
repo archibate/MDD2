@@ -4,6 +4,9 @@
 #include <cstdint>
 
 
+namespace L2
+{
+
 struct Stat
 {
     int32_t stock;
@@ -16,3 +19,5 @@ struct Stat
     int32_t lowerLimitPrice;
     double floatMV;
 };
+
+}

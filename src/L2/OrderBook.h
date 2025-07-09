@@ -12,6 +12,9 @@
 #include <map>
 
 
+namespace L2
+{
+
 struct OrderBook
 {
     std::vector<int32_t> bidQty;
@@ -152,7 +155,12 @@ struct OrderBook
 
     void snapUpdate(int32_t timestamp)
     {
+#if __cplusplus > 201402L
         Snap &snap = snapshots.emplace_back();
+#else
+        snapshots.emplace_back();
+        Snap &snap = snapshots.back();
+#endif
         snap.stock = stock;
         snap.timestamp = timestamp;
         snap.preClosePrice = preClosePrice;
@@ -246,3 +254,5 @@ struct OrderBook
         }
     }
 };
+
+}

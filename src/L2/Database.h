@@ -11,7 +11,10 @@
 #include <map>
 
 
-struct L2db
+namespace L2
+{
+
+struct Database
 {
     std::string market;
     std::string date;
@@ -106,3 +109,5 @@ struct L2db
         }
     }
 };
+
+}
