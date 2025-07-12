@@ -21,6 +21,47 @@ constexpr auto kStockCodesOriginalIndex = [] {
     return indices;
 } ();
 
+constexpr auto kStockCodesOriginalChannelSizes = [] {
+    std::array<int32_t, kChannelCount> sizes{};
+    int32_t j = 0;
+    for (int32_t c = 0; c < kChannelCount; ++c) {
+        for (int32_t i = 0; i < kStockCodesOriginal.size(); ++i) {
+            int32_t origCode = kStockCodesOriginal[i];
+            if (origCode % kChannelCount == c) {
+                ++sizes[c];
+            }
+        }
+    }
+    return sizes;
+} ();
+
+constexpr auto kStockCodesOriginalChannelStarts = [] {
+    std::array<int32_t, kChannelCount> starts;
+    for (int32_t c = 0; c < kChannelCount; ++c) {
+        starts[c] = -1;
+    }
+    int32_t j = 0;
+    for (int32_t c = 0; c < kChannelCount; ++c) {
+        for (int32_t i = 0; i < kStockCodesOriginal.size(); ++i) {
+            int32_t origCode = kStockCodesOriginal[i];
+            if (origCode % kChannelCount == c) {
+                if (starts[c] == -1) {
+                    starts[c] = j;
+                }
+                ++j;
+            }
+        }
+    }
+    int32_t lastC = 0;
+    for (int32_t c = 0; c < kChannelCount; ++c) {
+        if (starts[c] == -1) {
+            starts[c] = lastC;
+        }
+        lastC = starts[c];
+    }
+    return starts;
+} ();
+
 constexpr auto kStockCodes = [] {
     std::array<int32_t, kStockCodesOriginal.size()> codes;
     for (int32_t i = 0; i < codes.size(); ++i) {

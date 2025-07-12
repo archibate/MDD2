@@ -3,6 +3,7 @@
 #include "StockState.h"
 #include "daily.h"
 #include "stockCodes.h"
+#include <spdlog/spdlog.h>
 
 std::array<DisruptorPool<MDS::Tick>, kChannelCount> MDD::g_channelPool;
 std::array<StockState, kStockCodes.size()> MDD::g_stockStates;
@@ -20,18 +21,30 @@ void handleTick(MDS::Tick &tick)
     MDD::g_stockStates[id].handleTick(tick);
 }
 
+void handle10ms(int32_t c)
+{
+    for (
+        int32_t i = kStockCodesOriginalChannelStarts[c];
+        i < kStockCodesOriginalChannelStarts[c] + kStockCodesOriginalChannelSizes[c];
+        ++i) {
+        MDD::g_stockStates[i].handle10ms();
+    }
+}
+
 }
 
 void MDD::start()
 {
-    for (int c = 0; c < g_channelPool.size(); ++c) {
-        g_channelPool[c].init(kChannelPoolSize, true, kChannelCpuBegin + c);
+    for (int32_t c = 0; c < g_channelPool.size(); ++c) {
+        g_channelPool[c].init(kChannelPoolSize, true, kChannelCpuBegin + c, [c] {
+            handle10ms(c);
+        });
         g_channelPool[c].start([] (MDS::Tick &tick) {
             handleTick(tick);
         });
     }
 
-    for (int i = 0; i < g_stockStates.size(); ++i) {
+    for (int32_t i = 0; i < g_stockStates.size(); ++i) {
         g_stockStates[i].start(i);
     }
 
@@ -43,7 +56,7 @@ void MDD::stop()
 {
     MDS::stop();
 
-    for (int i = 0; i < g_stockStates.size(); ++i) {
+    for (int32_t i = 0; i < g_stockStates.size(); ++i) {
         g_stockStates[i].stop();
     }
 }

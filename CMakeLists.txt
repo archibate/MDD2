@@ -29,7 +29,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
 find_package(spdlog CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
 find_package(absl CONFIG REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE absl::btree absl::hash)
+target_link_libraries(${PROJECT_NAME} PRIVATE absl::btree absl::flat_hash_map)
 find_package(Eigen3 CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
 

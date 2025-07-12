@@ -8,6 +8,7 @@
 #include <Disruptor/SpinWaitWaitStrategy.h>
 #include <Disruptor/TimeoutBlockingWaitStrategy.h>
 #include <Disruptor/YieldingWaitStrategy.h>
+#include "FastSpinWaitStrategy.h"
 #include <functional>
 #include <utility>
 #include <cassert>
@@ -42,14 +43,19 @@ public:
         stop();
     }
 public:
-    void init(int32_t ringBufferSize, bool multiProducer, int32_t coreId)
+    void init(int32_t ringBufferSize, bool multiProducer, int32_t coreId, std::function<void()> idleCallback = {})
     {
         m_scheduler = std::make_shared<Disruptor::ThreadPerTaskScheduler>();
 
         std::shared_ptr<Disruptor::IWaitStrategy> ptrWaitStrategy;
         if (coreId >= 0) {
             m_scheduler->bindCore(coreId);
-            ptrWaitStrategy = std::make_shared<Disruptor::BusySpinWaitStrategy>();
+            if (!idleCallback) {
+                ptrWaitStrategy = std::make_shared<Disruptor::BusySpinWaitStrategy>();
+            } else {
+                ptrWaitStrategy = std::make_shared<FastSpinWaitStrategy>(
+                    idleCallback, std::chrono::milliseconds(5), std::chrono::milliseconds(10));
+            }
         } else {
             ptrWaitStrategy = std::make_shared<Disruptor::BlockingWaitStrategy>();
         }

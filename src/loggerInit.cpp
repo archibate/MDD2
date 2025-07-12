@@ -16,9 +16,11 @@ struct LoggerInit
         };
         sinks[0]->set_level(spdlog::level::debug);
         sinks[1]->set_level(spdlog::level::trace);
-        static auto pool = std::make_shared<spdlog::details::thread_pool>(2048, 1);
-        static auto logger = std::make_shared<spdlog::async_logger>(
-            "MDD", sinks.begin(), sinks.end(), pool);
+        // static auto pool = std::make_shared<spdlog::details::thread_pool>(2048, 1);
+        // static auto logger = std::make_shared<spdlog::async_logger>(
+        //     "MDD", sinks.begin(), sinks.end(), pool);
+        static auto logger = std::make_shared<spdlog::logger>(
+            "MDD", sinks.begin(), sinks.end());
         logger->set_level(spdlog::level::trace);
         logger->flush_on(spdlog::level::debug);
         spdlog::set_default_logger(logger);
