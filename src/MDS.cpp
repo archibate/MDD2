@@ -77,20 +77,33 @@ void MDS::start()
             throw std::runtime_error("cannot open stock L2 ticks");
         }
 
-        std::array<Tick, 1024> tickBuf;
-        while (!stop.stop_requested()) [[likely]] {
-            size_t n = std::fread(tickBuf.data(), sizeof(Tick), tickBuf.size(), fp);
-            if (n <= 0) [[unlikely]] {
-                break;
-            }
-            for (size_t i = 0; i < n; ++i) {
-                Tick &tick = tickBuf[i];
+        std::vector<Tick> tickBuf;
+        if (std::fseek(fp, 0, SEEK_END) < 0) {
+            throw std::runtime_error("cannot seek ticks file");
+        }
+        long pos = std::ftell(fp);
+        if (pos < 0) {
+            throw std::runtime_error("cannot tell ticks file size");
+        }
+        std::rewind(fp);
+        tickBuf.resize(pos / sizeof(Tick));
+        SPDLOG_INFO("reading {} ticks from file", tickBuf.size());
 
-                if (g_subscribedStocks.contains(tick.stock)) {
-                    int32_t ch = tick.stock % MDD::g_channelPool.size();
-                    MDD::g_channelPool[ch].push(tick);
-                }
+        size_t n = std::fread(tickBuf.data(), sizeof(Tick), tickBuf.size(), fp);
+        if (n != tickBuf.size()) [[unlikely]] {
+            throw std::runtime_error("cannot read all ticks from file");
+        }
+        SPDLOG_INFO("done reading ticks");
+
+        size_t i = 0;
+        while (!stop.stop_requested()) [[likely]] {
+            Tick &tick = tickBuf[i];
+
+            if (g_subscribedStocks.contains(tick.stock)) {
+                int32_t ch = tick.stock % MDD::g_channelPool.size();
+                MDD::g_channelPool[ch].push(tick);
             }
+            ++i;
         }
 
         std::fclose(fp);
