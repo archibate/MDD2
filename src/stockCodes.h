@@ -70,6 +70,14 @@ constexpr auto kStockCodes = [] {
     return codes;
 } ();
 
+constexpr auto kStockChannels = [] {
+    std::array<int8_t, kStockCodesOriginal.size()> channels;
+    for (int8_t i = 0; i < channels.size(); ++i) {
+        channels[i] = kStockCodesOriginal[kStockCodesOriginalIndex[i]] % kChannelCount;
+    }
+    return channels;
+} ();
+
 constexpr auto kStockIdLut = [] {
     std::array<int16_t, 0x7FFF> lut{};
     for (int32_t s = 0; s < lut.size(); ++s) {

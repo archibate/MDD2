@@ -1,7 +1,9 @@
 #include "MDS.h"
 #include "MDD.h"
+#include "L2/timestamp.h"
 #include <spdlog/spdlog.h>
 #include <stdexcept>
+#include <execution>
 #include <fstream>
 #include <unordered_set>
 #include <thread>
@@ -13,12 +15,12 @@
 namespace
 {
 
-std::jthread g_replayWorker;
+std::jthread g_replayThread;
 std::unordered_set<int32_t> g_subscribedStocks;
 std::atomic_bool g_isFinished{false};
+std::atomic_bool g_isStarted{false};
 
 }
-
 
 void MDS::subscribe(int32_t const *stocks, int32_t n)
 {
@@ -71,7 +73,7 @@ MDS::Stat MDS::getStatic(int32_t stock)
 
 void MDS::start()
 {
-    g_replayWorker = std::jthread([] (std::stop_token stop) {
+    g_replayThread = std::jthread([] (std::stop_token stop) {
         std::FILE *fp = std::fopen(DATA_PATH "/stock-l2-ticks.dat", "rb");
         if (!fp) {
             throw std::runtime_error("cannot open stock L2 ticks");
@@ -93,14 +95,34 @@ void MDS::start()
         if (n != tickBuf.size()) [[unlikely]] {
             throw std::runtime_error("cannot read all ticks from file");
         }
-        SPDLOG_INFO("done reading ticks");
+        SPDLOG_INFO("sorting {} ticks", tickBuf.size());
+        std::stable_sort(std::execution::par_unseq, tickBuf.begin(), tickBuf.end(), [] (Tick const &lhs, Tick const &rhs) {
+            return lhs.timestamp < rhs.timestamp;
+        });
+        SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
+        g_isStarted.store(true);
 
         size_t i = 0;
-        while (!stop.stop_requested()) [[likely]] {
+#if REPLAY_REAL_TIME
+        int32_t lastTimestamp = tickBuf.empty() ? 0 : tickBuf.front().timestamp;
+        auto lastSleepTime = std::chrono::steady_clock::now();
+#endif
+        while (i < tickBuf.size() && !stop.stop_requested()) [[likely]] {
             Tick &tick = tickBuf[i];
 
+#if REPLAY_REAL_TIME
+            if (tick.timestamp > lastTimestamp) {
+                int64_t dt = L2::timestampToAbsoluteMilliseconds(tick.timestamp, 10) - L2::timestampToAbsoluteMilliseconds(lastTimestamp, 10);
+                lastTimestamp = tick.timestamp;
+                lastSleepTime += duration_cast<std::chrono::steady_clock::duration>(std::chrono::milliseconds(dt) TIME_SCALE);
+                std::this_thread::sleep_until(lastSleepTime);
+            } else if (tick.timestamp < lastTimestamp) [[unlikely]] {
+                throw std::runtime_error("timestamp out of order");
+            }
+#endif
+
             if (g_subscribedStocks.contains(tick.stock)) {
-                int32_t ch = tick.stock % MDD::g_channelPool.size();
+                int32_t ch = tick.stock % kChannelCount;
                 MDD::g_channelPool[ch].push(tick);
             }
             ++i;
@@ -113,10 +135,16 @@ void MDS::start()
 
 void MDS::stop()
 {
-    g_replayWorker.join();
+    g_replayThread.request_stop();
+    g_replayThread.join();
 }
 
 bool MDS::isFinished()
 {
     return g_isFinished.load() == true;
+}
+
+bool MDS::isStarted()
+{
+    return g_isStarted.load() == true;
 }

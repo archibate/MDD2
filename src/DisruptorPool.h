@@ -8,14 +8,13 @@
 #include <Disruptor/SpinWaitWaitStrategy.h>
 #include <Disruptor/TimeoutBlockingWaitStrategy.h>
 #include <Disruptor/YieldingWaitStrategy.h>
-#include "FastSpinWaitStrategy.h"
 #include <functional>
 #include <utility>
 #include <cassert>
 
 
 template <class T>
-class DisruptorPool
+class alignas(64) DisruptorPool
 {
 private:
     template <class F>
@@ -43,19 +42,14 @@ public:
         stop();
     }
 public:
-    void init(int32_t ringBufferSize, bool multiProducer, int32_t coreId, std::function<void()> idleCallback = {})
+    void init(int32_t ringBufferSize, bool multiProducer, int32_t coreId)
     {
         m_scheduler = std::make_shared<Disruptor::ThreadPerTaskScheduler>();
 
         std::shared_ptr<Disruptor::IWaitStrategy> ptrWaitStrategy;
         if (coreId >= 0) {
             m_scheduler->bindCore(coreId);
-            if (!idleCallback) {
-                ptrWaitStrategy = std::make_shared<Disruptor::BusySpinWaitStrategy>();
-            } else {
-                ptrWaitStrategy = std::make_shared<FastSpinWaitStrategy>(
-                    idleCallback, std::chrono::milliseconds(5), std::chrono::milliseconds(10));
-            }
+            ptrWaitStrategy = std::make_shared<Disruptor::BusySpinWaitStrategy>();
         } else {
             ptrWaitStrategy = std::make_shared<Disruptor::BlockingWaitStrategy>();
         }
@@ -79,6 +73,11 @@ public:
         m_disruptor->handleEventsWithWorkerPool(workers);
         m_scheduler->start();
         m_disruptor->start();
+    }
+
+    void timeout()
+    {
+        m_timeoutPoller = m_ringBuffer.newPoller();
     }
 
     template <class F>
@@ -159,4 +158,5 @@ private:
     std::shared_ptr<Disruptor::ThreadPerTaskScheduler> m_scheduler;
     std::shared_ptr<Disruptor::disruptor<T>> m_disruptor;
     std::shared_ptr<Disruptor::RingBuffer<T>> m_ringBuffer;
+    std::shared_ptr<Disruptor::EventPoller<T>> m_timeoutPoller;
 };

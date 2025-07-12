@@ -1,0 +1,12 @@
+#pragma once
+
+#cmakedefine01 BUILD_FOR_SZ
+#cmakedefine01 BUILD_SPEED
+#cmakedefine01 REPLAY_REAL_TIME
+
+
+#if BUILD_FOR_SZ
+#define SZ 1
+#else
+#define SH 1
+#endif

@@ -4,6 +4,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
+if (NOT DEFINED BUILD_SPEED)
+    set(BUILD_SPEED OFF)
+endif()
+if (NOT DEFINED BUILD_FOR_SZ)
+    set(BUILD_FOR_SZ OFF)
+endif()
+if (NOT DEFINED REPLAY_REAL_TIME)
+    set(REPLAY_REAL_TIME ON)
+endif()
+
 if (NOT DEFINED CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
@@ -32,6 +42,8 @@ find_package(absl CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE absl::btree absl::flat_hash_map)
 find_package(Eigen3 CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
+find_package(TBB CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE TBB::tbb TBB::tbbmalloc)
 
 configure_file(src/config.h.in include/config.h @ONLY)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
@@ -60,13 +72,15 @@ if (CMAKE_BUILD_TYPE MATCHES "Release")
         target_compile_options(${PROJECT_NAME} PRIVATE -mavx2 -mfma -mf16c)
     endif()
 
+    target_compile_options(${PROJECT_NAME} PRIVATE -w)
+endif()
+
+if (BUILD_SPEED)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         UNITY_BUILD TRUE
         UNITY_BUILD_MODE BATCH
         UNITY_BUILD_BATCH_SIZE 8
     )
-
-    target_compile_options(${PROJECT_NAME} PRIVATE -w)
 endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)

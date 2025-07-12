@@ -16,5 +16,6 @@ MDS::Stat getStatic(int32_t stock);
 void start();
 void stop();
 bool isFinished();
+bool isStarted();
 
 }

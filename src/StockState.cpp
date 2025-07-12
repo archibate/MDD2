@@ -12,6 +12,8 @@ void StockState::start(int32_t stockIndex)
     auto stat = MDS::getStatic(stockCode);
     upperLimitPrice = stat.upperLimitPrice;
     preClosePrice = stat.preClosePrice;
+
+    upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 2;
 }
 
 void StockState::stop()
@@ -25,6 +27,11 @@ void StockState::handleTick(MDS::Tick &tick)
         return;
     }
 
+    if (tick.timestamp == -1) {
+        handleTimer();
+        return;
+    }
+
     if (tick.isOrder()) {
         if (tick.isOrderCancel()) {
             onCancel(tick);
@@ -34,19 +41,20 @@ void StockState::handleTick(MDS::Tick &tick)
 
     } else if (tick.isTrade()) {
         onTrade(tick);
-
-    // } else if (tick.isMeta()) {
-    //     on10ms(tick.timestamp);
     }
 
+#if SH
     timestampLastTick = tick.timestamp;
+#endif
 }
 
-void StockState::handle10ms()
+void StockState::handleTimer()
 {
+#if SH
     timestampLastTick = L2::millisecondsToTimestamp(L2::timestampToMilliseconds(timestampLastTick) + 10);
-    SPDLOG_INFO("handle 10ms idle: stock={} timestamp={}", stockCode, timestampLastTick);
+    // SPDLOG_INFO("handle 10ms idle: stock={} timestamp={}", stockCode, timestampLastTick);
     on10ms(timestampLastTick);
+#endif
 }
 
 #if SH
@@ -58,13 +66,21 @@ void StockState::onOrder(MDS::Tick &tick)
 
     bool limitUp = !tick.isOpenCall() && tick.isBuyOrder() && tick.price == upperLimitPrice;
     if (limitUp) [[likely]] {
-        if (timestampLast10ms != tick.timestamp) [[unlikely]] {
-            SPDLOG_WARN("update 10ms on my way: stock={} timestamp={}", stockCode, tick.timestamp);
-            on10ms(tick.timestamp);
+        bool virtPredNotReady = timestampVirtTradePred != tick.timestamp;
+        if (virtPredNotReady) [[unlikely]] {
+            if (!wantBuy || timestampVirtTradePred == 0) {
+                on10ms(tick.timestamp);
+            }
         }
 
-        // send buy order.
-        SPDLOG_CRITICAL("limit up: stock={} timestamp={}", stockCode, tick.timestamp);
+        if (wantBuy) [[likely]] {
+            // send buy order.
+        }
+
+        if (virtPredNotReady) {
+            SPDLOG_WARN("updated 10ms on-the-fly: stock={} timestamp={}", stockCode, tick.timestamp);
+        }
+        SPDLOG_CRITICAL("limit up: stock={} timestamp={} wantBuy={}", stockCode, tick.timestamp, wantBuy);
         stop();
     }
 }
@@ -78,29 +94,42 @@ void StockState::onCancel(MDS::Tick &tick)
 
 void StockState::on10ms(int32_t timestamp)
 {
-    for (auto const &[sellOrderNo, quantity]: upTrades) {
-        auto it = upSellOrders.find(sellOrderNo);
-        if (it != upSellOrders.end()) [[unlikely]] {
-            it->second -= quantity;
-            if (it->second <= 0) {
-                upSellOrders.erase(it);
+    if (!upTrades.empty()) {
+        approchingLimitUp = false;
+        for (auto const &trade: upTrades) {
+            if (trade.price == upperLimitPrice) {
+                auto it = upSellOrders.find(trade.sellOrderNo);
+                if (it != upSellOrders.end()) [[unlikely]] {
+                    it->second -= trade.quantity;
+                    if (it->second <= 0) {
+                        upSellOrders.erase(it);
+                    }
+                }
             }
-        }
-    }
-    upTrades.clear();
 
-    updateVirtUpTrade(timestamp);
-    timestampLast10ms = timestamp;
+            if (trade.price >= upperLimitPriceApproach) {
+                approchingLimitUp = true;
+            }
+            addTrade(trade.timestamp, trade.price, trade.quantity);
+        }
+        upTrades.clear();
+    }
+
+    if (approchingLimitUp && timestamp >= 9'30'00'000) {
+        updateVirtTradePred(timestamp);
+        timestampVirtTradePred = timestamp;
+    } else {
+        timestampVirtTradePred = 0;
+    }
 }
 
 void StockState::onTrade(MDS::Tick &tick)
 {
-    if (tick.price == upperLimitPrice) {
-        upTrades.push_back({tick.sellOrderNo, tick.quantity});
-
-    } else {
-        addTrade(tick.timestamp, tick.price, tick.quantity);
-    }
+    auto &trade = upTrades.emplace_back();
+    trade.timestamp = tick.timestamp;
+    trade.sellOrderNo = tick.sellOrderNo;
+    trade.quantity = tick.quantity;
+    trade.price = tick.price;
 }
 #endif
 
@@ -120,8 +149,14 @@ void StockState::onTrade(MDS::Tick &tick)
 
 void StockState::addTrade(int32_t timestamp, int32_t price, int32_t quantity)
 {
+    // update states here...
 }
 
-void StockState::updateVirtUpTrade(int32_t timestamp)
+void StockState::updateVirtTradePred(int32_t timestamp)
 {
+    for (auto const &[sellOrderId, quantity]: upSellOrders) {
+        addTrade(timestamp, upperLimitPrice, quantity);
+    }
+    // compute factors here...
+    wantBuy = true;
 }
