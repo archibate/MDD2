@@ -24,9 +24,55 @@ void StockState::handleTick(MDS::Tick &tick)
     }
 }
 
+#if SH
 void StockState::onOrder(MDS::Tick &tick)
 {
-    bool limitUp = tick.isBuyOrder() && tick.price == upperLimitPrice;
-    if (limitUp) {
+    if (tick.price == upperLimitPrice && tick.isSellOrder()) {
+        if (tick.isOrderCancel()) {
+            upSellOrders.erase(tick.orderNo());
+        } else {
+            upSellOrders.insert({tick.orderNo(), tick.orderQuantity()});
+        }
+    }
+
+    bool limitUp = !tick.isOpenCall() && tick.isBuyOrder() && tick.price == upperLimitPrice;
+    if (limitUp) [[likely]] {
     }
 }
+
+void StockState::onCancel(MDS::Tick &tick)
+{
+}
+
+void StockState::onTrade(MDS::Tick &tick)
+{
+    if (tick.price == upperLimitPrice) {
+        auto it = upSellOrders.find(tick.sellOrderNo);
+        if (it != upSellOrders.end()) {
+            it->second -= tick.quantity;
+            if (it->second <= 0) {
+                upSellOrders.erase(it);
+            }
+        }
+
+        addTrade(tick.timestamp, tick.price, tick.quantity);
+
+    } else {
+        addTrade(tick.timestamp, tick.price, tick.quantity);
+    }
+}
+#endif
+
+#if SZ
+void StockState::onOrder(MDS::Tick &tick)
+{
+}
+
+void StockState::onCancel(MDS::Tick &tick)
+{
+}
+
+void StockState::onTrade(MDS::Tick &tick)
+{
+}
+#endif
