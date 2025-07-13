@@ -23,9 +23,15 @@ void StockState::start(int32_t stockIndex)
     upperLimitPrice = stat.upperLimitPrice;
     preClosePrice = stat.preClosePrice;
 
+    // upperLimitPriceApproach = std::min(static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)), upperLimitPrice - 10) - 1;
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 2;
     fState.currSnapshot.lastPrice = preClosePrice;
     fState.snapshotTimestamp100ms = 9'30'00'0;
+
+    // if (preClosePrice <= 2 || preClosePrice >= 500) {
+    //     SPDLOG_WARN("dismissed due to abnormal price: stock={} preClosePrice={}", stockCode, preClosePrice);
+    //     stop();
+    // }
 }
 
 void StockState::stop()
@@ -105,7 +111,7 @@ void StockState::onOrder(MDS::Tick &tick)
         return;
     }
 
-    if (tick.price == upperLimitPrice && tick.isSellOrder()) {
+    if (tick.price >= upperLimitPriceApproach && tick.isSellOrder()) {
         upSellOrders.insert({tick.orderNo(), tick.quantity});
         upSellChangeSinceVirtPred += tick.quantity;
     }
@@ -113,9 +119,9 @@ void StockState::onOrder(MDS::Tick &tick)
 
 void StockState::onCancel(MDS::Tick &tick)
 {
-    if (tick.price == upperLimitPrice && tick.isSellOrder()) {
+    if (tick.isSellOrder()) {
         auto it = upSellOrders.find(tick.orderNo());
-        if (it != upSellOrders.end()) [[likely]] {
+        if (it != upSellOrders.end()) {
             upSellChangeSinceVirtPred -= it->second;
             upSellOrders.erase(it);
         }
@@ -139,13 +145,11 @@ void StockState::virtPred100ms(int32_t timestamp)
     if (pendTradeUpdated) {
         approchingLimitUp = false;
         for (auto const &trade: pendTrades) {
-            if (trade.price == upperLimitPrice) {
-                auto it = upSellOrders.find(trade.sellOrderNo);
-                if (it != upSellOrders.end()) [[unlikely]] {
-                    it->second -= trade.quantity;
-                    if (it->second <= 0) {
-                        upSellOrders.erase(it);
-                    }
+            auto it = upSellOrders.find(trade.sellOrderNo);
+            if (it != upSellOrders.end()) {
+                it->second -= trade.quantity;
+                if (it->second <= 0) {
+                    upSellOrders.erase(it);
                 }
             }
 
