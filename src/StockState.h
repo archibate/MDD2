@@ -19,6 +19,34 @@ struct alignas(64) StockState
     void handleTick(MDS::Tick &tick);
 
 private:
+    struct Snapshot
+    {
+        int32_t lastPrice;
+        int32_t numTrades;
+        int64_t quantity;
+        int64_t amount;
+    };
+
+    struct FState
+    {
+        int32_t snapshotTimestamp100ms{};
+        Snapshot prevSnapshot{};
+        Snapshot currSnapshot{};
+        std::vector<double> priceSeq;
+    };
+
+    struct BState
+    {
+        int32_t snapshotTimestamp100ms{};
+        Snapshot prevSnapshot{};
+        Snapshot currSnapshot{};
+        size_t priceSeqOldSize{};
+        bool savingMode{};
+    };
+
+    FState fState;
+    BState bState;
+
 #if SH
     struct PendTrade {
         int32_t timestamp;
@@ -61,8 +89,12 @@ private:
 
 #if SH
     void virtPred100ms(int32_t timestamp);
-    void updateVirtTradePred(int32_t timestamp);
+    void updateVirtTradePred(int32_t timestamp100ms);
 #endif
 
-    void addTrade(int32_t timestamp, int32_t price, int32_t quantity);
+    void addTrade(int32_t timestamp100ms, int32_t price, int32_t quantity);
+    void saveSnapshot();
+    void restoreSnapshot();
+    void stepSnapshot();
+    void decideWantBuy();
 };

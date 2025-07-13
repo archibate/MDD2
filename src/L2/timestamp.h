@@ -63,4 +63,27 @@ inline int32_t absoluteMillisecondsToTimestamp(int64_t time, int32_t interval)
     return millisecondsToTimestamp(time);
 }
 
+inline int64_t timestampToPositiveAbsoluteMilliseconds(int32_t timestamp)
+{
+    int64_t time = timestampToMilliseconds(timestamp);
+    time -= timestampToMilliseconds(9'30'00'000);
+    if (time > 2 * 60 * 60'000) {
+        if (time < (3 * 60 + 30) * 60'000) {
+            time = 2 * 60 * 60'000;
+        } else {
+            time -= (1 * 60 + 30) * 60'000;
+        }
+    }
+    return time;
+}
+
+inline int32_t positiveAbsoluteMillisecondsToTimestamp(int64_t time)
+{
+    if (time > 2 * 60 * 60'000) {
+        time += (1 * 60 + 30) * 60'000;
+    }
+    time += timestampToMilliseconds(9'30'00'000);
+    return millisecondsToTimestamp(time);
+}
+
 }

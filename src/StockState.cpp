@@ -3,6 +3,16 @@
 #include "L2/timestamp.h"
 #include <spdlog/spdlog.h>
 
+namespace
+{
+
+int32_t timestampRound100ms(int32_t timestamp)
+{
+    return (timestamp + 90) / 100;
+}
+
+}
+
 
 void StockState::start(int32_t stockIndex)
 {
@@ -14,6 +24,8 @@ void StockState::start(int32_t stockIndex)
     preClosePrice = stat.preClosePrice;
 
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 2;
+    fState.currSnapshot.lastPrice = preClosePrice;
+    fState.snapshotTimestamp100ms = 9'30'00'0;
 }
 
 void StockState::stop()
@@ -54,21 +66,27 @@ void StockState::handleTick(MDS::Tick &tick)
 void StockState::onTimer()
 {
     timestampLastTick = L2::millisecondsToTimestamp(L2::timestampToMilliseconds(timestampLastTick) + 10);
-    virtPred100ms(timestampLastTick);
+    if (timestampLastTick >= 9'30'00'000) {
+        virtPred100ms(timestampLastTick);
+    }
 }
 #endif
 
 #if SH
 void StockState::onOrder(MDS::Tick &tick)
 {
-    bool limitUp = !tick.isOpenCall() && tick.isBuyOrder() && tick.price == upperLimitPrice;
+    bool limitUp = tick.isBuyOrder() && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000;
     if (limitUp) [[likely]] {
-        bool virtPredNotReady = timestampVirtPred100ms != tick.timestamp / 100;
+        bool virtPredNotReady = timestampVirtPred100ms != timestampRound100ms(tick.timestamp);
         bool onFlyCompute;
         if (virtPredNotReady) [[unlikely]] {
-            onFlyCompute = !wantBuy || timestampVirtPred100ms == 0;
-            if (onFlyCompute) {
-                virtPred100ms(tick.timestamp);
+            if (tick.timestamp <= 9'30'00'100) [[unlikely]] {
+                virtPredNotReady = onFlyCompute = wantBuy = false;
+            } else {
+                onFlyCompute = !wantBuy || timestampVirtPred100ms == 0;
+                if (onFlyCompute) {
+                    virtPred100ms(tick.timestamp);
+                }
             }
         }
 
@@ -115,6 +133,8 @@ void StockState::onTrade(MDS::Tick &tick)
 
 void StockState::virtPred100ms(int32_t timestamp)
 {
+    int32_t timestamp100ms = timestampRound100ms(timestamp);
+
     bool pendTradeUpdated = !pendTrades.empty();
     if (pendTradeUpdated) {
         approchingLimitUp = false;
@@ -132,15 +152,15 @@ void StockState::virtPred100ms(int32_t timestamp)
             if (trade.price >= upperLimitPriceApproach) {
                 approchingLimitUp = true;
             }
-            addTrade(trade.timestamp, trade.price, trade.quantity);
+            addTrade(timestampRound100ms(trade.timestamp), trade.price, trade.quantity);
         }
         pendTrades.clear();
     }
 
     if (approchingLimitUp && timestamp >= 9'30'00'000) {
-        if (timestampVirtPred100ms != timestamp / 100 || pendTradeUpdated || upSellChangeSinceVirtPred != 0) {
-            updateVirtTradePred(timestamp);
-            timestampVirtPred100ms = timestamp / 100;
+        if (timestampVirtPred100ms != timestamp100ms || pendTradeUpdated || upSellChangeSinceVirtPred != 0) {
+            updateVirtTradePred(timestamp100ms);
+            timestampVirtPred100ms = timestamp100ms;
             upSellChangeSinceVirtPred = 0;
         }
     } else {
@@ -148,14 +168,33 @@ void StockState::virtPred100ms(int32_t timestamp)
     }
 }
 
-void StockState::updateVirtTradePred(int32_t timestamp)
+void StockState::updateVirtTradePred(int32_t timestamp100ms)
 {
-    // SPDLOG_DEBUG("updating virtual trade: stock={} timestamp={}", stockCode, timestamp);
-    for (auto const &[sellOrderId, quantity]: upSellOrders) {
-        addTrade(timestamp, upperLimitPrice, quantity); // virtually
+    saveSnapshot();
+    if (timestamp100ms > fState.snapshotTimestamp100ms) {
+        stepSnapshot();
+        fState.prevSnapshot = fState.currSnapshot;
+        fState.currSnapshot.numTrades = 0;
+        fState.currSnapshot.quantity = 0;
+        fState.currSnapshot.amount = 0;
+        while (timestamp100ms > (fState.snapshotTimestamp100ms =
+            L2::positiveAbsoluteMillisecondsToTimestamp(
+                L2::timestampToPositiveAbsoluteMilliseconds(
+                    fState.snapshotTimestamp100ms) + 100))) {
+            stepSnapshot();
+        }
     }
-    // compute factors here...
-    wantBuy = true;
+
+    for (auto const &[sellOrderId, quantity]: upSellOrders) {
+        int64_t q64 = quantity;
+        fState.currSnapshot.lastPrice = upperLimitPrice;
+        ++fState.currSnapshot.numTrades;
+        fState.currSnapshot.quantity += q64;
+        fState.currSnapshot.amount += upperLimitPrice * q64;
+    }
+    stepSnapshot();
+    decideWantBuy();
+    restoreSnapshot();
 }
 #endif
 
@@ -188,7 +227,52 @@ void StockState::onTrade(MDS::Tick &tick)
 }
 #endif
 
-void StockState::addTrade(int32_t timestamp, int32_t price, int32_t quantity)
+void StockState::addTrade(int32_t timestamp100ms, int32_t price, int32_t quantity)
 {
-    // update states here...
+    if (timestamp100ms > fState.snapshotTimestamp100ms) {
+        stepSnapshot();
+        fState.prevSnapshot = fState.currSnapshot;
+        fState.currSnapshot.numTrades = 0;
+        fState.currSnapshot.quantity = 0;
+        fState.currSnapshot.amount = 0;
+        while (timestamp100ms > (fState.snapshotTimestamp100ms =
+            L2::positiveAbsoluteMillisecondsToTimestamp(
+                L2::timestampToPositiveAbsoluteMilliseconds(
+                    fState.snapshotTimestamp100ms) + 100))) {
+            stepSnapshot();
+        }
+    }
+
+    int64_t q64 = quantity;
+    fState.currSnapshot.lastPrice = price;
+    ++fState.currSnapshot.numTrades;
+    fState.currSnapshot.quantity += q64;
+    fState.currSnapshot.amount += price * q64;
+}
+
+void StockState::saveSnapshot()
+{
+    bState.savingMode = true;
+    bState.snapshotTimestamp100ms = fState.snapshotTimestamp100ms;
+    bState.currSnapshot = fState.currSnapshot;
+    bState.prevSnapshot = fState.prevSnapshot;
+    bState.priceSeqOldSize = fState.priceSeq.size();
+}
+
+void StockState::restoreSnapshot()
+{
+    bState.savingMode = false;
+    fState.snapshotTimestamp100ms = bState.snapshotTimestamp100ms;
+    fState.currSnapshot = bState.currSnapshot;
+    fState.prevSnapshot = bState.prevSnapshot;
+    fState.priceSeq.resize(bState.priceSeqOldSize);
+}
+
+void StockState::stepSnapshot()
+{
+}
+
+void StockState::decideWantBuy()
+{
+    wantBuy = true;
 }
