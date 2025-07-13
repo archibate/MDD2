@@ -29,11 +29,11 @@ private:
 
     absl::btree_map<int32_t, int32_t> upSellOrders;
     std::vector<PendTrade> pendTrades;
-    int32_t lastActiveBuyPrice{};
-    int32_t timestampVirtTradePred{};
+    int32_t timestampVirtPred100ms{};
     int32_t timestampLastTick{};
-    bool approchingLimitUp{};
+    int64_t upSellChangeSinceVirtPred{};
     bool wantBuy{};
+    bool approchingLimitUp{};
 #endif
 
 #if SZ
@@ -45,9 +45,8 @@ private:
     };
 
     absl::btree_map<int32_t, int32_t> upSellOrders;
-    std::vector<PendTrade> pendTrades;
-    int32_t lastActiveBuyPrice{};
-    int32_t timestampVirtTradePred{};
+    int32_t upSellVolume{};
+    int32_t timestampVirtTradePred100ms{};
     int32_t timestampLastTick{};
     bool approchingLimitUp{};
     bool wantBuy{};
@@ -56,13 +55,14 @@ private:
     void onOrder(MDS::Tick &tick);
     void onCancel(MDS::Tick &tick);
     void onTrade(MDS::Tick &tick);
+#if SH
     void onTimer();
+#endif
 
 #if SH
-    void virtPred10ms(int32_t timestamp);
-#endif
-    void addTrade(int32_t timestamp, int32_t price, int32_t quantity);
-#if SH
+    void virtPred100ms(int32_t timestamp);
     void updateVirtTradePred(int32_t timestamp);
 #endif
+
+    void addTrade(int32_t timestamp, int32_t price, int32_t quantity);
 };
