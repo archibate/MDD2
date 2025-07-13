@@ -48,6 +48,11 @@ private:
     BState bState;
 
 #if SH
+    struct UpSell {
+        int32_t price;
+        int32_t quantity;
+    };
+
     struct PendTrade {
         int32_t timestamp;
         int32_t sellOrderNo;
@@ -55,7 +60,7 @@ private:
         int32_t quantity;
     };
 
-    absl::btree_map<int32_t, int32_t> upSellOrders;
+    absl::btree_map<int32_t, UpSell> upSellOrders;
     std::vector<PendTrade> pendTrades;
     int32_t timestampVirtPred100ms{};
     int32_t timestampLastTick{};

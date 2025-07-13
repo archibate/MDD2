@@ -112,7 +112,10 @@ void StockState::onOrder(MDS::Tick &tick)
     }
 
     if (tick.price >= upperLimitPriceApproach && tick.isSellOrder()) {
-        upSellOrders.insert({tick.orderNo(), tick.quantity});
+        UpSell sell;
+        sell.price = tick.price;
+        sell.quantity = tick.quantity;
+        upSellOrders.insert({tick.orderNo(), sell});
         upSellChangeSinceVirtPred += tick.quantity;
     }
 }
@@ -122,7 +125,7 @@ void StockState::onCancel(MDS::Tick &tick)
     if (tick.isSellOrder()) {
         auto it = upSellOrders.find(tick.orderNo());
         if (it != upSellOrders.end()) {
-            upSellChangeSinceVirtPred -= it->second;
+            upSellChangeSinceVirtPred -= it->second.quantity;
             upSellOrders.erase(it);
         }
     }
@@ -147,8 +150,8 @@ void StockState::virtPred100ms(int32_t timestamp)
         for (auto const &trade: pendTrades) {
             auto it = upSellOrders.find(trade.sellOrderNo);
             if (it != upSellOrders.end()) {
-                it->second -= trade.quantity;
-                if (it->second <= 0) {
+                it->second.quantity -= trade.quantity;
+                if (it->second.quantity <= 0) {
                     upSellOrders.erase(it);
                 }
             }
@@ -182,19 +185,19 @@ void StockState::updateVirtTradePred(int32_t timestamp100ms)
         fState.currSnapshot.quantity = 0;
         fState.currSnapshot.amount = 0;
         while (timestamp100ms > (fState.snapshotTimestamp100ms =
-            L2::positiveAbsoluteMillisecondsToTimestamp(
+            timestampRound100ms(L2::positiveAbsoluteMillisecondsToTimestamp(
                 L2::timestampToPositiveAbsoluteMilliseconds(
-                    fState.snapshotTimestamp100ms) + 100))) {
+                    fState.snapshotTimestamp100ms * 100) + 100)))) {
             stepSnapshot();
         }
     }
 
-    for (auto const &[sellOrderId, quantity]: upSellOrders) {
-        int64_t q64 = quantity;
-        fState.currSnapshot.lastPrice = upperLimitPrice;
+    for (auto const &[sellOrderId, sell]: upSellOrders) {
+        int64_t q64 = sell.quantity;
+        fState.currSnapshot.lastPrice = sell.price;
         ++fState.currSnapshot.numTrades;
         fState.currSnapshot.quantity += q64;
-        fState.currSnapshot.amount += upperLimitPrice * q64;
+        fState.currSnapshot.amount += sell.price * q64;
     }
     stepSnapshot();
     decideWantBuy();
@@ -240,9 +243,9 @@ void StockState::addTrade(int32_t timestamp100ms, int32_t price, int32_t quantit
         fState.currSnapshot.quantity = 0;
         fState.currSnapshot.amount = 0;
         while (timestamp100ms > (fState.snapshotTimestamp100ms =
-            L2::positiveAbsoluteMillisecondsToTimestamp(
+            timestampRound100ms(L2::positiveAbsoluteMillisecondsToTimestamp(
                 L2::timestampToPositiveAbsoluteMilliseconds(
-                    fState.snapshotTimestamp100ms) + 100))) {
+                    fState.snapshotTimestamp100ms * 100) + 100)))) {
             stepSnapshot();
         }
     }
