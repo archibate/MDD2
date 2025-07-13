@@ -10,7 +10,12 @@
 
 // #define DATA_BASE "/data"
 #define DATA_BASE "/home/ubuntu/data-cache"
+#if SH
 #define DATA_PATH DATA_BASE "/L2/SHL2/20250102"
+#endif
+#if SZ
+#define DATA_PATH DATA_BASE "/L2/SZL2/20250102"
+#endif
 
 namespace
 {

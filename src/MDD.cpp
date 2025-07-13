@@ -15,8 +15,10 @@ std::array<StockState, kStockCodes.size()> MDD::g_stockStates;
 namespace
 {
 
-std::array<int32_t, kStockCodes.size()> lastTimestamp;
-std::array<std::atomic<std::chrono::steady_clock::duration::rep>, kStockCodes.size()> brustEndTime;
+#if SH
+std::array<int32_t, kStockCodes.size()> g_lastTimestampPerStock;
+std::array<std::atomic<std::chrono::steady_clock::duration::rep>, kStockCodes.size()> g_brustEndTime;
+#endif
 std::jthread g_timerThread;
 
 void timerThread(std::stop_token stop)
@@ -28,9 +30,10 @@ void timerThread(std::stop_token stop)
 
     while (!stop.stop_requested()) [[likely]] {
         auto nowTime = std::chrono::steady_clock::now().time_since_epoch().count();
+#if SH
         for (int32_t id = 0; id < kStockCodes.size(); ++id) {
-            if (nowTime > brustEndTime[id].load(std::memory_order_relaxed)) {
-                brustEndTime[id].fetch_add(duration_cast<std::chrono::steady_clock::duration>(
+            if (nowTime > g_brustEndTime[id].load(std::memory_order_relaxed)) {
+                g_brustEndTime[id].fetch_add(duration_cast<std::chrono::steady_clock::duration>(
                     std::chrono::milliseconds(10) TIME_SCALE).count(), std::memory_order_relaxed);
                 MDS::Tick tick{};
                 tick.stock = kStockCodes[id];
@@ -38,6 +41,7 @@ void timerThread(std::stop_token stop)
                 MDD::g_channelPool[kStockChannels[id]].push(tick);
             }
         }
+#endif
         _mm_pause();
     }
 }
@@ -49,12 +53,14 @@ void handleTick(int32_t ch, MDS::Tick &tick)
         return;
     }
 
-    if (tick.timestamp != lastTimestamp[id]) {
+#if SH
+    if (tick.timestamp != g_lastTimestampPerStock[id]) {
         auto t = std::chrono::steady_clock::now().time_since_epoch().count();
         t += duration_cast<std::chrono::steady_clock::duration>(std::chrono::microseconds(kBrustProcessMicroseconds) TIME_SCALE).count();
-        brustEndTime[id].store(t, std::memory_order_relaxed);
-        lastTimestamp[id] = tick.timestamp;
+        g_brustEndTime[id].store(t, std::memory_order_relaxed);
+        g_lastTimestampPerStock[id] = tick.timestamp;
     }
+#endif
 
     MDD::g_stockStates[id].handleTick(tick);
 }

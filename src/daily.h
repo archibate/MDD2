@@ -16,6 +16,7 @@ constexpr int32_t kChannelCount = 10;
 constexpr int32_t kChannelPoolSize = 4096;
 
 constexpr std::array kStockCodesOriginal = {
+#if SH
     605299,
     605033,
     603215,
@@ -23,6 +24,19 @@ constexpr std::array kStockCodesOriginal = {
     601010,
     600683,
     600322,
+#endif
+#if SZ
+    2778,
+    2730,
+    2702,
+    2582,
+    2306,
+    2193,
+    981,
+    716,
+    619,
+    17,
+#endif
 };
 
 #if REPLAY_REAL_TIME
