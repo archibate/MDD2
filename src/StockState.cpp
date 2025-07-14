@@ -208,8 +208,12 @@ void StockState::updateVirtTradePred(int32_t timestamp100ms)
 #if SZ
 void StockState::onOrder(MDS::Tick &tick)
 {
-    if (tick.price == upperLimitPrice && tick.isSellOrder()) {
-        upSellOrders.insert({tick.orderNo(), tick.quantity});
+    if (tick.price >= upperLimitPriceApproach && tick.isSellOrder()) {
+        UpSell sell;
+        sell.price = tick.price;
+        sell.quantity = tick.quantity;
+        upSellOrders.insert({tick.orderNo(), sell});
+        upSellChangeSinceVirtPred += tick.quantity;
     }
 }
 

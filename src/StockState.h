@@ -70,6 +70,11 @@ private:
 #endif
 
 #if SZ
+    struct UpSell {
+        int32_t price;
+        int32_t quantity;
+    };
+
     struct PendTrade {
         int32_t timestamp;
         int32_t sellOrderNo;
@@ -77,7 +82,7 @@ private:
         int32_t quantity;
     };
 
-    absl::btree_map<int32_t, int32_t> upSellOrders;
+    absl::btree_map<int32_t, UpSell> upSellOrders;
     int32_t upSellVolume{};
     int32_t timestampVirtTradePred100ms{};
     int32_t timestampLastTick{};
