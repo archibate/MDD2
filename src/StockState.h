@@ -27,25 +27,79 @@ private:
         int64_t amount;
     };
 
+    inline static constexpr std::array kMomentumDurations = {
+        // 0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 30.0,
+        6'0, 30'0, 60'0, 120'0, 180'0, 300'0, 600'0, 1800'0,
+    };
+
     struct FState
     {
-        int32_t snapshotTimestamp100ms{};
+        int32_t timestamp100ms{};
         Snapshot prevSnapshot{};
         Snapshot currSnapshot{};
-        std::vector<double> priceSeq;
+
+        struct Momentum
+        {
+            struct Incre
+            {
+                double valueSum;
+                double valueSquaredSum;
+            };
+
+            struct Result
+            {
+                double highMean; // momentum_h_0.1_m
+                double highStd; // momentum_h_0.1_sd
+                double highZScore; // momentum_h_0.1_z
+                double openMean; // momentum_o_0.1_m
+                double openStd; // momentum_o_0.1_sd
+                double openZScore; // momentum_o_0.1_z
+                double diffMean; // momentum_o_h_diff_0.1
+                double diffZScore; // momentum_o_h_z_diff_0.1
+            };
+
+            std::array<Incre, kMomentumDurations.size()> incre;
+            std::vector<double> changeRates;
+        };
+        Momentum momentum;
     };
 
     struct BState
     {
-        int32_t snapshotTimestamp100ms{};
+        int32_t timestamp100ms{};
         Snapshot prevSnapshot{};
         Snapshot currSnapshot{};
-        size_t priceSeqOldSize{};
         bool savingMode{};
+
+        struct Momentum
+        {
+            std::array<FState::Momentum::Incre, kMomentumDurations.size()> incre;
+            size_t oldNumChangeRates{};
+        };
+        Momentum momentum;
     };
 
     FState fState;
     BState bState;
+
+    struct FactorList
+    {
+        struct Momentum
+        {
+            double highMean; // momentum_h_0.1_m
+            double highStd; // momentum_h_0.1_sd
+            double highZScore; // momentum_h_0.1_z
+            double openMean; // momentum_o_0.1_m
+            double openStd; // momentum_o_0.1_sd
+            double openZScore; // momentum_o_0.1_z
+            double diffMean; // momentum_o_h_diff_0.1
+            double diffZScore; // momentum_o_h_z_diff_0.1
+        };
+
+        std::array<Momentum, kMomentumDurations.size()> momentum;
+    };
+
+    FactorList factorList;
 
 #if SH
     struct UpSell {
@@ -103,6 +157,7 @@ private:
 #endif
 
     void addTrade(int32_t timestamp100ms, int32_t price, int32_t quantity);
+    void stepSnapshotUntil(int32_t timestamp100ms);
     void saveSnapshot();
     void restoreSnapshot();
     void stepSnapshot();
