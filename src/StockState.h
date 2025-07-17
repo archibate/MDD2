@@ -4,6 +4,7 @@
 #include <absl/container/btree_map.h>
 #include <vector>
 #include "MDS.h"
+#include "FactorList.h"
 
 
 struct alignas(64) StockState
@@ -27,11 +28,6 @@ private:
         int64_t amount;
     };
 
-    inline static constexpr std::array kMomentumDurations = {
-        // 0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 30.0,
-        6'0, 30'0, 60'0, 120'0, 180'0, 300'0, 600'0, 1800'0,
-    };
-
     struct FState
     {
         int32_t timestamp100ms{};
@@ -42,8 +38,8 @@ private:
         {
             struct Incre
             {
-                double valueSum;
-                double valueSquaredSum;
+                double valueSum{};
+                double valueSquaredSum{};
             };
 
             struct Result
@@ -81,24 +77,6 @@ private:
 
     FState fState;
     BState bState;
-
-    struct FactorList
-    {
-        struct Momentum
-        {
-            double highMean; // momentum_h_0.1_m
-            double highStd; // momentum_h_0.1_sd
-            double highZScore; // momentum_h_0.1_z
-            double openMean; // momentum_o_0.1_m
-            double openStd; // momentum_o_0.1_sd
-            double openZScore; // momentum_o_0.1_z
-            double diffMean; // momentum_o_h_diff_0.1
-            double diffZScore; // momentum_o_h_z_diff_0.1
-        };
-
-        std::array<Momentum, kMomentumDurations.size()> momentum;
-    };
-
     FactorList factorList;
 
 #if SH

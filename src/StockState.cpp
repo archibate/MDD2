@@ -186,7 +186,7 @@ void StockState::updateVirtTradePred(int32_t timestamp100ms)
 
     for (auto const &[sellOrderId, sell]: upSellOrders) {
         int64_t q64 = sell.quantity;
-        // fState.currSnapshot.lastPrice = sell.price;
+        fState.currSnapshot.lastPrice = sell.price;
         ++fState.currSnapshot.numTrades;
         fState.currSnapshot.quantity += q64;
         fState.currSnapshot.amount += sell.price * q64;
@@ -283,10 +283,6 @@ void StockState::restoreSnapshot()
 
 void StockState::stepSnapshot()
 {
-    if (fState.momentum.changeRates.empty()) [[unlikely]] {
-        return;
-    }
-
     double value = static_cast<double>(fState.currSnapshot.lastPrice)
         / static_cast<double>(fState.prevSnapshot.lastPrice) - 1.0;
     fState.momentum.changeRates.push_back(value);
@@ -324,5 +320,41 @@ void StockState::stepSnapshot()
 
 void StockState::decideWantBuy()
 {
+    int32_t n = fState.momentum.changeRates.size();
+
+    for (int i = 0; i < kMomentumDurations.size(); ++i) {
+        auto &incre = fState.momentum.incre[i];
+        auto &factor = factorList.momentum[i];
+        int32_t ticks = kMomentumDurations[i];
+        if (n < ticks) {
+            factor = {
+                NAN,
+                NAN,
+                NAN,
+                NAN,
+                NAN,
+                NAN,
+                NAN,
+                NAN,
+            };
+            continue;
+        }
+
+        double invertedTicks = 1.0 / static_cast<double>(ticks);
+        double varianceScale = static_cast<double>(ticks) / static_cast<double>(ticks - 1);
+        factor.highMean = incre.valueSum * invertedTicks;
+        double variance = incre.valueSquaredSum * invertedTicks - factor.highMean * factor.highMean;
+        factor.highStd = std::sqrt(std::max(0.0, variance) * varianceScale);
+        if (factor.highStd > 1e-10) {
+            factor.highZScore = factor.highMean / factor.highStd;
+        } else {
+            factor.highZScore = 0;
+        }
+
+        factor.diffMean = factor.openMean - factor.highMean;
+        factor.diffZScore = factor.openZScore - factor.highZScore;
+    }
+
+    factorList.dumpFactors(fState.timestamp100ms * 100, stockCode);
     wantBuy = true;
 }
