@@ -3,16 +3,6 @@
 #include "L2/timestamp.h"
 #include <spdlog/spdlog.h>
 
-namespace
-{
-
-int32_t timestampRound100ms(int32_t timestamp)
-{
-    return (timestamp + 90) / 100;
-}
-
-}
-
 
 void StockState::start(int32_t stockIndex)
 {
@@ -22,6 +12,7 @@ void StockState::start(int32_t stockIndex)
     auto stat = MDS::getStatic(stockCode);
     upperLimitPrice = stat.upperLimitPrice;
     preClosePrice = stat.preClosePrice;
+    openPrice = stat.openPrice;
 
     // upperLimitPriceApproach = std::min(static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)), upperLimitPrice - 10) - 1;
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 2;
@@ -29,8 +20,7 @@ void StockState::start(int32_t stockIndex)
     fState.currSnapshot.numTrades = 0;
     fState.currSnapshot.quantity = 0;
     fState.currSnapshot.amount = 0;
-    fState.prevLastPrice = preClosePrice;
-    fState.timestamp100ms = 9'30'00'0;
+    fState.nextTickTimestamp = 9'30'00'000;
 
     // if (preClosePrice <= 2 || preClosePrice >= 500) {
     //     SPDLOG_WARN("dismissed due to abnormal price: stock={} preClosePrice={}", stockCode, preClosePrice);
@@ -89,14 +79,13 @@ void StockState::onOrder(MDS::Tick &tick)
 {
     bool limitUp = tick.isBuyOrder() && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000;
     if (limitUp) [[likely]] {
-        bool virtPredNotReady = timestampVirtPred100ms != timestampRound100ms(tick.timestamp);
+        bool virtPredNotReady = tick.timestamp > timestampVirtPred100ms || true;
         bool onFlyCompute;
         if (virtPredNotReady) [[unlikely]] {
             if (tick.timestamp <= 9'30'00'100) [[unlikely]] {
                 virtPredNotReady = onFlyCompute = wantBuy = false;
             } else {
-                // onFlyCompute = !wantBuy || timestampVirtPred100ms == 0;
-                onFlyCompute = timestampVirtPred100ms == 0;
+                onFlyCompute = timestampVirtPred100ms == 0 || true;
                 if (onFlyCompute) {
                     virtPred100ms(tick.timestamp);
                 }
@@ -140,7 +129,7 @@ void StockState::onCancel(MDS::Tick &tick)
 
 void StockState::onTrade(MDS::Tick &tick)
 {
-#if 0
+#if 1
     auto &trade = pendTrades.emplace_back();
     trade.timestamp = tick.timestamp;
     trade.sellOrderNo = tick.sellOrderNo;
@@ -158,14 +147,12 @@ void StockState::onTrade(MDS::Tick &tick)
     if (tick.price >= upperLimitPriceApproach) {
         approchingLimitUp = true;
     }
-    addTrade(timestampRound100ms(tick.timestamp), tick.price, tick.quantity);
+    addTrade(tick.timestamp, tick.price, tick.quantity);
 #endif
 }
 
 void StockState::virtPred100ms(int32_t timestamp)
 {
-    int32_t timestamp100ms = timestampRound100ms(timestamp);
-
     bool pendTradeUpdated = !pendTrades.empty();
     if (pendTradeUpdated) {
         approchingLimitUp = false;
@@ -181,15 +168,15 @@ void StockState::virtPred100ms(int32_t timestamp)
             if (trade.price >= upperLimitPriceApproach) {
                 approchingLimitUp = true;
             }
-            addTrade(timestampRound100ms(trade.timestamp), trade.price, trade.quantity);
+            addTrade(trade.timestamp, trade.price, trade.quantity);
         }
         pendTrades.clear();
     }
 
     if (approchingLimitUp && timestamp >= 9'30'00'000) {
-        if (timestampVirtPred100ms != timestamp100ms || pendTradeUpdated || upSellChangeSinceVirtPred != 0) {
-            updateVirtTradePred(timestamp100ms);
-            timestampVirtPred100ms = timestamp100ms;
+        if (timestamp > timestampVirtPred100ms || pendTradeUpdated || upSellChangeSinceVirtPred != 0) {
+            updateVirtTradePred(timestamp);
+            timestampVirtPred100ms = (timestamp + 90) / 100 * 100;
             upSellChangeSinceVirtPred = 0;
         }
     } else {
@@ -197,10 +184,10 @@ void StockState::virtPred100ms(int32_t timestamp)
     }
 }
 
-void StockState::updateVirtTradePred(int32_t timestamp100ms)
+void StockState::updateVirtTradePred(int32_t timestamp)
 {
     saveSnapshot();
-    stepSnapshotUntil(timestamp100ms);
+    stepSnapshotUntil(timestamp);
 
     for (auto const &[sellOrderId, sell]: upSellOrders) {
         int64_t q64 = sell.quantity;
@@ -210,10 +197,6 @@ void StockState::updateVirtTradePred(int32_t timestamp100ms)
         fState.currSnapshot.amount += sell.price * q64;
     }
     fState.currSnapshot.lastPrice = upperLimitPrice;
-    //
-    // for (auto const &[sellOrderId, sell]: upSellOrders) {
-    //     addTrade(timestamp100ms, sell.price, sell.quantity);
-    // }
     stepSnapshot();
     decideWantBuy();
     restoreSnapshot();
@@ -264,20 +247,14 @@ void StockState::addTrade(int32_t timestamp100ms, int32_t price, int32_t quantit
     fState.currSnapshot.amount += price * q64;
 }
 
-void StockState::stepSnapshotUntil(int32_t timestamp100ms)
+void StockState::stepSnapshotUntil(int32_t timestamp)
 {
-    if (timestamp100ms > timestampRound100ms(L2::positiveAbsoluteMillisecondsToTimestamp(
-                L2::timestampToPositiveAbsoluteMilliseconds(
-                    fState.timestamp100ms * 100) + 100))) {
+    if (timestamp > fState.nextTickTimestamp) {
         stepSnapshot();
-        fState.prevLastPrice = fState.currSnapshot.lastPrice;
-        fState.currSnapshot.numTrades = 0;
-        fState.currSnapshot.quantity = 0;
-        fState.currSnapshot.amount = 0;
-        while (timestamp100ms > (fState.timestamp100ms =
-            timestampRound100ms(L2::positiveAbsoluteMillisecondsToTimestamp(
+        while (timestamp > (fState.nextTickTimestamp =
+            L2::positiveAbsoluteMillisecondsToTimestamp(
                 L2::timestampToPositiveAbsoluteMilliseconds(
-                    fState.timestamp100ms * 100) + 100)))) {
+                    fState.nextTickTimestamp) + 100))) {
             stepSnapshot();
         }
     }
@@ -286,97 +263,90 @@ void StockState::stepSnapshotUntil(int32_t timestamp100ms)
 void StockState::saveSnapshot()
 {
     bState.savingMode = true;
-    bState.timestamp100ms = fState.timestamp100ms;
+    bState.nextTickTimestamp = fState.nextTickTimestamp;
     bState.currSnapshot = fState.currSnapshot;
-
-    bState.momentum.incre = fState.momentum.incre;
-    bState.momentum.oldNumChangeRates = fState.momentum.changeRates.size();
+    bState.oldSnapshotsCount = fState.snapshots.size();
 }
 
 void StockState::restoreSnapshot()
 {
     bState.savingMode = false;
-    fState.timestamp100ms = bState.timestamp100ms;
+    fState.nextTickTimestamp = bState.nextTickTimestamp;
     fState.currSnapshot = bState.currSnapshot;
-
-    fState.momentum.incre = bState.momentum.incre;
-    fState.momentum.changeRates.resize(bState.momentum.oldNumChangeRates);
+    fState.snapshots.resize(bState.oldSnapshotsCount);
 }
 
 void StockState::stepSnapshot()
 {
-    double value = static_cast<double>(fState.currSnapshot.lastPrice)
-        / static_cast<double>(fState.prevLastPrice) - 1.0;
-    fState.momentum.changeRates.push_back(value);
-    int32_t n = fState.momentum.changeRates.size();
-
-    for (int32_t i = 0; i < kMomentumDurations.size(); ++i) {
-        auto &incre = fState.momentum.incre[i];
-        int32_t ticks = kMomentumDurations[i];
-
-        double pastValue;
-        if (n - 1 > ticks) {
-            pastValue = fState.momentum.changeRates[n - 1 - ticks];
-        } else {
-            pastValue = 0;
-        }
-
-        incre.valueSum += value - pastValue;
-        incre.valueSquaredSum += value * value - pastValue * pastValue;
-
-        if (n - 1 == ticks) [[unlikely]] {
-            auto &factor = factorList.momentum[i];
-            double invertedTicks = 1.0 / static_cast<double>(ticks);
-            double varianceScale = static_cast<double>(ticks) / static_cast<double>(ticks - 1);
-            factor.openMean = incre.valueSum * invertedTicks;
-            double variance = incre.valueSquaredSum * invertedTicks - factor.openMean * factor.openMean;
-            factor.openStd = std::sqrt(std::max(0.0, variance) * varianceScale);
-            if (factor.openStd > 1e-10) {
-                factor.openZScore = factor.openMean / factor.openStd;
-            } else {
-                factor.openZScore = 0;
-            }
-        }
-    }
+    fState.snapshots.push_back(fState.currSnapshot);
+    fState.currSnapshot.numTrades = 0;
+    fState.currSnapshot.quantity = 0;
+    fState.currSnapshot.amount = 0;
 }
 
 void StockState::decideWantBuy()
 {
-    int32_t n = fState.momentum.changeRates.size();
+    for (int32_t m = 0; m < kMomentumDurations.size(); ++m) {
+        if (fState.snapshots.size() >= kMomentumDurations[m]) {
+            {
+                double value = 0;
+                double valueSqr = 0;
+                double prevPrice = fState.snapshots[0].lastPrice; //openPrice;
+                for (int32_t t = 1; t < kMomentumDurations[m] + 1; ++t) {
+                    double currPrice = fState.snapshots[t].lastPrice;
+                    double changeRate = currPrice / prevPrice - 1.0;
+                    value += changeRate;
+                    valueSqr += changeRate * changeRate;
+                    prevPrice = currPrice;
+                }
+                double mean = value * (1.0 / kMomentumDurations[m]);
+                double meanM1 = value * (1.0 / (kMomentumDurations[m] - 1));
+                double variance = valueSqr * (1.0 / (kMomentumDurations[m] - 1)) - meanM1 * meanM1;
+                double std = std::sqrt(std::max(0.0, variance));
 
-    for (int i = 0; i < kMomentumDurations.size(); ++i) {
-        auto &incre = fState.momentum.incre[i];
-        auto &factor = factorList.momentum[i];
-        int32_t ticks = kMomentumDurations[i];
-        if (n < ticks) {
-            factor = {
-                NAN,
-                NAN,
-                NAN,
-                NAN,
-                NAN,
-                NAN,
-                NAN,
-                NAN,
-            };
-            continue;
-        }
+                factorList.momentum[m].openMean = mean;
+                factorList.momentum[m].openStd = std;
+                factorList.momentum[m].openZScore = std > 1e-10 ? mean / std : 0.0;
+            }
 
-        double invertedTicks = 1.0 / static_cast<double>(ticks);
-        double varianceScale = static_cast<double>(ticks) / static_cast<double>(ticks - 1);
-        factor.highMean = incre.valueSum * invertedTicks;
-        double variance = incre.valueSquaredSum * invertedTicks - factor.highMean * factor.highMean;
-        factor.highStd = std::sqrt(std::max(0.0, variance) * varianceScale);
-        if (factor.highStd > 1e-10) {
-            factor.highZScore = factor.highMean / factor.highStd;
+            {
+                double value = 0;
+                double valueSqr = 0;
+                double prevPrice = fState.snapshots[0].lastPrice; //openPrice;
+                if (fState.snapshots.size() - kMomentumDurations[m] >= 1) {
+                    prevPrice = fState.snapshots[fState.snapshots.size() - kMomentumDurations[m] - 1].lastPrice;
+                }
+                for (int32_t t = fState.snapshots.size() - kMomentumDurations[m]; t < fState.snapshots.size(); ++t) {
+                    double currPrice = fState.snapshots[t].lastPrice;
+                    double changeRate = currPrice / prevPrice - 1.0;
+                    value += changeRate;
+                    valueSqr += changeRate * changeRate;
+                    prevPrice = currPrice;
+                }
+                double mean = value * (1.0 / kMomentumDurations[m]);
+                double meanM1 = value * (1.0 / (kMomentumDurations[m] - 1));
+                double variance = valueSqr * (1.0 / (kMomentumDurations[m] - 1)) - meanM1 * mean;
+                double std = std::sqrt(std::max(0.0, variance));
+
+                factorList.momentum[m].highMean = mean;
+                factorList.momentum[m].highStd = std;
+                factorList.momentum[m].highZScore = std > 1e-10 ? mean / std : 0.0;
+            }
+
+            factorList.momentum[m].diffMean = factorList.momentum[m].openMean - factorList.momentum[m].highMean;
+            factorList.momentum[m].diffZScore = factorList.momentum[m].openZScore - factorList.momentum[m].highZScore;
         } else {
-            factor.highZScore = 0;
+            factorList.momentum[m].openMean = NAN;
+            factorList.momentum[m].openStd = NAN;
+            factorList.momentum[m].openZScore = NAN;
+            factorList.momentum[m].highMean = NAN;
+            factorList.momentum[m].highStd = NAN;
+            factorList.momentum[m].highZScore = NAN;
+            factorList.momentum[m].diffMean = NAN;
+            factorList.momentum[m].diffZScore = NAN;
         }
-
-        factor.diffMean = factor.openMean - factor.highMean;
-        factor.diffZScore = factor.openZScore - factor.highZScore;
     }
 
-    factorList.dumpFactors(fState.timestamp100ms * 100, stockCode);
+    factorList.dumpFactors(fState.nextTickTimestamp, stockCode);
     wantBuy = true;
 }

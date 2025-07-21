@@ -13,6 +13,7 @@ struct alignas(64) StockState
     int32_t upperLimitPrice{};
     int32_t upperLimitPriceApproach{};
     int32_t preClosePrice{};
+    int32_t openPrice{};
     bool alive{};
 
     void start(int32_t stockIndex);
@@ -30,53 +31,22 @@ private:
 
     struct FState
     {
-        int32_t timestamp100ms{};
+        int32_t nextTickTimestamp{};
         Snapshot currSnapshot{};
-        int32_t prevLastPrice{};
-
-        struct Momentum
-        {
-            struct Incre
-            {
-                double valueSum{};
-                double valueSquaredSum{};
-            };
-
-            struct Result
-            {
-                double highMean; // momentum_h_0.1_m
-                double highStd; // momentum_h_0.1_sd
-                double highZScore; // momentum_h_0.1_z
-                double openMean; // momentum_o_0.1_m
-                double openStd; // momentum_o_0.1_sd
-                double openZScore; // momentum_o_0.1_z
-                double diffMean; // momentum_o_h_diff_0.1
-                double diffZScore; // momentum_o_h_z_diff_0.1
-            };
-
-            std::array<Incre, kMomentumDurations.size()> incre;
-            std::vector<double> changeRates;
-        };
-        Momentum momentum;
+        std::vector<Snapshot> snapshots;
     };
 
     struct BState
     {
-        int32_t timestamp100ms{};
+        int32_t nextTickTimestamp{};
         Snapshot currSnapshot{};
+        size_t oldSnapshotsCount{};
         bool savingMode{};
-
-        struct Momentum
-        {
-            std::array<FState::Momentum::Incre, kMomentumDurations.size()> incre;
-            size_t oldNumChangeRates{};
-        };
-        Momentum momentum;
     };
 
     FState fState;
     BState bState;
-    FactorList factorList;
+    FactorList factorList{};
 
 #if SH
     struct UpSell {
