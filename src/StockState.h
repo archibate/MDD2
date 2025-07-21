@@ -31,8 +31,8 @@ private:
     struct FState
     {
         int32_t timestamp100ms{};
-        Snapshot prevSnapshot{};
         Snapshot currSnapshot{};
+        int32_t prevLastPrice{};
 
         struct Momentum
         {
@@ -63,7 +63,6 @@ private:
     struct BState
     {
         int32_t timestamp100ms{};
-        Snapshot prevSnapshot{};
         Snapshot currSnapshot{};
         bool savingMode{};
 

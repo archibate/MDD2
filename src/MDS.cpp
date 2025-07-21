@@ -100,10 +100,12 @@ void MDS::start()
         if (n != tickBuf.size()) [[unlikely]] {
             throw std::runtime_error("cannot read all ticks from file");
         }
+#if REPLAY_REAL_TIME
         SPDLOG_INFO("sorting {} ticks", tickBuf.size());
         std::stable_sort(std::execution::par_unseq, tickBuf.begin(), tickBuf.end(), [] (Tick const &lhs, Tick const &rhs) {
             return lhs.timestamp < rhs.timestamp;
         });
+#endif
         SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
         g_isStarted.store(true);
 

@@ -25,11 +25,11 @@ void StockState::start(int32_t stockIndex)
 
     // upperLimitPriceApproach = std::min(static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)), upperLimitPrice - 10) - 1;
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 2;
-    fState.prevSnapshot.lastPrice = preClosePrice;
-    fState.prevSnapshot.numTrades = 0;
-    fState.prevSnapshot.quantity = 0;
-    fState.prevSnapshot.amount = 0;
-    fState.currSnapshot = fState.prevSnapshot;
+    fState.currSnapshot.lastPrice = preClosePrice;
+    fState.currSnapshot.numTrades = 0;
+    fState.currSnapshot.quantity = 0;
+    fState.currSnapshot.amount = 0;
+    fState.prevLastPrice = preClosePrice;
     fState.timestamp100ms = 9'30'00'0;
 
     // if (preClosePrice <= 2 || preClosePrice >= 500) {
@@ -75,10 +75,12 @@ void StockState::handleTick(MDS::Tick &tick)
 #if SH
 void StockState::onTimer()
 {
+#if REPLAY_REAL_TIME
     timestampLastTick = L2::millisecondsToTimestamp(L2::timestampToMilliseconds(timestampLastTick) + 10);
     if (timestampLastTick >= 9'30'00'000) {
         virtPred100ms(timestampLastTick);
     }
+#endif
 }
 #endif
 
@@ -93,7 +95,8 @@ void StockState::onOrder(MDS::Tick &tick)
             if (tick.timestamp <= 9'30'00'100) [[unlikely]] {
                 virtPredNotReady = onFlyCompute = wantBuy = false;
             } else {
-                onFlyCompute = !wantBuy || timestampVirtPred100ms == 0;
+                // onFlyCompute = !wantBuy || timestampVirtPred100ms == 0;
+                onFlyCompute = timestampVirtPred100ms == 0;
                 if (onFlyCompute) {
                     virtPred100ms(tick.timestamp);
                 }
@@ -137,11 +140,26 @@ void StockState::onCancel(MDS::Tick &tick)
 
 void StockState::onTrade(MDS::Tick &tick)
 {
+#if 0
     auto &trade = pendTrades.emplace_back();
     trade.timestamp = tick.timestamp;
     trade.sellOrderNo = tick.sellOrderNo;
     trade.quantity = tick.quantity;
     trade.price = tick.price;
+#else
+    auto it = upSellOrders.find(tick.sellOrderNo);
+    if (it != upSellOrders.end()) {
+        it->second.quantity -= tick.quantity;
+        if (it->second.quantity <= 0) {
+            upSellOrders.erase(it);
+        }
+    }
+
+    if (tick.price >= upperLimitPriceApproach) {
+        approchingLimitUp = true;
+    }
+    addTrade(timestampRound100ms(tick.timestamp), tick.price, tick.quantity);
+#endif
 }
 
 void StockState::virtPred100ms(int32_t timestamp)
@@ -192,6 +210,10 @@ void StockState::updateVirtTradePred(int32_t timestamp100ms)
         fState.currSnapshot.amount += sell.price * q64;
     }
     fState.currSnapshot.lastPrice = upperLimitPrice;
+    //
+    // for (auto const &[sellOrderId, sell]: upSellOrders) {
+    //     addTrade(timestamp100ms, sell.price, sell.quantity);
+    // }
     stepSnapshot();
     decideWantBuy();
     restoreSnapshot();
@@ -244,9 +266,11 @@ void StockState::addTrade(int32_t timestamp100ms, int32_t price, int32_t quantit
 
 void StockState::stepSnapshotUntil(int32_t timestamp100ms)
 {
-    if (timestamp100ms > fState.timestamp100ms) {
+    if (timestamp100ms > timestampRound100ms(L2::positiveAbsoluteMillisecondsToTimestamp(
+                L2::timestampToPositiveAbsoluteMilliseconds(
+                    fState.timestamp100ms * 100) + 100))) {
         stepSnapshot();
-        fState.prevSnapshot = fState.currSnapshot;
+        fState.prevLastPrice = fState.currSnapshot.lastPrice;
         fState.currSnapshot.numTrades = 0;
         fState.currSnapshot.quantity = 0;
         fState.currSnapshot.amount = 0;
@@ -264,7 +288,6 @@ void StockState::saveSnapshot()
     bState.savingMode = true;
     bState.timestamp100ms = fState.timestamp100ms;
     bState.currSnapshot = fState.currSnapshot;
-    bState.prevSnapshot = fState.prevSnapshot;
 
     bState.momentum.incre = fState.momentum.incre;
     bState.momentum.oldNumChangeRates = fState.momentum.changeRates.size();
@@ -275,7 +298,6 @@ void StockState::restoreSnapshot()
     bState.savingMode = false;
     fState.timestamp100ms = bState.timestamp100ms;
     fState.currSnapshot = bState.currSnapshot;
-    fState.prevSnapshot = bState.prevSnapshot;
 
     fState.momentum.incre = bState.momentum.incre;
     fState.momentum.changeRates.resize(bState.momentum.oldNumChangeRates);
@@ -284,7 +306,7 @@ void StockState::restoreSnapshot()
 void StockState::stepSnapshot()
 {
     double value = static_cast<double>(fState.currSnapshot.lastPrice)
-        / static_cast<double>(fState.prevSnapshot.lastPrice) - 1.0;
+        / static_cast<double>(fState.prevLastPrice) - 1.0;
     fState.momentum.changeRates.push_back(value);
     int32_t n = fState.momentum.changeRates.size();
 
