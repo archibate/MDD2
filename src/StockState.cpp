@@ -67,7 +67,7 @@ void StockState::onTimer()
 {
 #if REPLAY_REAL_TIME
     timestampLastTick = L2::millisecondsToTimestamp(L2::timestampToMilliseconds(timestampLastTick) + 10);
-    if (timestampLastTick >= 9'30'00'000) {
+    if (timestampLastTick >= 9'30'00'000) [[likely]] {
         virtPred100ms(timestampLastTick);
     }
 #endif
@@ -79,13 +79,13 @@ void StockState::onOrder(MDS::Tick &tick)
 {
     bool limitUp = tick.isBuyOrder() && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000;
     if (limitUp) [[likely]] {
-        bool virtPredNotReady = tick.timestamp > timestampVirtPred100ms || true;
+        bool virtPredNotReady = tick.timestamp > timestampVirtPred100ms;
         bool onFlyCompute;
         if (virtPredNotReady) [[unlikely]] {
-            if (tick.timestamp <= 9'30'00'100) [[unlikely]] {
+            if (tick.timestamp <= 9'30'01'000) [[unlikely]] {
                 virtPredNotReady = onFlyCompute = wantBuy = false;
             } else {
-                onFlyCompute = timestampVirtPred100ms == 0 || true;
+                onFlyCompute = timestampVirtPred100ms == 0;
                 if (onFlyCompute) {
                     virtPred100ms(tick.timestamp);
                 }
@@ -129,26 +129,26 @@ void StockState::onCancel(MDS::Tick &tick)
 
 void StockState::onTrade(MDS::Tick &tick)
 {
-#if 1
+// #if 1
     auto &trade = pendTrades.emplace_back();
     trade.timestamp = tick.timestamp;
     trade.sellOrderNo = tick.sellOrderNo;
     trade.quantity = tick.quantity;
     trade.price = tick.price;
-#else
-    auto it = upSellOrders.find(tick.sellOrderNo);
-    if (it != upSellOrders.end()) {
-        it->second.quantity -= tick.quantity;
-        if (it->second.quantity <= 0) {
-            upSellOrders.erase(it);
-        }
-    }
-
-    if (tick.price >= upperLimitPriceApproach) {
-        approchingLimitUp = true;
-    }
-    addTrade(tick.timestamp, tick.price, tick.quantity);
-#endif
+// #else
+//     auto it = upSellOrders.find(tick.sellOrderNo);
+//     if (it != upSellOrders.end()) {
+//         it->second.quantity -= tick.quantity;
+//         if (it->second.quantity <= 0) {
+//             upSellOrders.erase(it);
+//         }
+//     }
+//
+//     if (tick.price >= upperLimitPriceApproach) {
+//         approchingLimitUp = true;
+//     }
+//     addTrade(tick.timestamp, tick.price, tick.quantity);
+// #endif
 }
 
 void StockState::virtPred100ms(int32_t timestamp)
@@ -287,11 +287,11 @@ void StockState::stepSnapshot()
 void StockState::decideWantBuy()
 {
     for (int32_t m = 0; m < kMomentumDurations.size(); ++m) {
-        if (fState.snapshots.size() >= kMomentumDurations[m]) {
+        if (fState.snapshots.size() >= kMomentumDurations[m] + 1) {
             {
                 double value = 0;
                 double valueSqr = 0;
-                double prevPrice = fState.snapshots[0].lastPrice; //openPrice;
+                double prevPrice = fState.snapshots[0].lastPrice;
                 for (int32_t t = 1; t < kMomentumDurations[m] + 1; ++t) {
                     double currPrice = fState.snapshots[t].lastPrice;
                     double changeRate = currPrice / prevPrice - 1.0;
@@ -312,10 +312,7 @@ void StockState::decideWantBuy()
             {
                 double value = 0;
                 double valueSqr = 0;
-                double prevPrice = fState.snapshots[0].lastPrice; //openPrice;
-                if (fState.snapshots.size() - kMomentumDurations[m] >= 1) {
-                    prevPrice = fState.snapshots[fState.snapshots.size() - kMomentumDurations[m] - 1].lastPrice;
-                }
+                double prevPrice = prevPrice = fState.snapshots[fState.snapshots.size() - kMomentumDurations[m] - 1].lastPrice;
                 for (int32_t t = fState.snapshots.size() - kMomentumDurations[m]; t < fState.snapshots.size(); ++t) {
                     double currPrice = fState.snapshots[t].lastPrice;
                     double changeRate = currPrice / prevPrice - 1.0;
