@@ -1,10 +1,11 @@
+#!/usr/bin/env python
+
 import pandas as pd
 import numpy as np
 
 
 correct = pd.read_csv('build/pred_correct.csv')
 factors = pd.read_csv('build/factors.csv')
-
 
 correct = correct.groupby('ts_code').last().reset_index().sort_values('ts_code').reset_index(drop=True)
 factors = factors.groupby('ts_code').last().reset_index().sort_values('ts_code').reset_index(drop=True)
