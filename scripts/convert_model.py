@@ -315,7 +315,7 @@ for k, code in models.items():
 #ifdef __cplusplus
 extern "C"
 #endif
-float hardModel_{k}(const float *a) {{
+float _generated_model_{k}(const float *a) {{
     ''')
         if k == 'classification':
             f.write(f'return 1.0f / (1.0f + expf(-{k}f(a))) - {benchmark_values[k]}f;')

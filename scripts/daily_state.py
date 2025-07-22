@@ -2,6 +2,7 @@
 
 import pandas as pd
 import tushare as ts
+import numpy as np
 
 today = '20250722'
 market_name = 'SH'
@@ -36,7 +37,40 @@ factors = pd.read_csv(csv_path)
 assert (factors['trade_date'] == int(today)).all(), factors
 del factors['trade_date']
 
-stock_codes = factors.pop('ts_code').str.removesuffix(f'.{market_name}').astype('int32')
+stocks = factors.pop('ts_code').str.split('.').str[0].astype('int32')
 factors = factors.astype('float64')
-print(stock_codes)
+
+print('Loading feature order')
+feature_order = []
+with open(f'src/FactorEnum.h', 'r') as f:
+    for line in f.readlines():
+        line = line.strip()
+        if line.endswith(','):
+            feature_order.append(line.removesuffix(',').strip())
+factors = factors.reindex(columns=feature_order)
+assert len(stocks) == len(factors)
+
+
+print('Loading prev limit up')
+stock_prev_limits = pd.read_json(f'/data/daily_csv/previous_trading_day_limit_up_data_{today}.json')['ts_code'].str.split('.').str[0].astype('int32')
+
+
+config = pd.DataFrame([
+    {'fileVersion': 250722, 'today': today, 'marketID': {'SH': 1, 'SZ': 2}[market_name], 'stockCount': len(stocks), 'prevLimitUpCount': len(stock_prev_limits)},
+]).astype('int32')
+
+print('Stocks:')
+print(stocks)
+print('Factors:')
 print(factors)
+print('Prev limit up stocks:')
+print(stock_prev_limits)
+print('Config:')
+print(config)
+
+
+with open(f'/data/daily_csv/mdd2_factors_{market_name.lower()}_{today}.bin', 'wb') as f:
+    f.write(config.to_numpy().tobytes())
+    f.write(stocks.to_numpy().tobytes())
+    f.write(factors.to_numpy().tobytes())
+    f.write(stock_prev_limits.to_numpy().tobytes())
