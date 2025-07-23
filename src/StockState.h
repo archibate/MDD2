@@ -48,7 +48,6 @@ private:
     BState bState;
     FactorList factorList{};
 
-#if SH
     struct UpSell {
         int32_t price;
         int32_t quantity;
@@ -65,46 +64,17 @@ private:
     std::vector<PendTrade> pendTrades;
     int32_t timestampVirtPred100ms{};
     int32_t timestampLastTick{};
-    int64_t upSellChangeSinceVirtPred{};
     bool wantBuy{};
     bool approchingLimitUp{};
-#endif
-
-#if SZ
-    struct UpSell {
-        int32_t price;
-        int32_t quantity;
-    };
-
-    struct PendTrade {
-        int32_t timestamp;
-        int32_t sellOrderNo;
-        int32_t price;
-        int32_t quantity;
-    };
-
-    absl::btree_map<int32_t, UpSell> upSellOrders;
-    int32_t upSellVolume{};
-    int32_t timestampVirtTradePred100ms{};
-    int32_t timestampLastTick{};
-    bool approchingLimitUp{};
-    bool wantBuy{};
-#endif
 
     void onOrder(MDS::Tick &tick);
     void onCancel(MDS::Tick &tick);
     void onTrade(MDS::Tick &tick);
-#if SH
-    void onTimer();
-#endif
 
-#if SH
-    void virtPred100ms(int32_t timestamp);
-    void updateVirtTradePred(int32_t timestamp100ms);
-#endif
+    void updateVirtTradePred(int32_t timestamp);
 
-    void addTrade(int32_t timestamp100ms, int32_t price, int32_t quantity);
-    void stepSnapshotUntil(int32_t timestamp100ms);
+    void addTrade(int32_t timestamp, int32_t price, int32_t quantity);
+    void stepSnapshotUntil(int32_t timestamp);
     void saveSnapshot();
     void restoreSnapshot();
     void stepSnapshot();

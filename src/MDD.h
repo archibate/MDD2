@@ -12,7 +12,7 @@ namespace MDD
 {
 
 extern std::array<DisruptorPool<MDS::Tick>, kChannelCount> g_channelPool;
-extern std::array<StockState, kStockCodes.size()> g_stockStates;
+extern std::unique_ptr<StockState[]> g_stockStates;
 
 void start();
 void stop();
