@@ -43,8 +43,6 @@ void StockState::handleTick(MDS::Tick &tick)
     } else if (tick.isTrade()) {
         onTrade(tick);
     }
-
-    timestampLastTick = tick.timestamp;
 }
 
 void StockState::onOrder(MDS::Tick &tick)
@@ -91,10 +89,22 @@ void StockState::onTrade(MDS::Tick &tick)
     if (tick.price >= upperLimitPriceApproach) {
         approchingLimitUp = true;
     }
-    addTrade(tick.timestamp, tick.price, tick.quantity);
+    addRealTrade(tick.timestamp, tick.price, tick.quantity);
+    timestampLastTrade = tick.timestamp;
 }
 
-void StockState::updateVirtTradePred(int32_t timestamp)
+void StockState::addRealTrade(int32_t timestamp, int32_t price, int32_t quantity)
+{
+    stepSnapshotUntil(timestamp);
+
+    int64_t q64 = quantity;
+    fState.currSnapshot.lastPrice = price;
+    ++fState.currSnapshot.numTrades;
+    fState.currSnapshot.quantity += q64;
+    fState.currSnapshot.amount += price * q64;
+}
+
+void StockState::updateVirtTrade(int32_t timestamp)
 {
     saveSnapshot();
     stepSnapshotUntil(timestamp);
@@ -110,17 +120,6 @@ void StockState::updateVirtTradePred(int32_t timestamp)
     stepSnapshot();
     decideWantBuy();
     restoreSnapshot();
-}
-
-void StockState::addTrade(int32_t timestamp100ms, int32_t price, int32_t quantity)
-{
-    stepSnapshotUntil(timestamp100ms);
-
-    int64_t q64 = quantity;
-    fState.currSnapshot.lastPrice = price;
-    ++fState.currSnapshot.numTrades;
-    fState.currSnapshot.quantity += q64;
-    fState.currSnapshot.amount += price * q64;
 }
 
 void StockState::stepSnapshotUntil(int32_t timestamp)

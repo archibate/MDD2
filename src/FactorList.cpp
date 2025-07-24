@@ -1,4 +1,5 @@
 #include "FactorList.h"
+#include <magic_enum/magic_enum.hpp>
 #include <fstream>
 #include <iomanip>
 #include <cstdio>
@@ -13,7 +14,7 @@ void FactorList::dumpFactors(int32_t timestamp, int32_t stock)
         std::ofstream csv("factors.csv");
         csv << "timestamp,ts_code";
         for (int32_t i = 0; i < size; ++i) {
-            csv << ',' << kFactorNames[i];
+            csv << ',' << magic_enum::enum_name(static_cast<FactorEnum>(i));
         }
         csv << '\n';
     }(), 0);

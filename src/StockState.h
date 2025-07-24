@@ -53,17 +53,15 @@ private:
         int32_t quantity;
     };
 
-    struct PendTrade {
-        int32_t timestamp;
-        int32_t sellOrderNo;
-        int32_t price;
-        int32_t quantity;
-    };
+    // struct PendTrade {
+    //     int32_t timestamp;
+    //     int32_t sellOrderNo;
+    //     int32_t price;
+    //     int32_t quantity;
+    // };
 
     absl::btree_map<int32_t, UpSell> upSellOrders;
-    std::vector<PendTrade> pendTrades;
-    int32_t timestampVirtPred100ms{};
-    int32_t timestampLastTick{};
+    int32_t timestampLastTrade{};
     bool wantBuy{};
     bool approchingLimitUp{};
 
@@ -71,9 +69,9 @@ private:
     void onCancel(MDS::Tick &tick);
     void onTrade(MDS::Tick &tick);
 
-    void updateVirtTradePred(int32_t timestamp);
+    void updateVirtTrade(int32_t timestamp);
+    void addRealTrade(int32_t timestamp, int32_t price, int32_t quantity);
 
-    void addTrade(int32_t timestamp, int32_t price, int32_t quantity);
     void stepSnapshotUntil(int32_t timestamp);
     void saveSnapshot();
     void restoreSnapshot();

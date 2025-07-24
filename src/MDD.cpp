@@ -14,9 +14,9 @@ std::unique_ptr<StockState[]> MDD::g_stockStates;
 namespace
 {
 
-void initStockCodes(std::vector<int32_t> const &stockCodes)
+void initStockCodes()
 {
-    MDD::g_stockStates = std::make_unique<StockState[]>(stockCodes.size());
+    MDD::g_stockStates = std::make_unique<StockState[]>(kStockCodes.size());
 }
 
 void handleTick(int32_t ch, MDS::Tick &tick)
@@ -39,6 +39,8 @@ void MDD::start()
             handleTick(c, tick);
         });
     }
+
+    initStockCodes();
 
     for (int32_t i = 0; i < kStockCodes.size(); ++i) {
         g_stockStates[i].start(i);
