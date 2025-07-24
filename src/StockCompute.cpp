@@ -26,7 +26,7 @@ void StockCompute::start()
     fState.currSnapshot.numTrades = 0;
     fState.currSnapshot.quantity = 0;
     fState.currSnapshot.amount = 0;
-    fState.nextTickTimestamp = 9'30'00'000;
+    futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
 }
 
 void StockCompute::stop()
@@ -69,7 +69,7 @@ void StockCompute::onTimer()
     }
 
     if (approchingLimitUp) {
-        futureTimestamp = timestampAdvance100ms(fState.nextTickTimestamp);
+        futureTimestamp = fState.nextTickTimestamp;
         // SPDLOG_INFO("reset future: stock={} timestamp={}", stockState().stockCode, futureTimestamp);
     }
 }
@@ -77,9 +77,9 @@ void StockCompute::onTimer()
 void StockCompute::onPostTimer()
 {
     if (approchingLimitUp) {
+        futureTimestamp = timestampAdvance100ms(futureTimestamp);
         // SPDLOG_INFO("compute future: stock={} timestamp={}", stockState().stockCode, futureTimestamp);
         computeFutureWantBuy(futureTimestamp);
-        futureTimestamp = timestampAdvance100ms(futureTimestamp);
     }
 }
 
@@ -155,12 +155,11 @@ void StockCompute::computeFutureWantBuy(int32_t timestamp)
     bool wantBuy = decideWantBuy();
     if (wantBuy) {
         auto &tickCache = MDD::g_tickCaches[stockIndex()];
-        tickCache.pushWantBuy(timestamp);
+        tickCache.pushWantBuyTimestamp(timestampAdvance100ms(timestamp));
         // SPDLOG_INFO("predicted want buy: stock={} wantBuyTimestamp={}", stockState().stockCode, timestamp);
     }
 
     restoreSnapshot();
-    factorList.dumpFactors(timestamp, stockState().stockCode);
 }
 
 void StockCompute::stepSnapshotUntil(int32_t timestamp)

@@ -4,15 +4,14 @@
 #include <cstdint>
 #include "config.h"
 
-// md_bind=2
+// md_bind=1
+// md_cache=2
 // api_recv=3
-// api_send=4
-// channels=5-14
-// timer=15
+// channels=4-35
 
 constexpr int32_t kTimerCpu = 15;
-constexpr int32_t kChannelCpuBegin = 5;
-constexpr int32_t kChannelCount = 10;
+constexpr int32_t kChannelCpuBegin = 4;
+constexpr int32_t kChannelCount = 32;
 constexpr int32_t kChannelPoolSize = 4096;
 
 constexpr std::array kStockCodesOriginal = {
@@ -25,9 +24,7 @@ constexpr std::array kStockCodesOriginal = {
 };
 
 #if REPLAY_REAL_TIME
-#define TIME_SCALE * (1.0 / 20.0)
-constexpr int32_t kBrustProcessMicroseconds = 6500;
+#define TIME_SCALE * (1.0 / 30.0)
 #else
 #define TIME_SCALE
-constexpr int32_t kBrustProcessMicroseconds = 4500;
 #endif

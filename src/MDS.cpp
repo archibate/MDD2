@@ -112,7 +112,7 @@ void MDS::start()
         size_t i = 0;
 #if REPLAY_REAL_TIME
         int32_t lastTimestamp = tickBuf.empty() ? 0 : tickBuf.front().timestamp;
-        auto lastSleepTime = std::chrono::steady_clock::now();
+        auto nextSleepTime = std::chrono::steady_clock::now();
 #endif
         while (i < tickBuf.size() && !stop.stop_requested()) [[likely]] {
             Tick &tick = tickBuf[i];
@@ -121,8 +121,8 @@ void MDS::start()
             if (tick.timestamp > lastTimestamp) {
                 int64_t dt = L2::timestampToAbsoluteMilliseconds(tick.timestamp, 10) - L2::timestampToAbsoluteMilliseconds(lastTimestamp, 10);
                 lastTimestamp = tick.timestamp;
-                lastSleepTime += duration_cast<std::chrono::steady_clock::duration>(std::chrono::milliseconds(dt) TIME_SCALE);
-                std::this_thread::sleep_until(lastSleepTime);
+                nextSleepTime += duration_cast<std::chrono::steady_clock::duration>(std::chrono::milliseconds(dt) TIME_SCALE);
+                std::this_thread::sleep_until(nextSleepTime);
             } else if (tick.timestamp < lastTimestamp) [[unlikely]] {
                 throw std::runtime_error("timestamp out of order");
             }

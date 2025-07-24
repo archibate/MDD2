@@ -31,14 +31,14 @@ void computeThreadMain(int32_t c, std::stop_token stop)
     const int32_t stopId = (kStockCodes.size() * (c + 1)) / kChannelCount;
 
 #if REPLAY_REAL_TIME
-    const auto interval = duration_cast<std::chrono::nanoseconds>(
-        std::chrono::milliseconds(100) TIME_SCALE);
+    const auto interval = duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::milliseconds(99) TIME_SCALE);
     auto nextSleepTime = std::chrono::steady_clock::now() + interval;
 #endif
     while (!stop.stop_requested()) [[likely]] {
 #if REPLAY_REAL_TIME
         std::this_thread::sleep_until(nextSleepTime);
-        nextSleepTime = std::chrono::steady_clock::now() + interval;
+        nextSleepTime += interval;
 #endif
 
         for (int32_t id = startId; id != stopId; ++id) {
@@ -72,7 +72,7 @@ void MDD::start()
         g_computeThreads[c] = std::jthread([c] (std::stop_token stop) {
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            CPU_SET(c, &cpuset);
+            CPU_SET(kChannelCpuBegin + c, &cpuset);
             sched_setaffinity(getpid(), sizeof(cpuset), &cpuset);
             computeThreadMain(c, stop);
         });

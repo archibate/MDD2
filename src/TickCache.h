@@ -2,6 +2,7 @@
 
 
 #include <mutex>
+#include <spdlog/spdlog.h>
 #include <array>
 #include <atomic>
 #include <vector>
@@ -56,16 +57,19 @@ struct alignas(64) TickCache {
         return tickCachedR;
     }
 
-    void pushWantBuy(int32_t timestamp)
+    void pushWantBuyTimestamp(int32_t timestamp)
     {
         wantBuyTimestamp.store(timestamp, std::memory_order_relaxed);
     }
 
-    bool findWantBuy(int32_t timestamp)
+    int32_t fetchWantBuyTimestamp()
     {
-        int32_t wantTimestamp = wantBuyTimestamp.load(std::memory_order_relaxed);
-        if (wantTimestamp >= timestamp) [[likely]] {
-            // SPDLOG_INFO("wantTimestamp={} timestamp={}", wantTimestamp, timestamp);
+        return wantBuyTimestamp.load(std::memory_order_relaxed);
+    }
+
+    bool checkWantBuyAtTimestamp(int32_t timestamp)
+    {
+        if (fetchWantBuyTimestamp() >= timestamp) [[likely]] {
             return true;
         }
         return false;

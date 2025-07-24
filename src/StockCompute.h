@@ -45,7 +45,7 @@ private:
 
     FState fState;
     BState bState;
-    FactorList factorList{};
+    public: FactorList factorList{}; private:
     int32_t futureTimestamp{};
 
     struct UpSell {
