@@ -3,10 +3,9 @@
 #include "daily.h"
 #include "StockState.h"
 #include "stockCodes.h"
+#include "threadAffinity.h"
 #include <chrono>
 #include <spdlog/spdlog.h>
-#include <sched.h>
-#include <unistd.h>
 
 std::array<std::jthread, kChannelCount> MDD::g_computeThreads;
 std::unique_ptr<StockState[]> MDD::g_stockStates;
@@ -25,20 +24,28 @@ void MDD::handleTick(MDS::Tick &tick)
 namespace
 {
 
-void computeThreadMain(int32_t c, std::stop_token stop)
+void computeThreadMain(int32_t c, std::chrono::steady_clock::time_point startTime, std::stop_token stop)
 {
+    setThisThreadAffinity(kChannelCpuBegin + c);
+
     const int32_t startId = (kStockCodes.size() * c) / kChannelCount;
     const int32_t stopId = (kStockCodes.size() * (c + 1)) / kChannelCount;
 
 #if REPLAY_REAL_TIME
-    const auto interval = duration_cast<std::chrono::steady_clock::duration>(
+    const auto kSleepInterval = duration_cast<std::chrono::steady_clock::duration>(
         std::chrono::milliseconds(99) TIME_SCALE);
-    auto nextSleepTime = std::chrono::steady_clock::now() + interval;
+    auto nextSleepTime = startTime + kSleepInterval * c / kChannelCount + kSleepInterval;
 #endif
     while (!stop.stop_requested()) [[likely]] {
 #if REPLAY_REAL_TIME
-        std::this_thread::sleep_until(nextSleepTime);
-        nextSleepTime += interval;
+#if 0
+        for (int32_t id = startId; std::chrono::steady_clock::now() < nextSleepTime; id = id == stopId ? startId : id + 1) {
+            MDD::g_stockComputes[id].onBusy();
+        }
+#else
+        spinSleepUntil(nextSleepTime);
+#endif
+        nextSleepTime += kSleepInterval;
 #endif
 
         for (int32_t id = startId; id != stopId; ++id) {
@@ -68,31 +75,30 @@ void MDD::start()
         g_stockComputes[i].start();
     }
 
-    for (int32_t c = 0; c < kChannelCount; ++c) {
-        g_computeThreads[c] = std::jthread([c] (std::stop_token stop) {
-            cpu_set_t cpuset;
-            CPU_ZERO(&cpuset);
-            CPU_SET(kChannelCpuBegin + c, &cpuset);
-            sched_setaffinity(getpid(), sizeof(cpuset), &cpuset);
-            computeThreadMain(c, stop);
-        });
-    }
-
     MDS::subscribe(kStockCodes.data(), kStockCodes.size());
     MDS::start();
     while (!MDS::isStarted()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+
+    SPDLOG_INFO("starting {} compute channels", kChannelCount);
+    auto t0 = std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
+    for (int32_t c = 0; c < kChannelCount; ++c) {
+        g_computeThreads[c] = std::jthread([t0, c] (std::stop_token stop) {
+            computeThreadMain(c, t0, stop);
+        });
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
 }
 
 void MDD::stop()
 {
-    MDS::stop();
-
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c].request_stop();
         g_computeThreads[c].join();
     }
+
+    MDS::stop();
 
     for (int32_t i = 0; i < kStockCodes.size(); ++i) {
         g_stockComputes[i].stop();

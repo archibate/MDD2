@@ -14,6 +14,7 @@ struct alignas(64) StockCompute
     void stop();
     void onTimer();
     void onPostTimer();
+    void onBusy();
 
 private:
     struct Snapshot
@@ -45,7 +46,10 @@ private:
 
     FState fState;
     BState bState;
-    public: FactorList factorList{}; private:
+
+public:
+    FactorList factorList{};
+private:
     int32_t futureTimestamp{};
 
     struct UpSell {
@@ -68,6 +72,7 @@ private:
     void restoreSnapshot();
     void stepSnapshot();
     bool decideWantBuy();
+    bool computeModel();
 
     int32_t stockIndex() const;
     StockState &stockState() const;

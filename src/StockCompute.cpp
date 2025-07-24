@@ -83,6 +83,12 @@ void StockCompute::onPostTimer()
     }
 }
 
+void StockCompute::onBusy()
+{
+    bool wantBuy = computeModel();
+    asm volatile ("" :: "r" (wantBuy));
+}
+
 void StockCompute::onOrder(MDS::Tick &tick)
 {
     bool limitUp = tick.isBuyOrder() && tick.price == stockState().upperLimitPrice && tick.timestamp >= 9'30'00'000;
@@ -256,6 +262,12 @@ bool StockCompute::decideWantBuy()
         }
     }
 
+    return computeModel();
+}
+
+bool StockCompute::computeModel()
+{
+    /* LightGBM here */
     return true;
 }
 

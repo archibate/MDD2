@@ -1,5 +1,7 @@
 #pragma once
 
+#include <magic_enum/magic_enum.hpp>
+
 enum FactorEnum
 {
     momentum_o_0o1_m,
@@ -155,4 +157,11 @@ enum FactorEnum
     stock_character,
     circ_mv,
     kMaxFactors
+};
+
+template <>
+struct magic_enum::customize::enum_range<FactorEnum>
+{
+    static constexpr int min = 0;
+    static constexpr int max = FactorEnum::kMaxFactors - 1;
 };

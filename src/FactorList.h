@@ -34,5 +34,5 @@ struct FactorList
         };
     };
 
-    void dumpFactors(int32_t timestamp, int32_t stock);
+    void dumpFactors(int32_t timestamp, int32_t stock) const;
 };

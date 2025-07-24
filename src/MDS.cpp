@@ -1,6 +1,7 @@
 #include "MDS.h"
 #include "MDD.h"
 #include "L2/timestamp.h"
+#include "threadAffinity.h"
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <execution>
@@ -100,12 +101,17 @@ void MDS::start()
         if (n != tickBuf.size()) [[unlikely]] {
             throw std::runtime_error("cannot read all ticks from file");
         }
+        std::fclose(fp);
+        fp = nullptr;
+
 #if REPLAY_REAL_TIME
         SPDLOG_INFO("sorting {} ticks", tickBuf.size());
         std::stable_sort(std::execution::par_unseq, tickBuf.begin(), tickBuf.end(), [] (Tick const &lhs, Tick const &rhs) {
             return lhs.timestamp < rhs.timestamp;
         });
 #endif
+
+        setThisThreadAffinity(kMDSBindCpu);
         SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
         g_isStarted.store(true);
 
@@ -122,7 +128,7 @@ void MDS::start()
                 int64_t dt = L2::timestampToAbsoluteMilliseconds(tick.timestamp, 10) - L2::timestampToAbsoluteMilliseconds(lastTimestamp, 10);
                 lastTimestamp = tick.timestamp;
                 nextSleepTime += duration_cast<std::chrono::steady_clock::duration>(std::chrono::milliseconds(dt) TIME_SCALE);
-                std::this_thread::sleep_until(nextSleepTime);
+                spinSleepUntil(nextSleepTime);
             } else if (tick.timestamp < lastTimestamp) [[unlikely]] {
                 throw std::runtime_error("timestamp out of order");
             }
@@ -134,7 +140,6 @@ void MDS::start()
             ++i;
         }
 
-        std::fclose(fp);
         g_isFinished.store(true);
     });
 }

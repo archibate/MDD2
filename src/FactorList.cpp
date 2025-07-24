@@ -5,7 +5,7 @@
 #include <cstdio>
 
 
-void FactorList::dumpFactors(int32_t timestamp, int32_t stock)
+void FactorList::dumpFactors(int32_t timestamp, int32_t stock) const
 {
     auto data = reinterpret_cast<double const *>(this);
     constexpr int32_t size = sizeof(FactorList) / sizeof(double);
