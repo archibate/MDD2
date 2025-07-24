@@ -25,7 +25,7 @@ constexpr std::array kStockCodesOriginal = {
 };
 
 #if REPLAY_REAL_TIME
-#define TIME_SCALE * (1.0 / 100.0)
+#define TIME_SCALE * (1.0 / 20.0)
 constexpr int32_t kBrustProcessMicroseconds = 6500;
 #else
 #define TIME_SCALE

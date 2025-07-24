@@ -63,16 +63,23 @@ void StockCompute::onTimer()
         return;
     }
 
+    approchingLimitUp = false;
     for (auto &tick: ticks) {
         onTick(tick);
+    }
+
+    if (approchingLimitUp) {
+        futureTimestamp = timestampAdvance100ms(fState.nextTickTimestamp);
+        // SPDLOG_INFO("reset future: stock={} timestamp={}", stockState().stockCode, futureTimestamp);
     }
 }
 
 void StockCompute::onPostTimer()
 {
     if (approchingLimitUp) {
-        computeFutureWantBuy(fState.nextTickTimestamp);
-        approchingLimitUp = false;
+        // SPDLOG_INFO("compute future: stock={} timestamp={}", stockState().stockCode, futureTimestamp);
+        computeFutureWantBuy(futureTimestamp);
+        futureTimestamp = timestampAdvance100ms(futureTimestamp);
     }
 }
 
@@ -80,6 +87,7 @@ void StockCompute::onOrder(MDS::Tick &tick)
 {
     bool limitUp = tick.isBuyOrder() && tick.price == stockState().upperLimitPrice && tick.timestamp >= 9'30'00'000;
     if (limitUp) [[likely]] {
+        SPDLOG_CRITICAL("stop due to limit-up: stock={}", tick.stock);
         stop();
         return;
     }
@@ -146,10 +154,9 @@ void StockCompute::computeFutureWantBuy(int32_t timestamp)
 
     bool wantBuy = decideWantBuy();
     if (wantBuy) {
-        wantBuyCurrentIndex.store((wantBuyCurrentIndex.load(std::memory_order_relaxed) + 1)
-                                  & (wantBuyTimestamps.size() - 1), std::memory_order_relaxed);
-        wantBuyTimestamps[wantBuyCurrentIndex].store(timestamp, std::memory_order_relaxed);
-        SPDLOG_INFO("predicted wantBuyTimestamp={}", timestamp);
+        auto &tickCache = MDD::g_tickCaches[stockIndex()];
+        tickCache.pushWantBuy(timestamp);
+        // SPDLOG_INFO("predicted want buy: stock={} wantBuyTimestamp={}", stockState().stockCode, timestamp);
     }
 
     restoreSnapshot();

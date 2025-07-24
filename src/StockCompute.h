@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <absl/container/btree_map.h>
 #include <vector>
 #include "MDS.h"
@@ -47,25 +46,14 @@ private:
     FState fState;
     BState bState;
     FactorList factorList{};
+    int32_t futureTimestamp{};
 
     struct UpSell {
         int32_t price;
         int32_t quantity;
     };
 
-    // struct PendTrade {
-    //     int32_t timestamp;
-    //     int32_t sellOrderNo;
-    //     int32_t price;
-    //     int32_t quantity;
-    // };
-
     absl::btree_map<int32_t, UpSell> upSellOrders;
-
-    alignas(64) struct {
-        std::array<std::atomic<int32_t>, 8> wantBuyTimestamps{};
-        std::atomic<int32_t> wantBuyCurrentIndex{};
-    };
 
     void onTick(MDS::Tick &tick);
     void onOrder(MDS::Tick &tick);

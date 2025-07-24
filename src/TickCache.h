@@ -2,6 +2,7 @@
 
 
 #include <mutex>
+#include <array>
 #include <atomic>
 #include <vector>
 #include "MDS.h"
@@ -9,12 +10,16 @@
 
 
 struct alignas(64) TickCache {
-    alignas(64) struct {
+    /* StoC */ alignas(64) struct {
         std::vector<MDS::Tick> tickCachedW;
         SpinMutex tickCachedWMutex;
     };
-    alignas(64) std::atomic_flag tickCachedWEmpty{true};
-    alignas(64) std::vector<MDS::Tick> tickCachedR;
+    /* StoC */ alignas(64) std::atomic_flag tickCachedWEmpty{true};
+    /* C */ alignas(64) struct {
+        std::vector<MDS::Tick> tickCachedR;
+        int32_t wantBuyCurrentIndex{};
+    };
+    /* CtoS */ alignas(64) std::atomic<int32_t> wantBuyTimestamp{};
 
     void start()
     {
@@ -49,6 +54,21 @@ struct alignas(64) TickCache {
     std::vector<MDS::Tick> &getReadCopy()
     {
         return tickCachedR;
+    }
+
+    void pushWantBuy(int32_t timestamp)
+    {
+        wantBuyTimestamp.store(timestamp, std::memory_order_relaxed);
+    }
+
+    bool findWantBuy(int32_t timestamp)
+    {
+        int32_t wantTimestamp = wantBuyTimestamp.load(std::memory_order_relaxed);
+        if (wantTimestamp >= timestamp) [[likely]] {
+            // SPDLOG_INFO("wantTimestamp={} timestamp={}", wantTimestamp, timestamp);
+            return true;
+        }
+        return false;
     }
 };
 

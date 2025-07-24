@@ -5,7 +5,8 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/details/thread_pool.h>
 
-namespace {
+namespace
+{
 struct LoggerInit
 {
     LoggerInit() {
