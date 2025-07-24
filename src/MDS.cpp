@@ -129,8 +129,7 @@ void MDS::start()
 #endif
 
             if (g_subscribedStocks.contains(tick.stock)) {
-                int32_t ch = tick.stock % kChannelCount;
-                MDD::g_channelPool[ch].push(tick);
+                MDD::handleTick(tick);
             }
             ++i;
         }
