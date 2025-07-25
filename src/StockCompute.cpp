@@ -2,28 +2,8 @@
 #include "StockState.h"
 #include "MDD.h"
 #include "stockCodes.h"
-#include "L2/timestamp.h"
+#include "timestamp.h"
 #include <spdlog/spdlog.h>
-
-
-namespace
-{
-
-int32_t timestampAdvance(int32_t timestamp, int32_t ms)
-{
-    return L2::positiveAbsoluteMillisecondsToTimestamp(
-        L2::timestampToPositiveAbsoluteMilliseconds(
-            timestamp) + ms);
-}
-
-int32_t timestampAdvance100ms(int32_t timestamp)
-{
-    return L2::positiveAbsoluteMillisecondsToTimestamp(
-        L2::timestampToPositiveAbsoluteMilliseconds(
-            timestamp) + 100);
-}
-
-}
 
 
 void StockCompute::start()
@@ -77,7 +57,6 @@ void StockCompute::onTimer()
 
     if (approchingLimitUp) {
         futureTimestamp = fState.nextTickTimestamp;
-        // SPDLOG_INFO("reset future: stock={} timestamp={}", stockState().stockCode, futureTimestamp);
     }
 }
 
@@ -85,7 +64,6 @@ void StockCompute::onPostTimer()
 {
     if (approchingLimitUp) {
         futureTimestamp = timestampAdvance100ms(futureTimestamp);
-        // SPDLOG_INFO("compute future: stock={} timestamp={}", stockState().stockCode, futureTimestamp);
         computeFutureWantBuy(futureTimestamp);
     }
 }
@@ -100,7 +78,7 @@ void StockCompute::onOrder(MDS::Tick &tick)
 {
     bool limitUp = tick.isBuyOrder() && tick.price == stockState().upperLimitPrice && tick.timestamp >= 9'30'00'000;
     if (limitUp) [[likely]] {
-        SPDLOG_CRITICAL("stop due to limit-up: stock={}", tick.stock);
+        SPDLOG_CRITICAL("stop compute due to limit-up: stock={}", tick.stock);
         stop();
         return;
     }
@@ -166,11 +144,8 @@ void StockCompute::computeFutureWantBuy(int32_t timestamp)
     stepSnapshot();
 
     bool wantBuy = decideWantBuy();
-    if (wantBuy) {
-        auto &tickCache = MDD::g_tickCaches[stockIndex()];
-        tickCache.pushWantBuyTimestamp(timestampAdvance(timestamp, 300));
-        // SPDLOG_INFO("predicted want buy: stock={} wantBuyTimestamp={}", stockState().stockCode, timestamp);
-    }
+    auto &tickCache = MDD::g_tickCaches[stockIndex()];
+    tickCache.pushWantBuyTimestamp(timestamp, wantBuy);
 
     restoreSnapshot();
 }

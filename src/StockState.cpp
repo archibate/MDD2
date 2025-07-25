@@ -32,14 +32,13 @@ void StockState::onTick(MDS::Tick &tick)
     bool limitUp = tick.buyOrderNo != 0 && tick.sellOrderNo == 0 && tick.quantity > 0
         && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000;
     if (limitUp) [[likely]] {
-        int32_t wantBuyTimestamp = MDD::g_tickCaches[stockIndex()].fetchWantBuyTimestamp();
-        bool wantBuy = wantBuyTimestamp >= tick.timestamp;
+        bool wantBuy = MDD::g_tickCaches[stockIndex()].checkWantBuyAtTimestamp(tick.timestamp);
         if (wantBuy) [[likely]] {
             /* send buy request */;
             stockCompute().factorList.dumpFactors(tick.timestamp, stockCode);
         }
 
-        SPDLOG_CRITICAL("limit up: stock={} wantBuyTimestamp={} timestamp={} wantBuy={}", stockCode, wantBuyTimestamp, tick.timestamp, wantBuy);
+        SPDLOG_CRITICAL("limit up: stock={} timestamp={} wantBuy={}", stockCode, tick.timestamp, wantBuy);
         stop();
         return;
     }

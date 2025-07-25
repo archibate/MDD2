@@ -8,6 +8,7 @@
 #include <vector>
 #include "MDS.h"
 #include "FastMutex.h"
+#include "timestamp.h"
 
 
 struct alignas(64) TickCache {
@@ -18,8 +19,9 @@ struct alignas(64) TickCache {
     /* StoC */ alignas(64) std::atomic_flag tickCachedWEmpty{true};
     /* C */ alignas(64) struct {
         std::vector<MDS::Tick> tickCachedR;
+        int32_t wantBuyCurrentIndex{};
     };
-    /* CtoS */ alignas(64) std::atomic<int32_t> wantBuyTimestamp{};
+    /* CtoS */ alignas(64) std::array<std::atomic<int32_t>, 16> wantBuyTimestamp{};
 
     void start()
     {
@@ -56,22 +58,32 @@ struct alignas(64) TickCache {
         return tickCachedR;
     }
 
-    void pushWantBuyTimestamp(int32_t timestamp)
+    void pushWantBuyTimestamp(int32_t timestamp, bool wantBuy)
     {
-        wantBuyTimestamp.store(timestamp, std::memory_order_relaxed);
-    }
-
-    int32_t fetchWantBuyTimestamp()
-    {
-        return wantBuyTimestamp.load(std::memory_order_relaxed);
+        timestamp = timestampLinear(timestamp);
+        if (wantBuy) {
+            --timestamp;
+        }
+        wantBuyTimestamp[wantBuyCurrentIndex].store(timestamp, std::memory_order_relaxed);
+        ++wantBuyCurrentIndex;
+        wantBuyCurrentIndex &= wantBuyTimestamp.size() - 1;
     }
 
     bool checkWantBuyAtTimestamp(int32_t timestamp)
     {
-        if (fetchWantBuyTimestamp() >= timestamp) [[likely]] {
-            return true;
+        timestamp = timestampLinear(timestamp);
+        int32_t wantTimestamp = wantBuyTimestamp[0].load(std::memory_order_relaxed);
+        bool wantBuy = wantTimestamp & 1;
+        int32_t minDt = std::abs(wantTimestamp - timestamp);
+        for (int32_t i = 1; i < wantBuyTimestamp.size(); ++i) {
+            int32_t wantTimestamp = wantBuyTimestamp[i].load(std::memory_order_relaxed);
+            int32_t dt = std::abs(wantTimestamp - timestamp);
+            if (dt < minDt) {
+                minDt = dt;
+                wantBuy = wantTimestamp & 1;
+            }
         }
-        return false;
+        return wantBuy && minDt < 3000;
     }
 };
 
