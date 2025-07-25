@@ -3,8 +3,7 @@
 #include <array>
 #include <thread>
 #include "MDS.h"
-#include "daily.h"
-#include "stockCodes.h"
+#include "constants.h"
 #include "StockState.h"
 #include "StockCompute.h"
 #include "TickCache.h"
@@ -19,7 +18,7 @@ extern std::unique_ptr<StockCompute[]> g_stockComputes;
 extern std::unique_ptr<TickCache[]> g_tickCaches;
 extern std::vector<int32_t> g_stockCodes;
 
-void start();
+void start(const char *config);
 void stop();
 bool isFinished();
 void handleTick(MDS::Tick &tick);

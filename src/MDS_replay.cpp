@@ -1,3 +1,5 @@
+#include "config.h"
+#if REPLAY
 #include "MDS.h"
 #include "MDD.h"
 #include "L2/timestamp.h"
@@ -9,15 +11,6 @@
 #include <unordered_set>
 #include <thread>
 
-// #define DATA_BASE "/data"
-#define DATA_BASE "/home/ubuntu/data-cache"
-#if SH
-#define DATA_PATH DATA_BASE "/L2/SHL2/20250102"
-#endif
-#if SZ
-#define DATA_PATH DATA_BASE "/L2/SZL2/20250102"
-#endif
-
 namespace
 {
 
@@ -25,6 +18,15 @@ std::jthread g_replayThread;
 std::unordered_set<int32_t> g_subscribedStocks;
 std::atomic_bool g_isFinished{false};
 std::atomic_bool g_isStarted{false};
+char g_date[8];
+
+void parseConfig(const char *config)
+{
+    if (strlen(config) < 8) {
+        throw std::runtime_error("invalid config for mds replay");
+    }
+    memcpy(g_date, config, 8);
+}
 
 }
 
@@ -36,7 +38,7 @@ void MDS::subscribe(int32_t const *stocks, int32_t n)
 MDS::Stat MDS::getStatic(int32_t stock)
 {
     std::string line;
-    std::ifstream csv(DATA_PATH "/stock-metadata.csv");
+    std::ifstream csv((DATA_PATH "/L2/" MARKET_NAME "L2/" + std::string(g_date) + "/stock-metadata.csv").c_str());
     if (!csv.is_open()) {
         throw std::runtime_error("cannot open stock metadata");
     }
@@ -77,43 +79,48 @@ MDS::Stat MDS::getStatic(int32_t stock)
     return stat;
 }
 
-void MDS::start()
+void MDS::start(const char *config)
 {
+    parseConfig(config);
+
     g_replayThread = std::jthread([] (std::stop_token stop) {
-        std::FILE *fp = std::fopen(DATA_PATH "/stock-l2-ticks.dat", "rb");
-        if (!fp) {
-            throw std::runtime_error("cannot open stock L2 ticks");
-        }
-
         std::vector<Tick> tickBuf;
-        if (std::fseek(fp, 0, SEEK_END) < 0) {
-            throw std::runtime_error("cannot seek ticks file");
-        }
-        long pos = std::ftell(fp);
-        if (pos < 0) {
-            throw std::runtime_error("cannot tell ticks file size");
-        }
-        std::rewind(fp);
-        tickBuf.resize(pos / sizeof(Tick));
-        SPDLOG_INFO("reading {} ticks from file", tickBuf.size());
 
-        size_t n = std::fread(tickBuf.data(), sizeof(Tick), tickBuf.size(), fp);
-        if (n != tickBuf.size()) [[unlikely]] {
-            throw std::runtime_error("cannot read all ticks from file");
-        }
-        std::fclose(fp);
-        fp = nullptr;
+        {
+            std::FILE *fp = std::fopen((DATA_PATH "/L2/" MARKET_NAME "L2/" + std::string(g_date) + "/stock-l2-ticks.dat").c_str(), "rb");
+            if (!fp) {
+                throw std::runtime_error("cannot open stock L2 ticks");
+            }
+
+            if (std::fseek(fp, 0, SEEK_END) < 0) {
+                throw std::runtime_error("cannot seek ticks file");
+            }
+            long pos = std::ftell(fp);
+            if (pos < 0) {
+                throw std::runtime_error("cannot tell ticks file size");
+            }
+            std::rewind(fp);
+            tickBuf.resize(pos / sizeof(Tick));
+            SPDLOG_INFO("reading {} ticks from file", tickBuf.size());
+
+            size_t n = std::fread(tickBuf.data(), sizeof(Tick), tickBuf.size(), fp);
+            if (n != tickBuf.size()) [[unlikely]] {
+                throw std::runtime_error("cannot read all ticks from file");
+            }
+            std::fclose(fp);
+            fp = nullptr;
 
 #if REPLAY_REAL_TIME
-        SPDLOG_INFO("sorting {} ticks", tickBuf.size());
-        std::stable_sort(std::execution::par_unseq, tickBuf.begin(), tickBuf.end(), [] (Tick const &lhs, Tick const &rhs) {
-            return lhs.timestamp < rhs.timestamp;
-        });
+            SPDLOG_INFO("sorting {} ticks", tickBuf.size());
+            std::stable_sort(std::execution::par_unseq, tickBuf.begin(), tickBuf.end(), [] (Tick const &lhs, Tick const &rhs) {
+                return lhs.timestamp < rhs.timestamp;
+            });
 #endif
 
-        setThisThreadAffinity(kMDSBindCpu);
-        SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
-        g_isStarted.store(true);
+            setThisThreadAffinity(kMDSBindCpu);
+            SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
+            g_isStarted.store(true);
+        }
 
         size_t i = 0;
 #if REPLAY_REAL_TIME
@@ -159,3 +166,4 @@ bool MDS::isStarted()
 {
     return g_isStarted.load() == true;
 }
+#endif

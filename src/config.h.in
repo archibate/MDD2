@@ -2,11 +2,20 @@
 
 #cmakedefine01 BUILD_FOR_SZ
 #cmakedefine01 BUILD_SPEED
+#cmakedefine01 REPLAY
 #cmakedefine01 REPLAY_REAL_TIME
 
 
 #if BUILD_FOR_SZ
+#ifndef SZ
 #define SZ 1
+#endif
+#define MARKET_NAME "SZ"
 #else
+#ifndef SH
 #define SH 1
 #endif
+#define MARKET_NAME "SH"
+#endif
+
+#define DATA_PATH "/home/ubuntu/data-cache"

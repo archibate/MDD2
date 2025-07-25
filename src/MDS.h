@@ -13,7 +13,7 @@ using Stat = L2::Stat;
 
 void subscribe(int32_t const *stocks, int32_t n);
 MDS::Stat getStatic(int32_t stock);
-void start();
+void start(const char *config);
 void stop();
 bool isFinished();
 bool isStarted();

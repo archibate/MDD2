@@ -1,8 +1,7 @@
 #include "MDD.h"
 #include "MDS.h"
-#include "daily.h"
+#include "constants.h"
 #include "StockState.h"
-#include "stockCodes.h"
 #include "threadAffinity.h"
 #include <chrono>
 #include <spdlog/spdlog.h>
@@ -37,7 +36,7 @@ void computeThreadMain(int32_t c, std::chrono::steady_clock::time_point startTim
 
 #if REPLAY_REAL_TIME
     const auto kSleepInterval = duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::milliseconds(98) TIME_SCALE);
+        std::chrono::milliseconds(99) TIME_SCALE);
     auto nextSleepTime = startTime + kSleepInterval * c / kChannelCount + kSleepInterval;
 #endif
     while (!stop.stop_requested()) [[likely]] {
@@ -78,8 +77,12 @@ void MDD::handleTick(MDS::Tick &tick)
     MDD::g_stockStates[id].onTick(tick);
 }
 
-void MDD::start()
+void MDD::start(const char *config)
 {
+    if (MDD::g_stockCodes.empty()) {
+        throw std::runtime_error("no stocks to subscribe!");
+    }
+
     MDD::g_tickCaches = std::make_unique<TickCache[]>(MDD::g_stockCodes.size());
     MDD::g_stockStates = std::make_unique<StockState[]>(MDD::g_stockCodes.size());
     MDD::g_stockComputes = std::make_unique<StockCompute[]>(MDD::g_stockCodes.size());
@@ -95,7 +98,7 @@ void MDD::start()
     }
 
     MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
-    MDS::start();
+    MDS::start(config);
     while (!MDS::isStarted()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -103,7 +106,7 @@ void MDD::start()
     SPDLOG_INFO("starting {} compute channels", kChannelCount);
     auto t0 = std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
     for (int32_t c = 0; c < kChannelCount; ++c) {
-        g_computeThreads[c] = std::jthread([t0, c] (std::stop_token stop) {
+        g_computeThreads[c] = std::jthread([c, t0] (std::stop_token stop) {
             computeThreadMain(c, t0, stop);
         });
     }
