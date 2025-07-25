@@ -11,29 +11,33 @@ std::array<std::jthread, kChannelCount> MDD::g_computeThreads;
 std::unique_ptr<StockState[]> MDD::g_stockStates;
 std::unique_ptr<StockCompute[]> MDD::g_stockComputes;
 std::unique_ptr<TickCache[]> MDD::g_tickCaches;
-
-void MDD::handleTick(MDS::Tick &tick)
-{
-    int32_t id = kStockIdLut[static_cast<int16_t>(tick.stock & 0x7FFF)];
-    if (id == -1) [[unlikely]] {
-        return;
-    }
-    MDD::g_stockStates[id].onTick(tick);
-}
+std::vector<int32_t> MDD::g_stockCodes;
 
 namespace
 {
+
+std::array<int16_t, 0x7FFF> g_stockIdLut;
+
+void initStockCodes()
+{
+    for (int32_t s = 0; s < g_stockIdLut.size(); ++s) {
+        g_stockIdLut[s] = -1;
+    }
+    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
+        g_stockIdLut[static_cast<int16_t>(MDD::g_stockCodes[i] & 0x7FFF)] = i;
+    }
+}
 
 void computeThreadMain(int32_t c, std::chrono::steady_clock::time_point startTime, std::stop_token stop)
 {
     setThisThreadAffinity(kChannelCpuBegin + c);
 
-    const int32_t startId = (kStockCodes.size() * c) / kChannelCount;
-    const int32_t stopId = (kStockCodes.size() * (c + 1)) / kChannelCount;
+    const int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
+    const int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
 
 #if REPLAY_REAL_TIME
     const auto kSleepInterval = duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::milliseconds(99) TIME_SCALE);
+        std::chrono::milliseconds(98) TIME_SCALE);
     auto nextSleepTime = startTime + kSleepInterval * c / kChannelCount + kSleepInterval;
 #endif
     while (!stop.stop_requested()) [[likely]] {
@@ -48,34 +52,49 @@ void computeThreadMain(int32_t c, std::chrono::steady_clock::time_point startTim
         nextSleepTime += kSleepInterval;
 #endif
 
+        int32_t approachCount = 0;
         for (int32_t id = startId; id != stopId; ++id) {
             MDD::g_stockComputes[id].onTimer();
+            if (MDD::g_stockComputes[id].isApproachingLimitUp()) {
+                ++approachCount;
+            }
         }
-        for (int32_t id = startId; id != stopId; ++id) {
-            MDD::g_stockComputes[id].onPostTimer();
+        if (approachCount > 0) {
+            for (int32_t id = startId; id != stopId; ++id) {
+                MDD::g_stockComputes[id].onPostTimer();
+            }
         }
     }
 }
 
+}
+
+void MDD::handleTick(MDS::Tick &tick)
+{
+    int32_t id = g_stockIdLut[static_cast<int16_t>(tick.stock & 0x7FFF)];
+    if (id == -1) [[unlikely]] {
+        return;
+    }
+    MDD::g_stockStates[id].onTick(tick);
 }
 
 void MDD::start()
 {
-    MDD::g_tickCaches = std::make_unique<TickCache[]>(kStockCodes.size());
-    MDD::g_stockStates = std::make_unique<StockState[]>(kStockCodes.size());
-    MDD::g_stockComputes = std::make_unique<StockCompute[]>(kStockCodes.size());
+    MDD::g_tickCaches = std::make_unique<TickCache[]>(MDD::g_stockCodes.size());
+    MDD::g_stockStates = std::make_unique<StockState[]>(MDD::g_stockCodes.size());
+    MDD::g_stockComputes = std::make_unique<StockCompute[]>(MDD::g_stockCodes.size());
 
-    for (int32_t i = 0; i < kStockCodes.size(); ++i) {
+    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_tickCaches[i].start();
     }
-    for (int32_t i = 0; i < kStockCodes.size(); ++i) {
+    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockStates[i].start();
     }
-    for (int32_t i = 0; i < kStockCodes.size(); ++i) {
+    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockComputes[i].start();
     }
 
-    MDS::subscribe(kStockCodes.data(), kStockCodes.size());
+    MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
     MDS::start();
     while (!MDS::isStarted()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -100,13 +119,13 @@ void MDD::stop()
 
     MDS::stop();
 
-    for (int32_t i = 0; i < kStockCodes.size(); ++i) {
+    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockComputes[i].stop();
     }
-    for (int32_t i = 0; i < kStockCodes.size(); ++i) {
+    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockStates[i].stop();
     }
-    for (int32_t i = 0; i < kStockCodes.size(); ++i) {
+    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_tickCaches[i].stop();
     }
 

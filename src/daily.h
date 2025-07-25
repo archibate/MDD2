@@ -19,7 +19,7 @@ constexpr std::array kStockCodesOriginal = {
 };
 
 #if REPLAY_REAL_TIME
-#define TIME_SCALE * (1.0 / 30.0)
+#define TIME_SCALE * (1.0 / 15.0)
 #else
 #define TIME_SCALE
 #endif

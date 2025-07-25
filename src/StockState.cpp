@@ -9,7 +9,7 @@ void StockState::start()
 {
     alive = true;
 
-    stockCode = kStockCodes[stockIndex()];
+    stockCode = MDD::g_stockCodes[stockIndex()];
     auto stat = MDS::getStatic(stockCode);
     upperLimitPrice = stat.upperLimitPrice;
     preClosePrice = stat.preClosePrice;
@@ -21,6 +21,7 @@ void StockState::start()
 void StockState::stop()
 {
     alive = false;
+    MDD::g_tickCaches[stockIndex()].pushTick({});
 }
 
 void StockState::onTick(MDS::Tick &tick)
@@ -31,11 +32,10 @@ void StockState::onTick(MDS::Tick &tick)
 
     bool limitUp = tick.buyOrderNo != 0 && tick.sellOrderNo == 0 && tick.quantity > 0
         && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000;
-    if (limitUp) [[likely]] {
+    if (limitUp) {
         bool wantBuy = MDD::g_tickCaches[stockIndex()].checkWantBuyAtTimestamp(tick.timestamp);
         if (wantBuy) [[likely]] {
             /* send buy request */;
-            stockCompute().factorList.dumpFactors(tick.timestamp, stockCode);
         }
 
         SPDLOG_CRITICAL("limit up: stock={} timestamp={} wantBuy={}", stockCode, tick.timestamp, wantBuy);

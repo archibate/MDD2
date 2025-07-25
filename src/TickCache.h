@@ -83,7 +83,7 @@ struct alignas(64) TickCache {
                 wantBuy = wantTimestamp & 1;
             }
         }
-        return wantBuy && minDt < 3000;
+        return wantBuy && minDt < 300;
     }
 };
 

@@ -15,6 +15,7 @@ struct alignas(64) StockCompute
     void onTimer();
     void onPostTimer();
     void onBusy();
+    bool isApproachingLimitUp() const;
 
 private:
     struct Snapshot
@@ -42,12 +43,13 @@ private:
 
     int32_t upperLimitPriceApproach{};
     bool alive{true};
-    bool approchingLimitUp{};
+    bool approachingLimitUp{};
 
     FState fState;
     BState bState;
 
     int32_t futureTimestamp{};
+    FactorList factorList{};
 
     struct UpSell {
         int32_t price;
@@ -56,10 +58,7 @@ private:
 
     absl::btree_map<int32_t, UpSell> upSellOrders;
 
-public:
-    FactorList factorList{};
 
-private:
     void onTick(MDS::Tick &tick);
     void onOrder(MDS::Tick &tick);
     void onCancel(MDS::Tick &tick);

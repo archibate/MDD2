@@ -19,7 +19,7 @@ void StockCompute::start()
 void StockCompute::stop()
 {
     alive = false;
-    approchingLimitUp = false;
+    approachingLimitUp = false;
 }
 
 void StockCompute::onTick(MDS::Tick &tick)
@@ -50,19 +50,23 @@ void StockCompute::onTimer()
         return;
     }
 
-    approchingLimitUp = false;
+    approachingLimitUp = false;
     for (auto &tick: ticks) {
+        if (tick.timestamp == 0) {
+            stop();
+            return;
+        }
         onTick(tick);
     }
 
-    if (approchingLimitUp) {
+    if (approachingLimitUp) {
         futureTimestamp = fState.nextTickTimestamp;
     }
 }
 
 void StockCompute::onPostTimer()
 {
-    if (approchingLimitUp) {
+    if (approachingLimitUp) {
         futureTimestamp = timestampAdvance100ms(futureTimestamp);
         computeFutureWantBuy(futureTimestamp);
     }
@@ -76,13 +80,6 @@ void StockCompute::onBusy()
 
 void StockCompute::onOrder(MDS::Tick &tick)
 {
-    bool limitUp = tick.isBuyOrder() && tick.price == stockState().upperLimitPrice && tick.timestamp >= 9'30'00'000;
-    if (limitUp) [[likely]] {
-        SPDLOG_CRITICAL("stop compute due to limit-up: stock={}", tick.stock);
-        stop();
-        return;
-    }
-
     if (tick.price >= upperLimitPriceApproach && tick.isSellOrder()) {
         UpSell sell;
         sell.price = tick.price;
@@ -112,7 +109,7 @@ void StockCompute::onTrade(MDS::Tick &tick)
     }
 
     if (tick.price >= upperLimitPriceApproach) {
-        approchingLimitUp = true;
+        approachingLimitUp = true;
     }
     addRealTrade(tick.timestamp, tick.price, tick.quantity);
 }
@@ -261,4 +258,9 @@ int32_t StockCompute::stockIndex() const
 StockState &StockCompute::stockState() const
 {
     return MDD::g_stockStates[stockIndex()];
+}
+
+bool StockCompute::isApproachingLimitUp() const
+{
+    return alive && approachingLimitUp;
 }
