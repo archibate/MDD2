@@ -10,6 +10,7 @@
 #include <fstream>
 #include <unordered_set>
 #include <thread>
+#include <nlohmann/json.hpp>
 
 namespace
 {
@@ -18,15 +19,7 @@ std::jthread g_replayThread;
 std::unordered_set<int32_t> g_subscribedStocks;
 std::atomic_bool g_isFinished{false};
 std::atomic_bool g_isStarted{false};
-char g_date[8];
-
-void parseConfig(const char *config)
-{
-    if (strlen(config) < 8) {
-        throw std::runtime_error("invalid config for mds replay");
-    }
-    memcpy(g_date, config, 8);
-}
+int32_t g_date;
 
 }
 
@@ -38,7 +31,7 @@ void MDS::subscribe(int32_t const *stocks, int32_t n)
 MDS::Stat MDS::getStatic(int32_t stock)
 {
     std::string line;
-    std::ifstream csv((DATA_PATH "/L2/" MARKET_NAME "L2/" + std::string(g_date) + "/stock-metadata.csv").c_str());
+    std::ifstream csv((DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-metadata.csv").c_str());
     if (!csv.is_open()) {
         throw std::runtime_error("cannot open stock metadata");
     }
@@ -81,13 +74,21 @@ MDS::Stat MDS::getStatic(int32_t stock)
 
 void MDS::start(const char *config)
 {
-    parseConfig(config);
+    {
+        nlohmann::json json;
+        std::ifstream(config) >> json;
+
+        g_date = json["mds_replay"]["date"];
+        if (g_date <= 0) {
+            throw std::runtime_error("invalid config for mds replay");
+        }
+    }
 
     g_replayThread = std::jthread([] (std::stop_token stop) {
         std::vector<Tick> tickBuf;
 
         {
-            std::FILE *fp = std::fopen((DATA_PATH "/L2/" MARKET_NAME "L2/" + std::string(g_date) + "/stock-l2-ticks.dat").c_str(), "rb");
+            std::FILE *fp = std::fopen((DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-l2-ticks.dat").c_str(), "rb");
             if (!fp) {
                 throw std::runtime_error("cannot open stock L2 ticks");
             }
