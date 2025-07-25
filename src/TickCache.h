@@ -18,7 +18,6 @@ struct alignas(64) TickCache {
     /* StoC */ alignas(64) std::atomic_flag tickCachedWEmpty{true};
     /* C */ alignas(64) struct {
         std::vector<MDS::Tick> tickCachedR;
-        int32_t wantBuyCurrentIndex{};
     };
     /* CtoS */ alignas(64) std::atomic<int32_t> wantBuyTimestamp{};
 

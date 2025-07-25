@@ -47,9 +47,6 @@ private:
     FState fState;
     BState bState;
 
-public:
-    FactorList factorList{};
-private:
     int32_t futureTimestamp{};
 
     struct UpSell {
@@ -59,6 +56,10 @@ private:
 
     absl::btree_map<int32_t, UpSell> upSellOrders;
 
+public:
+    FactorList factorList{};
+
+private:
     void onTick(MDS::Tick &tick);
     void onOrder(MDS::Tick &tick);
     void onCancel(MDS::Tick &tick);

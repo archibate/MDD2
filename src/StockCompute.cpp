@@ -9,6 +9,13 @@
 namespace
 {
 
+int32_t timestampAdvance(int32_t timestamp, int32_t ms)
+{
+    return L2::positiveAbsoluteMillisecondsToTimestamp(
+        L2::timestampToPositiveAbsoluteMilliseconds(
+            timestamp) + ms);
+}
+
 int32_t timestampAdvance100ms(int32_t timestamp)
 {
     return L2::positiveAbsoluteMillisecondsToTimestamp(
@@ -161,7 +168,7 @@ void StockCompute::computeFutureWantBuy(int32_t timestamp)
     bool wantBuy = decideWantBuy();
     if (wantBuy) {
         auto &tickCache = MDD::g_tickCaches[stockIndex()];
-        tickCache.pushWantBuyTimestamp(timestampAdvance100ms(timestamp));
+        tickCache.pushWantBuyTimestamp(timestampAdvance(timestamp, 300));
         // SPDLOG_INFO("predicted want buy: stock={} wantBuyTimestamp={}", stockState().stockCode, timestamp);
     }
 

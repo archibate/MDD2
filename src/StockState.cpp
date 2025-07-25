@@ -47,18 +47,6 @@ void StockState::onTick(MDS::Tick &tick)
     MDD::g_tickCaches[stockIndex()].pushTick(tick);
 }
 
-void StockState::onOrder(MDS::Tick &tick)
-{
-}
-
-void StockState::onCancel(MDS::Tick &tick)
-{
-}
-
-void StockState::onTrade(MDS::Tick &tick)
-{
-}
-
 int32_t StockState::stockIndex() const
 {
     return this - MDD::g_stockStates.get();

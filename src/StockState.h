@@ -23,10 +23,6 @@ struct alignas(64) StockState
     void onTick(MDS::Tick &tick);
 
 private:
-    void onOrder(MDS::Tick &tick);
-    void onCancel(MDS::Tick &tick);
-    void onTrade(MDS::Tick &tick);
-
     int32_t stockIndex() const;
     StockCompute &stockCompute() const;
 };
