@@ -3,7 +3,10 @@
 #include "constants.h"
 #include "StockState.h"
 #include "threadAffinity.h"
+#include "DailyState.h"
 #include <chrono>
+#include <fstream>
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 std::array<std::jthread, kChannelCount> MDD::g_computeThreads;
@@ -79,6 +82,20 @@ void MDD::handleTick(MDS::Tick &tick)
 
 void MDD::start(const char *config)
 {
+    {
+        nlohmann::json json;
+        std::ifstream(config) >> json;
+
+        int32_t date = json["date"];
+        if (date <= 0) {
+            throw std::runtime_error("invalid config for mdd");
+        }
+
+        std::ifstream fac(DATA_PATH "/mdd2_factors_" MARKET_NAME "_" + std::to_string(date) + ".bin", std::ios::binary);
+        DailyHeader header{};
+        fac.read((char *)&header, sizeof(header));
+    }
+
     if (MDD::g_stockCodes.empty()) {
         throw std::runtime_error("no stocks to subscribe!");
     }

@@ -3,9 +3,10 @@
 import pandas as pd
 import tushare as ts
 import numpy as np
+import sys
 
-today = '20250722'
-market_name = 'SH'
+today = sys.argv[2]
+market_name = sys.argv[1]
 assert today.startswith('20') and len(today) == 8, today
 assert market_name in ['SH', 'SZ'], market_name
 

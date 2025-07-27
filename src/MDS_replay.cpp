@@ -78,7 +78,7 @@ void MDS::start(const char *config)
         nlohmann::json json;
         std::ifstream(config) >> json;
 
-        g_date = json["mds_replay"]["date"];
+        g_date = json["date"];
         if (g_date <= 0) {
             throw std::runtime_error("invalid config for mds replay");
         }
