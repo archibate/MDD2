@@ -8,66 +8,35 @@
 #include <emmintrin.h>
 
 
-inline void spinSleepUntil(std::chrono::steady_clock::time_point t)
+[[gnu::always_inline]] inline int64_t steadyNow()
 {
-    auto t0 = std::chrono::steady_clock::now();
+    return duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+[[gnu::always_inline]] inline void blockingSleepUntil(int64_t t)
+{
+    std::this_thread::sleep_until(std::chrono::steady_clock::time_point(std::chrono::nanoseconds(t)));
+}
+
+[[gnu::always_inline]] inline void spinSleepUntil(int64_t t)
+{
+    int64_t t0 = steadyNow();
     if (t <= t0) {
         return;
     }
 
-    const std::chrono::nanoseconds kEarlyDuration(800);
-    const std::chrono::microseconds kPreHeatDuration(200);
+    constexpr int64_t kEarlyDuration = 800;
+    constexpr int64_t kPreHeatDuration = 200'000;
     t -= kEarlyDuration;
     if (t - t0 > kPreHeatDuration * 2) {
-        std::this_thread::sleep_until(t - kPreHeatDuration);
+        blockingSleepUntil(t - kPreHeatDuration);
     }
-    while (std::chrono::steady_clock::now() < t) {
+    while (steadyNow() < t) {
         _mm_pause();
     }
 }
 
-
-template <class Busy>
-inline void spinSleepUntil(std::chrono::steady_clock::time_point t, Busy &&busy)
-{
-    auto t0 = std::chrono::steady_clock::now();
-    if (t <= t0) {
-        return;
-    }
-
-    const std::chrono::microseconds kPreHeatDuration(600);
-    if (t - t0 > kPreHeatDuration * 2) {
-        std::this_thread::sleep_until(t - kPreHeatDuration);
-    }
-    while (std::chrono::steady_clock::now() < t) {
-        busy();
-    }
-}
-
-
-// template <class Busy>
-// inline void twoStageSpinSleepUntil(std::chrono::steady_clock::time_point t, Busy &&busy)
-// {
-//     auto t0 = std::chrono::steady_clock::now();
-//     if (t <= t0) {
-//         return;
-//     }
-//     const std::chrono::microseconds kPreHeatDuration(30'000);
-//     const std::chrono::microseconds kFinalRushDuration(50);
-//     if (t - t0 > kPreHeatDuration) {
-//         std::this_thread::sleep_until(t - kPreHeatDuration);
-//     }
-//     auto t1 = t - kFinalRushDuration;
-//     while (std::chrono::steady_clock::now() < t1) {
-//         busy();
-//     }
-//     while (std::chrono::steady_clock::now() < t) {
-//         _mm_pause();
-//     }
-// }
-
-
-inline void setThisThreadAffinity(int32_t cpu)
+[[gnu::noinline]] inline void setThisThreadAffinity(int32_t cpu)
 {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);

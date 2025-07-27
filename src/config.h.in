@@ -3,7 +3,7 @@
 #cmakedefine01 BUILD_FOR_SZ
 #cmakedefine01 BUILD_SPEED
 #cmakedefine01 REPLAY
-#cmakedefine01 REPLAY_REAL_TIME
+#cmakedefine01 ASYNC_LOGGER
 
 
 #if BUILD_FOR_SZ

@@ -15,7 +15,11 @@ struct alignas(64) StockCompute
     void onTimer();
     void onPostTimer();
     void onBusy();
-    bool isApproachingLimitUp() const;
+
+    [[gnu::always_inline]] bool isApproachingLimitUp() const
+    {
+        return approachingLimitUp;
+    }
 
 private:
     struct Snapshot

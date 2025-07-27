@@ -1,6 +1,7 @@
 #include "StockState.h"
 #include "MDD.h"
 #include "L2/timestamp.h"
+#include "heatZone.h"
 #include <spdlog/spdlog.h>
 
 
@@ -23,7 +24,7 @@ void StockState::stop()
     MDD::g_tickCaches[stockIndex()].pushTick({});
 }
 
-void StockState::onTick(MDS::Tick &tick)
+HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
 {
     if (!alive) [[unlikely]] {
         return;
@@ -45,12 +46,12 @@ void StockState::onTick(MDS::Tick &tick)
     MDD::g_tickCaches[stockIndex()].pushTick(tick);
 }
 
-int32_t StockState::stockIndex() const
+[[gnu::always_inline]] int32_t StockState::stockIndex() const
 {
     return this - MDD::g_stockStates.get();
 }
 
-StockCompute &StockState::stockCompute() const
+[[gnu::always_inline]] StockCompute &StockState::stockCompute() const
 {
     return MDD::g_stockComputes[stockIndex()];
 }

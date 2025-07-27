@@ -173,7 +173,7 @@ def finish(code, is_float=True, key=None):
             c = f'{c}{p}'
 
         if op == 'defproc':
-            res += f'\nstatic {ty} {key}f{x}(const {ty} *a) {{\n'
+            res += f'\nMODELDECL {ty} {key}f{x}(const {ty} *a) {{\n'
             trees.append(x)
             indent += 1
 
@@ -249,7 +249,7 @@ def finish(code, is_float=True, key=None):
             raise ValueError(op)
 
     res += f'''
-static {ty} {key}f(const {ty} *a) {{
+MODELDECL {ty} {key}f(const {ty} *a) {{
 {tab}return ({' + '.join(f'{key}f{i}(a)' for i in reversed(trees))}); // * (1.0{p} / {len(trees)}.0{p});
 }}
 '''
@@ -309,13 +309,10 @@ convert_model = /data/daily_csv/{k}_model_{model_version}_reorder.cpp
 print('Generating C++ codes')
 for k, code in models.items():
     print(k)
-    with open(f'src/_generated_model_{k}.cpp', 'w') as f:
+    with open(f'src/_generated_model_{k}.inl', 'w') as f:
         f.write(code)
         f.write(f'''
-#ifdef __cplusplus
-extern "C"
-#endif
-float _generated_model_{k}(const float *a) {{
+MODELDECL float {k}(const float *a) {{
     ''')
         if k == 'classification':
             f.write(f'return 1.0f / (1.0f + expf(-{k}f(a))) - {benchmark_values[k]}f;')

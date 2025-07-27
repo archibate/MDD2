@@ -6,6 +6,7 @@
 #include "DailyState.h"
 #include "FactorList.h"
 #include "dateTime.h"
+#include "heatZone.h"
 #include <chrono>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -17,6 +18,13 @@ std::unique_ptr<StockCompute[]> MDD::g_stockComputes;
 std::unique_ptr<TickCache[]> MDD::g_tickCaches;
 std::vector<int32_t> MDD::g_stockCodes;
 std::vector<int32_t> MDD::g_prevLimitUpStockCodes;
+
+#if REPLAY
+namespace MDS
+{
+extern double g_timeScale;
+}
+#endif
 
 namespace
 {
@@ -40,20 +48,29 @@ void initStockArrays()
 void parseDailyConfig(const char *config)
 {
     SPDLOG_INFO("reading config file: {}", config);
-    nlohmann::json json;
+
+    int32_t date = 0;
+    std::string factorFile;
     try {
+        nlohmann::json json;
         std::ifstream(config) >> json;
+        SPDLOG_INFO("config json: {}", json.dump());
+
+        date = json["date"];
+        if (json.contains("factor_file")) {
+            factorFile = json["factor_file"];
+        }
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
         throw;
     }
-    SPDLOG_INFO("config json: {}", json.dump());
 
-    int32_t date = json["date"];
     if (date <= 0) {
-        SPDLOG_ERROR("invalid config format for mdd: {}", json.dump());
-        throw std::runtime_error("invalid config format for mdd");
+        SPDLOG_ERROR("invalid config date: {}", date);
+        throw std::runtime_error("invalid config date");
     }
+
+    SPDLOG_INFO("daily start: market={} date={}", MARKET_NAME, date);
 #if !REPLAY
     if (int32_t today = getToday(); date != today) {
         SPDLOG_ERROR("config file date not today: fileDate={} todayDate={}", date, today);
@@ -61,12 +78,14 @@ void parseDailyConfig(const char *config)
     }
 #endif
 
+    if (factorFile.empty()) {
 #if REPLAY
-    std::string factorFile = json.contains("factor_file") ? std::string(json["factor_file"])
-        : REPLAY_DATA_PATH "/daily_csv/mdd2_factors_" MARKET_NAME_LOWER "_" + std::to_string(date) + ".bin";
+        factorFile = REPLAY_DATA_PATH "/daily_csv/mdd2_factors_" MARKET_NAME_LOWER "_" + std::to_string(date) + ".bin";
 #else
-    std::string factorFile = json["factor_file"];
+        SPDLOG_ERROR("no factor file provided in config");
+        throw std::runtime_error("no factor file provided in config");
 #endif
+    }
     std::ifstream bin(factorFile, std::ios::binary);
     if (!bin.is_open()) {
         SPDLOG_ERROR("cannot open daily factors for market={} date={} factorFile=[{}]", MARKET_NAME, date, factorFile);
@@ -139,29 +158,17 @@ void parseDailyConfig(const char *config)
     }
 }
 
-void computeThreadMain(int32_t c, std::chrono::steady_clock::time_point startTime, std::stop_token stop)
+HEAT_ZONE_TIMER void computeThreadMain(int32_t startId, int32_t stopId, int64_t nextSleepTime, int64_t sleepInterval, std::stop_token stop)
 {
-    setThisThreadAffinity(kChannelCpuBegin + c);
-
-    const int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
-    const int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
-
-#if REPLAY_REAL_TIME
-    const auto kSleepInterval = duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::milliseconds(99) TIME_SCALE);
-    auto nextSleepTime = startTime + kSleepInterval * c / kChannelCount + kSleepInterval;
-#endif
     while (!stop.stop_requested()) [[likely]] {
-#if REPLAY_REAL_TIME
-#if 0
+#if BUSY_COMPUTE
         for (int32_t id = startId; std::chrono::steady_clock::now() < nextSleepTime; id = id == stopId ? startId : id + 1) {
             MDD::g_stockComputes[id].onBusy();
         }
 #else
         spinSleepUntil(nextSleepTime);
 #endif
-        nextSleepTime += kSleepInterval;
-#endif
+        nextSleepTime += sleepInterval;
 
         int32_t approachCount = 0;
         for (int32_t id = startId; id != stopId; ++id) {
@@ -180,7 +187,7 @@ void computeThreadMain(int32_t c, std::chrono::steady_clock::time_point startTim
 
 }
 
-void MDD::handleTick(MDS::Tick &tick)
+HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 {
     int32_t id = g_stockIdLut[static_cast<int16_t>(tick.stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {
@@ -211,10 +218,20 @@ void MDD::start(const char *config)
     }
 
     SPDLOG_INFO("starting {} compute channels", kChannelCount);
-    auto t0 = std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
+    int64_t startTime = steadyNow() + 20'000'000;
     for (int32_t c = 0; c < kChannelCount; ++c) {
-        g_computeThreads[c] = std::jthread([c, t0] (std::stop_token stop) {
-            computeThreadMain(c, t0, stop);
+        g_computeThreads[c] = std::jthread([c, startTime] (std::stop_token stop) {
+            setThisThreadAffinity(kChannelCpuBegin + c);
+
+            int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
+            int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
+
+            int64_t sleepInterval = 99'900'000;
+#if REPLAY
+            sleepInterval *= MDS::g_timeScale;
+#endif
+            int64_t nextSleepTime = startTime + sleepInterval * c / kChannelCount + sleepInterval;
+            computeThreadMain(startId, stopId, nextSleepTime, sleepInterval, stop);
         });
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(120));

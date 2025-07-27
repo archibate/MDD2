@@ -2,6 +2,7 @@
 #include "StockState.h"
 #include "MDD.h"
 #include "timestamp.h"
+#include "heatZone.h"
 #include <spdlog/spdlog.h>
 
 
@@ -21,7 +22,7 @@ void StockCompute::stop()
     approachingLimitUp = false;
 }
 
-void StockCompute::onTick(MDS::Tick &tick)
+HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
 {
     if (tick.isOrder()) {
         if (tick.isOrderCancel()) {
@@ -35,7 +36,7 @@ void StockCompute::onTick(MDS::Tick &tick)
     }
 }
 
-void StockCompute::onTimer()
+HEAT_ZONE_ORDBOOK void StockCompute::onTimer()
 {
     if (!alive) [[unlikely]] {
         return;
@@ -63,7 +64,7 @@ void StockCompute::onTimer()
     }
 }
 
-void StockCompute::onPostTimer()
+HEAT_ZONE_COMPUTE void StockCompute::onPostTimer()
 {
     if (approachingLimitUp) {
         futureTimestamp = timestampAdvance100ms(futureTimestamp);
@@ -71,13 +72,13 @@ void StockCompute::onPostTimer()
     }
 }
 
-void StockCompute::onBusy()
+HEAT_ZONE_COMPUTE void StockCompute::onBusy()
 {
     bool wantBuy = computeModel();
     asm volatile ("" :: "r" (wantBuy));
 }
 
-void StockCompute::onOrder(MDS::Tick &tick)
+HEAT_ZONE_ORDBOOK void StockCompute::onOrder(MDS::Tick &tick)
 {
     if (tick.price >= upperLimitPriceApproach && tick.isSellOrder()) {
         UpSell sell;
@@ -87,7 +88,7 @@ void StockCompute::onOrder(MDS::Tick &tick)
     }
 }
 
-void StockCompute::onCancel(MDS::Tick &tick)
+HEAT_ZONE_ORDBOOK void StockCompute::onCancel(MDS::Tick &tick)
 {
     if (tick.isSellOrder()) {
         auto it = upSellOrders.find(tick.orderNo());
@@ -97,7 +98,7 @@ void StockCompute::onCancel(MDS::Tick &tick)
     }
 }
 
-void StockCompute::onTrade(MDS::Tick &tick)
+HEAT_ZONE_ORDBOOK void StockCompute::onTrade(MDS::Tick &tick)
 {
     auto it = upSellOrders.find(tick.sellOrderNo);
     if (it != upSellOrders.end()) {
@@ -113,7 +114,7 @@ void StockCompute::onTrade(MDS::Tick &tick)
     addRealTrade(tick.timestamp, tick.price, tick.quantity);
 }
 
-void StockCompute::addRealTrade(int32_t timestamp, int32_t price, int32_t quantity)
+HEAT_ZONE_ORDBOOK void StockCompute::addRealTrade(int32_t timestamp, int32_t price, int32_t quantity)
 {
     stepSnapshotUntil(timestamp);
 
@@ -124,7 +125,7 @@ void StockCompute::addRealTrade(int32_t timestamp, int32_t price, int32_t quanti
     fState.currSnapshot.amount += price * q64;
 }
 
-void StockCompute::computeFutureWantBuy(int32_t timestamp)
+HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy(int32_t timestamp)
 {
     saveSnapshot();
     stepSnapshotUntil(timestamp);
@@ -146,7 +147,7 @@ void StockCompute::computeFutureWantBuy(int32_t timestamp)
     restoreSnapshot();
 }
 
-void StockCompute::stepSnapshotUntil(int32_t timestamp)
+HEAT_ZONE_SNAPSHOT void StockCompute::stepSnapshotUntil(int32_t timestamp)
 {
     if (timestamp > fState.nextTickTimestamp) {
         stepSnapshot();
@@ -156,7 +157,7 @@ void StockCompute::stepSnapshotUntil(int32_t timestamp)
     }
 }
 
-void StockCompute::saveSnapshot()
+HEAT_ZONE_COMPUTE void StockCompute::saveSnapshot()
 {
     bState.savingMode = true;
     bState.nextTickTimestamp = fState.nextTickTimestamp;
@@ -164,7 +165,7 @@ void StockCompute::saveSnapshot()
     bState.oldSnapshotsCount = fState.snapshots.size();
 }
 
-void StockCompute::restoreSnapshot()
+HEAT_ZONE_COMPUTE void StockCompute::restoreSnapshot()
 {
     bState.savingMode = false;
     fState.nextTickTimestamp = bState.nextTickTimestamp;
@@ -172,7 +173,7 @@ void StockCompute::restoreSnapshot()
     fState.snapshots.resize(bState.oldSnapshotsCount);
 }
 
-void StockCompute::stepSnapshot()
+HEAT_ZONE_SNAPSHOT void StockCompute::stepSnapshot()
 {
     fState.snapshots.push_back(fState.currSnapshot);
     fState.currSnapshot.numTrades = 0;
@@ -180,7 +181,7 @@ void StockCompute::stepSnapshot()
     fState.currSnapshot.amount = 0;
 }
 
-bool StockCompute::decideWantBuy()
+HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
 {
     for (int32_t m = 0; m < kMomentumDurations.size(); ++m) {
         if (fState.snapshots.size() >= kMomentumDurations[m] + 1) {
@@ -243,23 +244,18 @@ bool StockCompute::decideWantBuy()
     return computeModel();
 }
 
-bool StockCompute::computeModel()
+HEAT_ZONE_COMPUTE bool StockCompute::computeModel()
 {
     /* LightGBM here */
     return true;
 }
 
-int32_t StockCompute::stockIndex() const
+[[gnu::always_inline]] int32_t StockCompute::stockIndex() const
 {
     return this - MDD::g_stockComputes.get();
 }
 
-StockState &StockCompute::stockState() const
+[[gnu::always_inline]] StockState &StockCompute::stockState() const
 {
     return MDD::g_stockStates[stockIndex()];
-}
-
-bool StockCompute::isApproachingLimitUp() const
-{
-    return alive && approachingLimitUp;
 }

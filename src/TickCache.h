@@ -31,7 +31,7 @@ struct alignas(64) TickCache {
 
     void stop() {}
 
-    void pushTick(MDS::Tick const &tick)
+    [[gnu::always_inline]] void pushTick(MDS::Tick const &tick)
     {
         {
             std::lock_guard lck(tickCachedWMutex);
@@ -40,7 +40,7 @@ struct alignas(64) TickCache {
         tickCachedWEmpty.clear(std::memory_order_release);
     }
 
-    bool tryObtainReadCopy()
+    [[gnu::always_inline]] bool tryObtainReadCopy()
     {
         if (tickCachedWEmpty.test_and_set(std::memory_order_acquire)) {
             return false;
@@ -53,12 +53,12 @@ struct alignas(64) TickCache {
         return true;
     }
 
-    std::vector<MDS::Tick> &getReadCopy()
+    [[gnu::always_inline]] std::vector<MDS::Tick> &getReadCopy()
     {
         return tickCachedR;
     }
 
-    void pushWantBuyTimestamp(int32_t timestamp, bool wantBuy)
+    [[gnu::always_inline]] void pushWantBuyTimestamp(int32_t timestamp, bool wantBuy)
     {
         timestamp = timestampLinear(timestamp);
         if (wantBuy) {
@@ -69,7 +69,7 @@ struct alignas(64) TickCache {
         wantBuyCurrentIndex &= wantBuyTimestamp.size() - 1;
     }
 
-    bool checkWantBuyAtTimestamp(int32_t timestamp)
+    [[gnu::always_inline]] bool checkWantBuyAtTimestamp(int32_t timestamp)
     {
         timestamp = timestampLinear(timestamp);
         int32_t wantTimestamp = wantBuyTimestamp[0].load(std::memory_order_relaxed);

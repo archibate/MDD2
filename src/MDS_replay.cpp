@@ -2,7 +2,7 @@
 #if REPLAY
 #include "MDS.h"
 #include "MDD.h"
-#include "L2/timestamp.h"
+#include "timestamp.h"
 #include "threadAffinity.h"
 #include <spdlog/spdlog.h>
 #include <stdexcept>
@@ -21,6 +21,11 @@ std::atomic_bool g_isFinished{false};
 std::atomic_bool g_isStarted{false};
 int32_t g_date;
 
+}
+
+namespace MDS
+{
+double g_timeScale = 1.0 / 16.0;
 }
 
 void MDS::subscribe(int32_t const *stocks, int32_t n)
@@ -75,20 +80,25 @@ MDS::Stat MDS::getStatic(int32_t stock)
 
 void MDS::start(const char *config)
 {
-    {
+    try {
         nlohmann::json json;
-        try {
-            std::ifstream(config) >> json;
-        } catch (std::exception const &e) {
-            SPDLOG_ERROR("config json parse failed: {}", e.what());
-            throw;
-        }
+        std::ifstream(config) >> json;
 
         g_date = json["date"];
-        if (g_date <= 0) {
-            SPDLOG_ERROR("invalid config format for mds replay: {}", json.dump());
-            throw std::runtime_error("invalid config format for mds replay");
+        if (json.contains("time_scale")) {
+            g_timeScale = json["time_scale"];
         }
+
+    } catch (std::exception const &e) {
+        SPDLOG_ERROR("config json parse failed: {}", e.what());
+        throw;
+    }
+
+    SPDLOG_INFO("mds replay date: {}", g_date);
+    SPDLOG_INFO("mds replay time scale: {}", g_timeScale);
+    if (g_date <= 0) {
+        SPDLOG_ERROR("invalid config date: {}", g_date);
+        throw std::runtime_error("invalid config date");
     }
 
     g_replayThread = std::jthread([] (std::stop_token stop) {
@@ -119,41 +129,46 @@ void MDS::start(const char *config)
             std::fclose(fp);
             fp = nullptr;
 
-#if REPLAY_REAL_TIME
             SPDLOG_INFO("sorting {} ticks", tickBuf.size());
             std::stable_sort(std::execution::par_unseq, tickBuf.begin(), tickBuf.end(), [] (Tick const &lhs, Tick const &rhs) {
                 return lhs.timestamp < rhs.timestamp;
             });
-#endif
 
             setThisThreadAffinity(kMDSBindCpu);
             SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
             g_isStarted.store(true);
         }
 
-        size_t i = 0;
-#if REPLAY_REAL_TIME
-        int32_t lastTimestamp = tickBuf.empty() ? 0 : tickBuf.front().timestamp;
-        auto nextSleepTime = std::chrono::steady_clock::now();
-#endif
-        while (i < tickBuf.size() && !stop.stop_requested()) [[likely]] {
-            Tick &tick = tickBuf[i];
+        if (g_timeScale > 0) {
+            int64_t lastTimestamp = tickBuf.empty() ? 0 : L2::timestampToAbsoluteMilliseconds(tickBuf.front().timestamp, 10);
+            int64_t nextSleepTime = steadyNow();
+            int64_t timeScale = static_cast<int64_t>(1'000'000 * g_timeScale);
 
-#if REPLAY_REAL_TIME
-            if (tick.timestamp > lastTimestamp) {
-                int64_t dt = L2::timestampToAbsoluteMilliseconds(tick.timestamp, 10) - L2::timestampToAbsoluteMilliseconds(lastTimestamp, 10);
-                lastTimestamp = tick.timestamp;
-                nextSleepTime += duration_cast<std::chrono::steady_clock::duration>(std::chrono::milliseconds(dt) TIME_SCALE);
-                spinSleepUntil(nextSleepTime);
-            } else if (tick.timestamp < lastTimestamp) [[unlikely]] {
-                throw std::runtime_error("timestamp out of order");
-            }
-#endif
+            for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
+                Tick &tick = tickBuf[i];
 
-            if (g_subscribedStocks.contains(tick.stock)) {
-                MDD::handleTick(tick);
+                if (tick.timestamp > lastTimestamp) {
+                    int64_t thisTimestamp = L2::timestampToAbsoluteMilliseconds(tick.timestamp, 10);
+                    int64_t dt = thisTimestamp - lastTimestamp;
+                    lastTimestamp = thisTimestamp;
+                    nextSleepTime += dt * timeScale;
+                    spinSleepUntil(nextSleepTime);
+                } else if (tick.timestamp < lastTimestamp) [[unlikely]] {
+                    throw std::runtime_error("timestamp out of order");
+                }
+
+                if (g_subscribedStocks.contains(tick.stock)) {
+                    MDD::handleTick(tick);
+                }
             }
-            ++i;
+
+        } else {
+            for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
+                Tick &tick = tickBuf[i];
+                if (g_subscribedStocks.contains(tick.stock)) {
+                    MDD::handleTick(tick);
+                }
+            }
         }
 
         g_isFinished.store(true);

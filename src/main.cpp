@@ -31,7 +31,6 @@ int main(int argc, char **argv)
     COMPILE_FLAG(BUILD_FOR_SZ);
     COMPILE_FLAG(BUILD_SPEED);
     COMPILE_FLAG(REPLAY);
-    COMPILE_FLAG(REPLAY_REAL_TIME);
 #undef COMPILE_FLAG
     for (int i = 0; i < argc; ++i) {
         SPDLOG_CRITICAL("runtime argument: argv[{}]=`{}`", i, argv[i]);
@@ -46,11 +45,12 @@ int main(int argc, char **argv)
     while (!MDD::isFinished()) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-    ::signal(SIGINT, SIG_DFL);
-    ::signal(SIGHUP, SIG_DFL);
 
     SPDLOG_CRITICAL("MDD v2 system stopping");
+    ::signal(SIGINT, SIG_DFL);
+    ::signal(SIGHUP, SIG_DFL);
     MDD::stop();
+
     SPDLOG_CRITICAL("program exiting");
     return 0;
 }
