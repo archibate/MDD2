@@ -57,7 +57,7 @@ stock_prev_limits = pd.read_json(f'/data/daily_csv/previous_trading_day_limit_up
 
 
 config = pd.DataFrame([
-    {'fileVersion': 250722, 'today': today, 'marketID': {'SH': 1, 'SZ': 2}[market_name], 'stockCount': len(stocks), 'prevLimitUpCount': len(stock_prev_limits)},
+    {'fileVersion': 250722, 'today': today, 'marketID': {'SH': 1, 'SZ': 2}[market_name], 'stockCount': len(stocks), 'prevLimitUpCount': len(stock_prev_limits), 'factorCount': factors.shape[1], 'factorDtypeSize': 8},
 ]).astype('int32')
 
 print('Stocks:')
@@ -73,5 +73,5 @@ print(config)
 with open(f'/data/daily_csv/mdd2_factors_{market_name.lower()}_{today}.bin', 'wb') as f:
     f.write(config.to_numpy().tobytes())
     f.write(stocks.to_numpy().tobytes())
-    f.write(factors.to_numpy().tobytes())
     f.write(stock_prev_limits.to_numpy().tobytes())
+    f.write(factors.to_numpy().tobytes())

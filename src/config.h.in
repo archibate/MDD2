@@ -11,11 +11,15 @@
 #define SZ 1
 #endif
 #define MARKET_NAME "SZ"
+#define MARKET_NAME_LOWER "sz"
+#define MARKET_ID 2
 #else
 #ifndef SH
 #define SH 1
 #endif
 #define MARKET_NAME "SH"
+#define MARKET_NAME_LOWER "sh"
+#define MARKET_ID 1
 #endif
 
-#define DATA_PATH "/home/ubuntu/data-cache"
+#define REPLAY_DATA_PATH "/home/ubuntu/data-cache"

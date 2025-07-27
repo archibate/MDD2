@@ -4,6 +4,8 @@
 #include "StockState.h"
 #include "threadAffinity.h"
 #include "DailyState.h"
+#include "FactorList.h"
+#include "dateTime.h"
 #include <chrono>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -14,19 +16,126 @@ std::unique_ptr<StockState[]> MDD::g_stockStates;
 std::unique_ptr<StockCompute[]> MDD::g_stockComputes;
 std::unique_ptr<TickCache[]> MDD::g_tickCaches;
 std::vector<int32_t> MDD::g_stockCodes;
+std::vector<int32_t> MDD::g_prevLimitUpStockCodes;
 
 namespace
 {
 
 std::array<int16_t, 0x7FFF> g_stockIdLut;
 
-void initStockCodes()
+void initStockArrays()
 {
     for (int32_t s = 0; s < g_stockIdLut.size(); ++s) {
         g_stockIdLut[s] = -1;
     }
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockIdLut[static_cast<int16_t>(MDD::g_stockCodes[i] & 0x7FFF)] = i;
+    }
+
+    MDD::g_tickCaches = std::make_unique<TickCache[]>(MDD::g_stockCodes.size());
+    MDD::g_stockStates = std::make_unique<StockState[]>(MDD::g_stockCodes.size());
+    MDD::g_stockComputes = std::make_unique<StockCompute[]>(MDD::g_stockCodes.size());
+}
+
+void parseDailyConfig(const char *config)
+{
+    SPDLOG_INFO("reading config file: {}", config);
+    nlohmann::json json;
+    try {
+        std::ifstream(config) >> json;
+    } catch (std::exception const &e) {
+        SPDLOG_ERROR("config json parse failed: {}", e.what());
+        throw;
+    }
+    SPDLOG_INFO("config json: {}", json.dump());
+
+    int32_t date = json["date"];
+    if (date <= 0) {
+        SPDLOG_ERROR("invalid config format for mdd: {}", json.dump());
+        throw std::runtime_error("invalid config format for mdd");
+    }
+#if !REPLAY
+    if (int32_t today = getToday(); date != today) {
+        SPDLOG_ERROR("config file date not today: fileDate={} todayDate={}", date, today);
+        throw std::runtime_error("config file date not today");
+    }
+#endif
+
+#if REPLAY
+    std::string factorFile = json.contains("factor_file") ? std::string(json["factor_file"])
+        : REPLAY_DATA_PATH "/daily_csv/mdd2_factors_" MARKET_NAME_LOWER "_" + std::to_string(date) + ".bin";
+#else
+    std::string factorFile = json["factor_file"];
+#endif
+    std::ifstream bin(factorFile, std::ios::binary);
+    if (!bin.is_open()) {
+        SPDLOG_ERROR("cannot open daily factors for market={} date={} factorFile=[{}]", MARKET_NAME, date, factorFile);
+        throw std::runtime_error("cannot open daily factors");
+    }
+    DailyHeader header{};
+    bin.read((char *)&header, sizeof(header));
+
+    constexpr int32_t kFileVersion = 250722;
+    if (header.fileVersion != kFileVersion) {
+        SPDLOG_ERROR("daily factor file version mismatch: fileVersion={} expectVersion={}",
+                     header.fileVersion, kFileVersion);
+        throw std::runtime_error("daily factor file version mismatch");
+    }
+    if (header.marketID != MARKET_ID) {
+        SPDLOG_ERROR("daily factor file market id mismatch: fileMarketId={} expectMarketId={}",
+                     header.marketID, MARKET_ID);
+        throw std::runtime_error("daily factor file market id mismatch");
+    }
+    if (header.factorCount != FactorEnum::kMaxFactors) {
+        SPDLOG_ERROR("daily factor file factor count mismatch: fileFactorCount={} expectFactorCount={}",
+                     header.factorCount, FactorEnum::kMaxFactors);
+        throw std::runtime_error("daily factor file factor count mismatch");
+    }
+    if (header.factorDtypeSize != sizeof(FactorList::ScalarType)) {
+        SPDLOG_ERROR("daily factor file factor dtype mismatch: fileDtypeSize={} expectDtypeSize={}",
+                     header.factorDtypeSize, sizeof(FactorList::ScalarType));
+        throw std::runtime_error("daily factor file factor dtype mismatch");
+    }
+
+    if (header.today != date) {
+        SPDLOG_ERROR("daily factor file today date mismatch: fileToday={} expectToday={}",
+                     header.today, date);
+        throw std::runtime_error("daily factor file today date mismatch");
+    }
+    if (!header.stockCount) {
+        SPDLOG_ERROR("no stock subscription found in daily factor file for market={} date={}", MARKET_NAME, date);
+        throw std::runtime_error("no stock subscription found in daily factor file");
+    }
+    SPDLOG_INFO("daily factor file contains numStocks={} numPrevLimitUp={} numFactors={}", header.stockCount, header.prevLimitUpCount, header.factorCount);
+
+    MDD::g_stockCodes.resize(header.stockCount);
+    bin.read((char *)MDD::g_stockCodes.data(), MDD::g_stockCodes.size() * sizeof(int32_t));
+    if (!bin.good()) {
+        SPDLOG_ERROR("failed to read all stock subscribes");
+        throw std::runtime_error("failed to read all stock subscribes");
+    }
+
+    MDD::g_prevLimitUpStockCodes.resize(header.prevLimitUpCount);
+    bin.read((char *)MDD::g_prevLimitUpStockCodes.data(), MDD::g_prevLimitUpStockCodes.size() * sizeof(int32_t));
+    if (!bin.good()) {
+        SPDLOG_ERROR("failed to read all prev-limit-up stocks");
+        throw std::runtime_error("failed to read all prev-limit-up stocks");
+    }
+
+    static_assert(FactorEnum::kMaxFactors * sizeof(FactorList::ScalarType) == sizeof(FactorList));
+    std::vector<FactorList> factors(header.stockCount);
+    bin.read((char *)factors.data(), factors.size() * sizeof(FactorList));
+    if (!bin.good()) {
+        SPDLOG_ERROR("failed to read all stock factors");
+        throw std::runtime_error("failed to read all stock factors");
+    }
+
+    bin.close();
+    initStockArrays();
+
+    MDD::g_stockComputes.reset(new StockCompute[MDD::g_stockCodes.size()]{});
+    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
+        MDD::g_stockComputes[i].factorList = factors[i];
     }
 }
 
@@ -82,27 +191,14 @@ void MDD::handleTick(MDS::Tick &tick)
 
 void MDD::start(const char *config)
 {
-    {
-        nlohmann::json json;
-        std::ifstream(config) >> json;
+    parseDailyConfig(config);
 
-        int32_t date = json["date"];
-        if (date <= 0) {
-            throw std::runtime_error("invalid config for mdd");
-        }
-
-        std::ifstream fac(DATA_PATH "/mdd2_factors_" MARKET_NAME "_" + std::to_string(date) + ".bin", std::ios::binary);
-        DailyHeader header{};
-        fac.read((char *)&header, sizeof(header));
+    MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
+    MDS::start(config);
+    while (!MDS::isStarted()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-
-    if (MDD::g_stockCodes.empty()) {
-        throw std::runtime_error("no stocks to subscribe!");
-    }
-
-    MDD::g_tickCaches = std::make_unique<TickCache[]>(MDD::g_stockCodes.size());
-    MDD::g_stockStates = std::make_unique<StockState[]>(MDD::g_stockCodes.size());
-    MDD::g_stockComputes = std::make_unique<StockCompute[]>(MDD::g_stockCodes.size());
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_tickCaches[i].start();
@@ -112,12 +208,6 @@ void MDD::start(const char *config)
     }
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockComputes[i].start();
-    }
-
-    MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
-    MDS::start(config);
-    while (!MDS::isStarted()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     SPDLOG_INFO("starting {} compute channels", kChannelCount);
@@ -152,6 +242,11 @@ void MDD::stop()
     g_stockComputes.reset();
     g_stockStates.reset();
     g_tickCaches.reset();
+}
+
+void MDD::requestStop()
+{
+    MDS::requestStop();
 }
 
 bool MDD::isFinished()

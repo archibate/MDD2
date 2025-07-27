@@ -12,6 +12,8 @@ inline constexpr std::array kMomentumDurations = {
 
 struct FactorList
 {
+    using ScalarType = double;
+
     struct Momentum
     {
         double openMean; // momentum_o_0.1_m

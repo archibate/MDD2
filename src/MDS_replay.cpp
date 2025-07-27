@@ -31,8 +31,9 @@ void MDS::subscribe(int32_t const *stocks, int32_t n)
 MDS::Stat MDS::getStatic(int32_t stock)
 {
     std::string line;
-    std::ifstream csv((DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-metadata.csv").c_str());
+    std::ifstream csv((REPLAY_DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-metadata.csv").c_str());
     if (!csv.is_open()) {
+        SPDLOG_ERROR("cannot open stock metadata for market={} date={}", MARKET_NAME, g_date);
         throw std::runtime_error("cannot open stock metadata");
     }
 
@@ -76,11 +77,17 @@ void MDS::start(const char *config)
 {
     {
         nlohmann::json json;
-        std::ifstream(config) >> json;
+        try {
+            std::ifstream(config) >> json;
+        } catch (std::exception const &e) {
+            SPDLOG_ERROR("config json parse failed: {}", e.what());
+            throw;
+        }
 
         g_date = json["date"];
         if (g_date <= 0) {
-            throw std::runtime_error("invalid config for mds replay");
+            SPDLOG_ERROR("invalid config format for mds replay: {}", json.dump());
+            throw std::runtime_error("invalid config format for mds replay");
         }
     }
 
@@ -88,8 +95,9 @@ void MDS::start(const char *config)
         std::vector<Tick> tickBuf;
 
         {
-            std::FILE *fp = std::fopen((DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-l2-ticks.dat").c_str(), "rb");
+            std::FILE *fp = std::fopen((REPLAY_DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-l2-ticks.dat").c_str(), "rb");
             if (!fp) {
+                SPDLOG_ERROR("cannot open L2 ticks for market={} date={}", MARKET_NAME, g_date);
                 throw std::runtime_error("cannot open stock L2 ticks");
             }
 
@@ -156,6 +164,11 @@ void MDS::stop()
 {
     g_replayThread.request_stop();
     g_replayThread.join();
+}
+
+void MDS::requestStop()
+{
+    g_replayThread.request_stop();
 }
 
 bool MDS::isFinished()
