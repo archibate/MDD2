@@ -8,7 +8,7 @@
 namespace L2
 {
 
-inline int64_t timestampToMilliseconds(int32_t timestamp)
+[[gnu::always_inline]] inline int64_t timestampToMilliseconds(int32_t timestamp)
 {
     int hours = timestamp / 10000000;
     int minutes = (timestamp / 100000) % 100;
@@ -18,7 +18,7 @@ inline int64_t timestampToMilliseconds(int32_t timestamp)
     return (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds;
 }
 
-inline int32_t millisecondsToTimestamp(int64_t time)
+[[gnu::always_inline]] inline int32_t millisecondsToTimestamp(int64_t time)
 {
     int milliseconds = time % 1000;
     time /= 1000;
@@ -31,7 +31,7 @@ inline int32_t millisecondsToTimestamp(int64_t time)
 }
 
 
-inline int64_t timestampToAbsoluteMilliseconds(int32_t timestamp, int32_t interval)
+[[gnu::always_inline]] inline int64_t timestampToAbsoluteMilliseconds(int32_t timestamp, int32_t interval)
 {
     int64_t time = timestampToMilliseconds(timestamp);
     time -= timestampToMilliseconds(9'30'00'000);
@@ -51,7 +51,7 @@ inline int64_t timestampToAbsoluteMilliseconds(int32_t timestamp, int32_t interv
     return time;
 }
 
-inline int32_t absoluteMillisecondsToTimestamp(int64_t time, int32_t interval)
+[[gnu::always_inline]] inline int32_t absoluteMillisecondsToTimestamp(int64_t time, int32_t interval)
 {
     if (time < 0) {
         time -= 5 * 60'000 - interval;
@@ -63,7 +63,7 @@ inline int32_t absoluteMillisecondsToTimestamp(int64_t time, int32_t interval)
     return millisecondsToTimestamp(time);
 }
 
-inline int64_t timestampToPositiveAbsoluteMilliseconds(int32_t timestamp)
+[[gnu::always_inline]] inline int64_t timestampToPositiveAbsoluteMilliseconds(int32_t timestamp)
 {
     int64_t time = timestampToMilliseconds(timestamp);
     time -= timestampToMilliseconds(9'30'00'000);
@@ -77,7 +77,7 @@ inline int64_t timestampToPositiveAbsoluteMilliseconds(int32_t timestamp)
     return time;
 }
 
-inline int32_t positiveAbsoluteMillisecondsToTimestamp(int64_t time)
+[[gnu::always_inline]] inline int32_t positiveAbsoluteMillisecondsToTimestamp(int64_t time)
 {
     if (time > 2 * 60 * 60'000) {
         time += (1 * 60 + 30) * 60'000;

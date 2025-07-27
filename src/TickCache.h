@@ -9,6 +9,7 @@
 #include "MDS.h"
 #include "FastMutex.h"
 #include "timestamp.h"
+#include "constants.h"
 
 
 struct alignas(64) TickCache {
@@ -69,21 +70,33 @@ struct alignas(64) TickCache {
         wantBuyCurrentIndex &= wantBuyTimestamp.size() - 1;
     }
 
-    [[gnu::always_inline]] bool checkWantBuyAtTimestamp(int32_t timestamp)
+    enum Intent
     {
-        timestamp = timestampLinear(timestamp);
-        int32_t wantTimestamp = wantBuyTimestamp[0].load(std::memory_order_relaxed);
-        bool wantBuy = wantTimestamp & 1;
-        int32_t minDt = std::abs(wantTimestamp - timestamp);
+        WantBuy,
+        DontBuy,
+        NotSure,
+    };
+
+    [[gnu::always_inline]] Intent checkWantBuyAtTimestamp(int32_t timestamp)
+    {
+        timestamp = (timestampLinear(timestamp) + 90) / 100 * 100;
+        int32_t minTimestamp = wantBuyTimestamp[0].load(std::memory_order_relaxed);
+        int32_t minDt = std::abs(minTimestamp - timestamp);
         for (int32_t i = 1; i < wantBuyTimestamp.size(); ++i) {
             int32_t wantTimestamp = wantBuyTimestamp[i].load(std::memory_order_relaxed);
             int32_t dt = std::abs(wantTimestamp - timestamp);
             if (dt < minDt) {
                 minDt = dt;
-                wantBuy = wantTimestamp & 1;
+                minTimestamp = wantTimestamp;
             }
         }
-        return wantBuy && minDt < 300;
+        if (minDt > kWantBuyTimeTolerance) [[unlikely]] {
+            return NotSure;
+        }
+        if (!(minTimestamp & 1)) [[unlikely]] {
+            return DontBuy;
+        }
+        return WantBuy;
     }
 };
 

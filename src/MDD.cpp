@@ -200,6 +200,7 @@ void MDD::start(const char *config)
 {
     parseDailyConfig(config);
 
+    SPDLOG_INFO("subscribing {} stocks", MDD::g_stockCodes.size());
     MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
     MDS::start(config);
     while (!MDS::isStarted()) {
@@ -226,7 +227,7 @@ void MDD::start(const char *config)
             int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
             int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
 
-            int64_t sleepInterval = 99'900'000;
+            int64_t sleepInterval = 95'000'000;
 #if REPLAY
             sleepInterval *= MDS::g_timeScale;
 #endif

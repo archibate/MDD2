@@ -7,3 +7,5 @@
 constexpr int32_t kMDSBindCpu = 1;
 constexpr int32_t kChannelCpuBegin = 2;
 constexpr int32_t kChannelCount = 12;
+
+constexpr int32_t kWantBuyTimeTolerance = 102;

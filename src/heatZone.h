@@ -7,3 +7,4 @@
 #define HEAT_ZONE_SNAPSHOT [[gnu::hot]]
 #define HEAT_ZONE_COMPUTE [[gnu::hot]]
 #define HEAT_ZONE_MODEL [[gnu::hot]]
+#define COLD_ZONE [[gnu::noinline]] [[gnu::cold]]

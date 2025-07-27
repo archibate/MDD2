@@ -1,8 +1,10 @@
 #include "StockState.h"
 #include "MDD.h"
-#include "L2/timestamp.h"
+#include "timestamp.h"
+#include "TickCache.h"
 #include "heatZone.h"
 #include <spdlog/spdlog.h>
+#include <atomic>
 
 
 void StockState::start()
@@ -11,17 +13,23 @@ void StockState::start()
 
     stockCode = MDD::g_stockCodes[stockIndex()];
     auto stat = MDS::getStatic(stockCode);
-    upperLimitPrice = stat.upperLimitPrice;
     preClosePrice = stat.preClosePrice;
-    openPrice = stat.openPrice;
+    upperLimitPrice = stat.upperLimitPrice;
+    openPrice = 0;
 
-    upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 2;
+    upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice * 0.996)) - 2;
+    SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={} upperLimitApproach={}",
+                 stockCode, preClosePrice, upperLimitPrice, upperLimitPriceApproach);
 }
 
-void StockState::stop()
+COLD_ZONE void StockState::stop(int32_t timestamp)
 {
-    alive = false;
-    MDD::g_tickCaches[stockIndex()].pushTick({});
+    if (alive) {
+        alive = false;
+        MDS::Tick endSign{};
+        endSign.timestamp = timestamp;
+        MDD::g_tickCaches[stockIndex()].pushTick(endSign);
+    }
 }
 
 HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
@@ -31,15 +39,14 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     }
 
     bool limitUp = tick.buyOrderNo != 0 && tick.sellOrderNo == 0 && tick.quantity > 0
-        && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000;
+        && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000 && tick.timestamp < 14'57'00'000;
     if (limitUp) {
-        bool wantBuy = MDD::g_tickCaches[stockIndex()].checkWantBuyAtTimestamp(tick.timestamp);
-        if (wantBuy) [[likely]] {
+        auto intent = MDD::g_tickCaches[stockIndex()].checkWantBuyAtTimestamp(tick.timestamp);
+        if (intent == TickCache::WantBuy) [[likely]] {
             /* send buy request */;
         }
 
-        SPDLOG_CRITICAL("limit up: stock={} timestamp={} wantBuy={}", stockCode, tick.timestamp, wantBuy);
-        stop();
+        stop(tick.timestamp + static_cast<int32_t>(intent));
         return;
     }
 

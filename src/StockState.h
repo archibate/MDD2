@@ -19,7 +19,7 @@ struct alignas(64) StockState
     bool alive{};
 
     void start();
-    void stop();
+    void stop(int32_t timestamp = 0);
     void onTick(MDS::Tick &tick);
 
 private:

@@ -52,8 +52,8 @@ private:
     FState fState;
     BState bState;
 
-    int32_t futureTimestamp{};
 public:
+    int32_t futureTimestamp{};
     FactorList factorList{};
 private:
 
@@ -70,7 +70,7 @@ private:
     void onCancel(MDS::Tick &tick);
     void onTrade(MDS::Tick &tick);
 
-    void computeFutureWantBuy(int32_t timestamp);
+    void computeFutureWantBuy();
     void addRealTrade(int32_t timestamp, int32_t price, int32_t quantity);
 
     void stepSnapshotUntil(int32_t timestamp);

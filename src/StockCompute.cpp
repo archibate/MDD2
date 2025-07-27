@@ -5,6 +5,40 @@
 #include "heatZone.h"
 #include <spdlog/spdlog.h>
 
+namespace
+{
+
+COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, TickCache::Intent intent)
+{
+    auto &tickCache = MDD::g_tickCaches[stockIndex];
+    int32_t linearTimestamp = (timestampLinear(tickTimestamp) + 90) / 100 * 100;
+    int32_t minLinearTimestamp = tickCache.wantBuyTimestamp[0].load(std::memory_order_relaxed);
+    int32_t minDt = std::abs(minLinearTimestamp - linearTimestamp);
+    for (int32_t i = 1; i < tickCache.wantBuyTimestamp.size(); ++i) {
+        int32_t wantTimestamp = tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed);
+        int32_t dt = std::abs(wantTimestamp - linearTimestamp);
+        if (dt < minDt) {
+            minDt = dt;
+            minLinearTimestamp = wantTimestamp;
+        }
+    }
+    minLinearTimestamp += minLinearTimestamp & 1;
+
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    auto &stockCompute = MDD::g_stockComputes[stockIndex];
+    auto &stockState = MDD::g_stockStates[stockIndex];
+    int32_t modelTimestamp = stockCompute.futureTimestamp;
+    bool modelTimeCorrect = timestampLinear(modelTimestamp) == minLinearTimestamp;
+    if (modelTimeCorrect) {
+        stockCompute.factorList.dumpFactors(modelTimestamp, stockState.stockCode);
+    }
+
+    SPDLOG_INFO("limit up model status: stock={} tickTimestamp={} roundTimestamp={} modelTimestamp={} minTimestamp={} minDt={} toleranceDt={} modelTimeCorrect={} intent={}", stockState.stockCode, tickTimestamp, timestampLinear((timestampDelinear(tickTimestamp) + 90) / 100 * 100), modelTimestamp, timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, modelTimeCorrect, magic_enum::enum_name(intent));
+    SPDLOG_TRACE("limit up detected: stock={} timestamp={} intent={}", stockState.stockCode, tickTimestamp, magic_enum::enum_name(intent));
+}
+
+}
+
 
 void StockCompute::start()
 {
@@ -16,7 +50,7 @@ void StockCompute::start()
     futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
 }
 
-void StockCompute::stop()
+COLD_ZONE void StockCompute::stop()
 {
     alive = false;
     approachingLimitUp = false;
@@ -24,6 +58,13 @@ void StockCompute::stop()
 
 HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
 {
+    if (tick.stock == 0) [[unlikely]] {
+        logLimitUp(stockIndex(), tick.timestamp / 10 * 10,
+                   static_cast<TickCache::Intent>(tick.timestamp % 10));
+        stop();
+        return;
+    }
+
     if (tick.isOrder()) {
         if (tick.isOrderCancel()) {
             onCancel(tick);
@@ -52,14 +93,11 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTimer()
 
     approachingLimitUp = false;
     for (auto &tick: ticks) {
-        if (tick.timestamp == 0) {
-            stop();
-            return;
-        }
         onTick(tick);
     }
 
     if (approachingLimitUp) {
+        // 600327
         futureTimestamp = fState.nextTickTimestamp;
     }
 }
@@ -68,7 +106,7 @@ HEAT_ZONE_COMPUTE void StockCompute::onPostTimer()
 {
     if (approachingLimitUp) {
         futureTimestamp = timestampAdvance100ms(futureTimestamp);
-        computeFutureWantBuy(futureTimestamp);
+        computeFutureWantBuy();
     }
 }
 
@@ -125,10 +163,10 @@ HEAT_ZONE_ORDBOOK void StockCompute::addRealTrade(int32_t timestamp, int32_t pri
     fState.currSnapshot.amount += price * q64;
 }
 
-HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy(int32_t timestamp)
+HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy()
 {
     saveSnapshot();
-    stepSnapshotUntil(timestamp);
+    stepSnapshotUntil(futureTimestamp);
 
     for (auto const &[sellOrderId, sell]: upSellOrders) {
         int64_t q64 = sell.quantity;
@@ -142,7 +180,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy(int32_t timestamp)
 
     bool wantBuy = decideWantBuy();
     auto &tickCache = MDD::g_tickCaches[stockIndex()];
-    tickCache.pushWantBuyTimestamp(timestamp, wantBuy);
+    tickCache.pushWantBuyTimestamp(futureTimestamp, wantBuy);
 
     restoreSnapshot();
 }
