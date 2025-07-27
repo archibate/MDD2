@@ -160,6 +160,11 @@ void parseDailyConfig(const char *config)
 
 HEAT_ZONE_TIMER void computeThreadMain(int32_t startId, int32_t stopId, int64_t nextSleepTime, int64_t sleepInterval, std::stop_token stop)
 {
+    std::vector<int32_t> approachStockIds;
+    std::vector<int64_t> remainSellAmounts;
+    approachStockIds.reserve(8);
+    remainSellAmounts.reserve(8);
+
     while (!stop.stop_requested()) [[likely]] {
 #if BUSY_COMPUTE
         for (int32_t id = startId; std::chrono::steady_clock::now() < nextSleepTime; id = id == stopId ? startId : id + 1) {
@@ -170,15 +175,25 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t startId, int32_t stopId, int64_t 
 #endif
         nextSleepTime += sleepInterval;
 
-        int32_t approachCount = 0;
+        approachStockIds.clear();
         for (int32_t id = startId; id != stopId; ++id) {
             MDD::g_stockComputes[id].onTimer();
             if (MDD::g_stockComputes[id].isApproachingLimitUp()) {
-                ++approachCount;
+                approachStockIds.push_back(id);
             }
         }
-        if (approachCount > 0) {
-            for (int32_t id = startId; id != stopId; ++id) {
+        if (!approachStockIds.empty()) {
+            if (approachStockIds.size() > 3) [[unlikely]] {
+                remainSellAmounts.clear();
+                for (int32_t id: approachStockIds) {
+                    remainSellAmounts.push_back(MDD::g_stockComputes[id].upSellOrderAmount());
+                }
+                std::nth_element(approachStockIds.begin(), approachStockIds.begin() + 2, approachStockIds.end(), [&] (int32_t &id1, int32_t &id2) {
+                    return remainSellAmounts[&id1 - approachStockIds.data()] < remainSellAmounts[&id2 - approachStockIds.data()];
+                });
+                approachStockIds.resize(2);
+            }
+            for (int32_t id: approachStockIds) {
                 MDD::g_stockComputes[id].onPostTimer();
             }
         }

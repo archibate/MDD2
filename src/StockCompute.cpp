@@ -27,13 +27,17 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, TickCache::
     std::atomic_thread_fence(std::memory_order_seq_cst);
     auto &stockCompute = MDD::g_stockComputes[stockIndex];
     auto &stockState = MDD::g_stockStates[stockIndex];
-    int32_t modelTimestamp = stockCompute.futureTimestamp;
-    bool modelTimeCorrect = timestampLinear(modelTimestamp) == minLinearTimestamp;
-    if (modelTimeCorrect) {
-        stockCompute.factorList.dumpFactors(modelTimestamp, stockState.stockCode);
-    }
 
-    SPDLOG_INFO("limit up model status: stock={} tickTimestamp={} roundTimestamp={} modelTimestamp={} minTimestamp={} minDt={} toleranceDt={} modelTimeCorrect={} intent={}", stockState.stockCode, tickTimestamp, timestampLinear((timestampDelinear(tickTimestamp) + 90) / 100 * 100), modelTimestamp, timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, modelTimeCorrect, magic_enum::enum_name(intent));
+    // int32_t lastModelTimestamp = stockCompute.futureTimestamp;
+    // bool lastModelTimeMatch = timestampLinear(lastModelTimestamp) == minLinearTimestamp;
+    // if (lastModelTimeMatch) {
+    //     stockCompute.factorList.dumpFactors(lastModelTimestamp, stockState.stockCode);
+    // }
+
+    // todo: find the correct factor list time and dump:
+    // stockCompute.dumpFactors(timestampDelinear(minLinearTimestamp), stockState.stockCode);
+
+    SPDLOG_INFO("limit up model status: stock={} tickTimestamp={} roundTimestamp={} minTimestamp={} minDt={} toleranceDt={} intent={}", stockState.stockCode, tickTimestamp, timestampLinear((timestampDelinear(tickTimestamp) + 90) / 100 * 100), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, magic_enum::enum_name(intent));
     SPDLOG_TRACE("limit up detected: stock={} timestamp={} intent={}", stockState.stockCode, tickTimestamp, magic_enum::enum_name(intent));
 }
 
@@ -183,6 +187,16 @@ HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy()
     tickCache.pushWantBuyTimestamp(futureTimestamp, wantBuy);
 
     restoreSnapshot();
+}
+
+int64_t StockCompute::upSellOrderAmount() const
+{
+    int64_t amount = 0;
+    for (auto const &[sellOrderId, sell]: upSellOrders) {
+        int64_t q64 = sell.quantity;
+        amount += sell.price * q64;
+    }
+    return amount;
 }
 
 HEAT_ZONE_SNAPSHOT void StockCompute::stepSnapshotUntil(int32_t timestamp)

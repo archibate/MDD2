@@ -21,6 +21,8 @@ struct alignas(64) StockCompute
         return approachingLimitUp;
     }
 
+    int64_t upSellOrderAmount() const;
+
 private:
     struct Snapshot
     {
