@@ -3,6 +3,7 @@
 #include <absl/container/btree_map.h>
 #include <vector>
 #include "MDS.h"
+#include "config.h"
 #include "FactorList.h"
 
 
@@ -22,6 +23,7 @@ struct alignas(64) StockCompute
     }
 
     int64_t upSellOrderAmount() const;
+    void dumpFactors(int32_t timestamp) const;
 
 private:
     struct Snapshot
@@ -66,6 +68,9 @@ private:
 
     absl::btree_map<int32_t, UpSell> upSellOrders;
 
+#if REPLAY
+    std::unique_ptr<FactorList[]> factorListCache;
+#endif
 
     void onTick(MDS::Tick &tick);
     void onOrder(MDS::Tick &tick);

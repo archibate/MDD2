@@ -28,14 +28,8 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, TickCache::
     auto &stockCompute = MDD::g_stockComputes[stockIndex];
     auto &stockState = MDD::g_stockStates[stockIndex];
 
-    // int32_t lastModelTimestamp = stockCompute.futureTimestamp;
-    // bool lastModelTimeMatch = timestampLinear(lastModelTimestamp) == minLinearTimestamp;
-    // if (lastModelTimeMatch) {
-    //     stockCompute.factorList.dumpFactors(lastModelTimestamp, stockState.stockCode);
-    // }
-
     // todo: find the correct factor list time and dump:
-    // stockCompute.dumpFactors(timestampDelinear(minLinearTimestamp), stockState.stockCode);
+    stockCompute.dumpFactors(timestampDelinear(minLinearTimestamp));
 
     SPDLOG_INFO("limit up model status: stock={} tickTimestamp={} roundTimestamp={} minTimestamp={} minDt={} toleranceDt={} intent={}", stockState.stockCode, tickTimestamp, timestampLinear((timestampDelinear(tickTimestamp) + 90) / 100 * 100), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, magic_enum::enum_name(intent));
     SPDLOG_TRACE("limit up detected: stock={} timestamp={} intent={}", stockState.stockCode, tickTimestamp, magic_enum::enum_name(intent));
@@ -52,6 +46,10 @@ void StockCompute::start()
     fState.currSnapshot.quantity = 0;
     fState.currSnapshot.amount = 0;
     futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
+
+#if REPLAY
+    factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<TickCache>().wantBuyTimestamp)>);
+#endif
 }
 
 COLD_ZONE void StockCompute::stop()
@@ -185,18 +183,11 @@ HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy()
     bool wantBuy = decideWantBuy();
     auto &tickCache = MDD::g_tickCaches[stockIndex()];
     tickCache.pushWantBuyTimestamp(futureTimestamp, wantBuy);
+#if REPLAY
+    factorListCache[(tickCache.wantBuyCurrentIndex - 1) & (tickCache.wantBuyTimestamp.size() - 1)] = factorList;
+#endif
 
     restoreSnapshot();
-}
-
-int64_t StockCompute::upSellOrderAmount() const
-{
-    int64_t amount = 0;
-    for (auto const &[sellOrderId, sell]: upSellOrders) {
-        int64_t q64 = sell.quantity;
-        amount += sell.price * q64;
-    }
-    return amount;
 }
 
 HEAT_ZONE_SNAPSHOT void StockCompute::stepSnapshotUntil(int32_t timestamp)
@@ -310,4 +301,32 @@ HEAT_ZONE_COMPUTE bool StockCompute::computeModel()
 [[gnu::always_inline]] StockState &StockCompute::stockState() const
 {
     return MDD::g_stockStates[stockIndex()];
+}
+
+int64_t StockCompute::upSellOrderAmount() const
+{
+    int64_t amount = 0;
+    for (auto const &[sellOrderId, sell]: upSellOrders) {
+        int64_t q64 = sell.quantity;
+        amount += sell.price * q64;
+    }
+    return amount;
+}
+
+COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
+{
+    if (timestamp == futureTimestamp) {
+        factorList.dumpFactors(timestamp, stockState().stockCode);
+        return;
+    }
+
+    auto &tickCache = MDD::g_tickCaches[stockIndex()];
+    for (int32_t i = 0; i < tickCache.wantBuyTimestamp.size(); ++i) {
+        if (timestamp == tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed)) {
+            factorListCache[i].dumpFactors(timestamp, stockState().stockCode);
+            return;
+        }
+    }
+
+    factorList.dumpFactors(futureTimestamp, stockState().stockCode);
 }
