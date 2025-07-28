@@ -49,6 +49,8 @@ private:
         bool savingMode{};
     };
 
+    int32_t upperLimitPrice{};
+    int32_t preClosePrice{};
     int32_t upperLimitPriceApproach{};
     bool alive{true};
     bool approachingLimitUp{};
@@ -68,6 +70,9 @@ private:
     };
 
     absl::btree_map<int32_t, UpSell> upSellOrders;
+    int32_t openPrice{};
+    int64_t openVolume{};
+    double floatMV{};
 
 #if REPLAY
     std::unique_ptr<FactorList[]> factorListCache;

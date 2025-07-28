@@ -140,7 +140,8 @@ void MDS::start(const char *config)
         }
 
         if (g_timeScale > 0) {
-            int64_t lastTimestamp = tickBuf.empty() ? 0 : L2::timestampToAbsoluteMilliseconds(tickBuf.front().timestamp, 10);
+            // int64_t lastTimestamp = tickBuf.empty() ? 0 : L2::timestampToAbsoluteMilliseconds(tickBuf.front().timestamp, 10);
+            int64_t lastTimestamp = L2::timestampToAbsoluteMilliseconds(9'15'00'000, 10);
             int64_t nextSleepTime = steadyNow();
             int64_t timeScale = static_cast<int64_t>(1'000'000 * g_timeScale);
 

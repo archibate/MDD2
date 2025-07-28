@@ -15,12 +15,9 @@ void StockState::start()
     auto stat = MDS::getStatic(stockCode);
     preClosePrice = stat.preClosePrice;
     upperLimitPrice = stat.upperLimitPrice;
-    floatMV = stat.floatMV;
-    openPrice = 0;
 
-    upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice * 0.996)) - 2;
-    SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={} upperLimitApproach={}",
-                 stockCode, preClosePrice, upperLimitPrice, upperLimitPriceApproach);
+    SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={}",
+                 stockCode, preClosePrice, upperLimitPrice);
 }
 
 void StockState::stop(int32_t timestamp)
