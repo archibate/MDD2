@@ -4,6 +4,7 @@
 #include "timestamp.h"
 #include "heatZone.h"
 #include <spdlog/spdlog.h>
+#include <cstring>
 
 namespace
 {
@@ -43,7 +44,7 @@ void StockCompute::start()
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(stockState().upperLimitPrice / 1.02)) - 2;
     fState.currSnapshot.lastPrice = stockState().preClosePrice;
     fState.currSnapshot.numTrades = 0;
-    fState.currSnapshot.quantity = 0;
+    fState.currSnapshot.volume = 0;
     fState.currSnapshot.amount = 0;
     futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
 
@@ -56,6 +57,29 @@ COLD_ZONE void StockCompute::stop()
 {
     alive = false;
     approachingLimitUp = false;
+}
+
+COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
+{
+    auto &tickCache = MDD::g_tickCaches[stockIndex()];
+    for (int32_t i = 0; i < tickCache.wantBuyTimestamp.size(); ++i) {
+        if (timestamp == tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed)) {
+            factorListCache[i].dumpFactors(timestamp, stockState().stockCode);
+            return;
+        }
+    }
+
+    factorList.dumpFactors(timestampAdvance(futureTimestamp, -100), stockState().stockCode);
+}
+
+int64_t StockCompute::upSellOrderAmount() const
+{
+    int64_t amount = 0;
+    for (auto const &[sellOrderId, sell]: upSellOrders) {
+        int64_t q64 = sell.quantity;
+        amount += sell.price * q64;
+    }
+    return amount;
 }
 
 HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
@@ -99,16 +123,22 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTimer()
     }
 
     if (approachingLimitUp) {
-        // 600327
+        // 603662
         futureTimestamp = fState.nextTickTimestamp;
+        firstCompute = true;
     }
 }
 
 HEAT_ZONE_COMPUTE void StockCompute::onPostTimer()
 {
     if (approachingLimitUp) {
-        futureTimestamp = timestampAdvance100ms(futureTimestamp);
         computeFutureWantBuy();
+        futureTimestamp = timestampAdvance100ms(futureTimestamp);
+        if (firstCompute) {
+            firstCompute = false;
+            computeFutureWantBuy();
+            futureTimestamp = timestampAdvance100ms(futureTimestamp);
+        }
     }
 }
 
@@ -161,7 +191,7 @@ HEAT_ZONE_ORDBOOK void StockCompute::addRealTrade(int32_t timestamp, int32_t pri
     int64_t q64 = quantity;
     fState.currSnapshot.lastPrice = price;
     ++fState.currSnapshot.numTrades;
-    fState.currSnapshot.quantity += q64;
+    fState.currSnapshot.volume += q64;
     fState.currSnapshot.amount += price * q64;
 }
 
@@ -174,7 +204,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy()
         int64_t q64 = sell.quantity;
         fState.currSnapshot.lastPrice = sell.price;
         ++fState.currSnapshot.numTrades;
-        fState.currSnapshot.quantity += q64;
+        fState.currSnapshot.volume += q64;
         fState.currSnapshot.amount += sell.price * q64;
     }
     fState.currSnapshot.lastPrice = stockState().upperLimitPrice;
@@ -220,67 +250,201 @@ HEAT_ZONE_SNAPSHOT void StockCompute::stepSnapshot()
 {
     fState.snapshots.push_back(fState.currSnapshot);
     fState.currSnapshot.numTrades = 0;
-    fState.currSnapshot.quantity = 0;
+    fState.currSnapshot.volume = 0;
     fState.currSnapshot.amount = 0;
 }
 
 HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
 {
-    for (int32_t m = 0; m < kMomentumDurations.size(); ++m) {
-        if (fState.snapshots.size() >= kMomentumDurations[m] + 1) {
-            {
-                double value = 0;
-                double valueSqr = 0;
-                double prevPrice = fState.snapshots[0].lastPrice;
-                for (int32_t t = 1; t < kMomentumDurations[m] + 1; ++t) {
-                    double currPrice = fState.snapshots[t].lastPrice;
-                    double changeRate = currPrice / prevPrice - 1.0;
-                    value += changeRate;
-                    valueSqr += changeRate * changeRate;
-                    prevPrice = currPrice;
-                }
-                double mean = value * (1.0 / kMomentumDurations[m]);
-                double meanM1 = value * (1.0 / (kMomentumDurations[m] - 1));
-                double variance = valueSqr * (1.0 / (kMomentumDurations[m] - 1)) - meanM1 * meanM1;
-                double std = std::sqrt(std::max(0.0, variance));
+    /* momentum factors */
+    {
+        for (int32_t m = 0; m < kMomentumDurations.size(); ++m) {
+            if (fState.snapshots.size() >= kMomentumDurations[m] + 1) {
+                {
+                    double value = 0;
+                    double valueSqr = 0;
+                    double prevPrice = fState.snapshots[0].lastPrice;
+                    for (int32_t t = 1; t < kMomentumDurations[m] + 1; ++t) {
+                        double currPrice = fState.snapshots[t].lastPrice;
+                        double changeRate = currPrice / prevPrice - 1.0;
+                        value += changeRate;
+                        valueSqr += changeRate * changeRate;
+                        prevPrice = currPrice;
+                    }
+                    double mean = value * (1.0 / kMomentumDurations[m]);
+                    double meanM1 = value * (1.0 / (kMomentumDurations[m] - 1));
+                    double variance = valueSqr * (1.0 / (kMomentumDurations[m] - 1)) - meanM1 * meanM1;
+                    double std = std::sqrt(std::max(0.0, variance));
 
-                factorList.momentum[m].openMean = mean;
-                factorList.momentum[m].openStd = std;
-                factorList.momentum[m].openZScore = std > 1e-10 ? mean / std : 0.0;
+                    factorList.momentum[m].openMean = mean;
+                    factorList.momentum[m].openStd = std;
+                    factorList.momentum[m].openZScore = std > 1e-10 ? mean / std : 0.0;
+                }
+
+                {
+                    double value = 0;
+                    double valueSqr = 0;
+                    double prevPrice = prevPrice = fState.snapshots[fState.snapshots.size() - kMomentumDurations[m] - 1].lastPrice;
+                    for (int32_t t = fState.snapshots.size() - kMomentumDurations[m]; t < fState.snapshots.size(); ++t) {
+                        double currPrice = fState.snapshots[t].lastPrice;
+                        double changeRate = currPrice / prevPrice - 1.0;
+                        value += changeRate;
+                        valueSqr += changeRate * changeRate;
+                        prevPrice = currPrice;
+                    }
+                    double mean = value * (1.0 / kMomentumDurations[m]);
+                    double meanM1 = value * (1.0 / (kMomentumDurations[m] - 1));
+                    double variance = valueSqr * (1.0 / (kMomentumDurations[m] - 1)) - meanM1 * mean;
+                    double std = std::sqrt(std::max(0.0, variance));
+
+                    factorList.momentum[m].highMean = mean;
+                    factorList.momentum[m].highStd = std;
+                    factorList.momentum[m].highZScore = std > 1e-10 ? mean / std : 0.0;
+                }
+
+                factorList.momentum[m].diffMean = factorList.momentum[m].openMean - factorList.momentum[m].highMean;
+                factorList.momentum[m].diffZScore = factorList.momentum[m].openZScore - factorList.momentum[m].highZScore;
+            } else {
+                factorList.momentum[m].openMean = NAN;
+                factorList.momentum[m].openStd = NAN;
+                factorList.momentum[m].openZScore = NAN;
+                factorList.momentum[m].highMean = NAN;
+                factorList.momentum[m].highStd = NAN;
+                factorList.momentum[m].highZScore = NAN;
+                factorList.momentum[m].diffMean = NAN;
+                factorList.momentum[m].diffZScore = NAN;
+            }
+        }
+    }
+
+    /* volatility factors */
+    {
+        size_t n = (fState.snapshots.size() + 4) / 5;
+        std::vector<int64_t> volumeGather(n);
+        std::vector<int64_t> amountGather(n);
+
+        for (size_t i = 0; i < fState.snapshots.size(); ++i) {
+            volumeGather[i / 5] += fState.snapshots[i].volume;
+            amountGather[i / 5] += fState.snapshots[i].amount;
+        }
+
+        std::vector<double> vwap(n);
+        double lastVWAP = NAN;
+        for (size_t i = 0; i < n; ++i) {
+            if (volumeGather[i] != 0) {
+                lastVWAP = static_cast<double>(amountGather[i]) / static_cast<double>(volumeGather[i]);
+            }
+            vwap[i] = lastVWAP;
+        }
+
+        double p0 = stockState().preClosePrice;
+        double p4 = p0 * 1.04;
+        double p5 = p0 * 1.05;
+        double p6 = p0 * 1.06;
+        double p7 = p0 * 1.07;
+        double p8 = p0 * 1.08;
+        double p9 = p0 * 1.09;
+
+        struct LCSRange
+        {
+            int64_t amount{};
+            int64_t volume{};
+            int32_t start{0};
+            int32_t stop{-1};
+        private:
+            int32_t curr{-1};
+
+        public:
+            void lcsAdd(int32_t i)
+            {
+                if (curr == -1) {
+                    curr = i;
+                } else if (i - curr > stop - start) {
+                    start = curr;
+                    stop = i;
+                }
+            }
+        };
+
+        LCSRange ranges[3];
+        for (size_t i = 0; i < n; ++i) {
+            double v = vwap[i];
+            if (v >= p4 && v <= p7) {
+                ranges[0].lcsAdd(i);
+                ranges[0].amount += amountGather[i];
+                ranges[0].volume += volumeGather[i];
+            }
+            if (v >= p5 && v <= p8) {
+                ranges[1].lcsAdd(i);
+                ranges[1].amount += amountGather[i];
+                ranges[1].volume += volumeGather[i];
+            }
+            if (v >= p6 && v <= p9) {
+                ranges[2].lcsAdd(i);
+                ranges[2].amount += amountGather[i];
+                ranges[2].volume += volumeGather[i];
+            }
+        }
+
+        double floatMV = stockState().floatMV;
+        for (int32_t l = 0; l < 3; ++l) {
+            auto &range = ranges[l];
+            auto &factor = factorList.volatility[l];
+            std::memset(&factor, -1, sizeof(factor));
+
+            double sumSqr = 0;
+            double sumPosSqr = 0;
+            double sumPosSqrSqr = 0;
+            int32_t nPositive = 0;
+            for (int32_t i = std::max(1, range.start); i <= range.stop; ++i) {
+                double r = vwap[i] / vwap[i - 1] - 1.0;
+                double r2 = r * r;
+                sumSqr += r2;
+                if (r > 0) {
+                    sumPosSqr += r2;
+                    sumPosSqrSqr += r2 * r2;
+                    ++nPositive;
+                }
             }
 
-            {
-                double value = 0;
-                double valueSqr = 0;
-                double prevPrice = prevPrice = fState.snapshots[fState.snapshots.size() - kMomentumDurations[m] - 1].lastPrice;
-                for (int32_t t = fState.snapshots.size() - kMomentumDurations[m]; t < fState.snapshots.size(); ++t) {
-                    double currPrice = fState.snapshots[t].lastPrice;
-                    double changeRate = currPrice / prevPrice - 1.0;
-                    value += changeRate;
-                    valueSqr += changeRate * changeRate;
-                    prevPrice = currPrice;
-                }
-                double mean = value * (1.0 / kMomentumDurations[m]);
-                double meanM1 = value * (1.0 / (kMomentumDurations[m] - 1));
-                double variance = valueSqr * (1.0 / (kMomentumDurations[m] - 1)) - meanM1 * mean;
-                double std = std::sqrt(std::max(0.0, variance));
-
-                factorList.momentum[m].highMean = mean;
-                factorList.momentum[m].highStd = std;
-                factorList.momentum[m].highZScore = std > 1e-10 ? mean / std : 0.0;
+            double upwardVol = 0;
+            double upwardVolRatio = 0;
+            double upwardVolStd = 0;
+            if (sumSqr != 0) {
+                upwardVol = std::sqrt(sumPosSqr);
+                upwardVolRatio = sumPosSqr / sumSqr;
+                upwardVolStd = (sumPosSqrSqr - (sumPosSqr * sumPosSqr) / nPositive) / nPositive;
             }
 
-            factorList.momentum[m].diffMean = factorList.momentum[m].openMean - factorList.momentum[m].highMean;
-            factorList.momentum[m].diffZScore = factorList.momentum[m].openZScore - factorList.momentum[m].highZScore;
-        } else {
-            factorList.momentum[m].openMean = NAN;
-            factorList.momentum[m].openStd = NAN;
-            factorList.momentum[m].openZScore = NAN;
-            factorList.momentum[m].highMean = NAN;
-            factorList.momentum[m].highStd = NAN;
-            factorList.momentum[m].highZScore = NAN;
-            factorList.momentum[m].diffMean = NAN;
-            factorList.momentum[m].diffZScore = NAN;
+            if (range.start >= range.stop) {
+                size_t endIndex = std::min(static_cast<size_t>(5 * range.stop + 4), fState.snapshots.size() - 1) + 1;
+                int64_t totalAmount = 0;
+                int64_t totalVolume = 0;
+                for (size_t i = 0; i < endIndex; ++i) {
+                    totalAmount += fState.snapshots[i].amount;
+                    totalVolume += fState.snapshots[i].volume;
+                }
+
+                factor.time = n * 0.25;
+                factor.consecTime = (range.stop - range.start + 1) * 0.25;
+
+                int64_t lcsAmount = 0;
+                int64_t lcsVolume = 0;
+                for (size_t i = range.start; i <= range.stop; ++i) {
+                    lcsAmount += amountGather[i];
+                    lcsVolume += volumeGather[i];
+                }
+                factor.consecTurnover = static_cast<double>(lcsAmount) / floatMV;
+                factor.consecAmountRatio = static_cast<double>(lcsAmount) / totalAmount;
+                factor.consecVolumeRatio = static_cast<double>(lcsVolume) / totalVolume;
+
+                factor.turnover = static_cast<double>(range.amount) / floatMV;
+                factor.amountRatio = static_cast<double>(range.amount) / totalAmount;
+                factor.volumeRatio = static_cast<double>(range.volume) / totalVolume;
+
+                factor.upVolume = range.start >= range.stop ? upwardVol : NAN;
+                factor.upRatio = range.start >= range.stop ? upwardVolRatio : NAN;
+            }
         }
     }
 
@@ -301,32 +465,4 @@ HEAT_ZONE_COMPUTE bool StockCompute::computeModel()
 [[gnu::always_inline]] StockState &StockCompute::stockState() const
 {
     return MDD::g_stockStates[stockIndex()];
-}
-
-int64_t StockCompute::upSellOrderAmount() const
-{
-    int64_t amount = 0;
-    for (auto const &[sellOrderId, sell]: upSellOrders) {
-        int64_t q64 = sell.quantity;
-        amount += sell.price * q64;
-    }
-    return amount;
-}
-
-COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
-{
-    if (timestamp == futureTimestamp) {
-        factorList.dumpFactors(timestamp, stockState().stockCode);
-        return;
-    }
-
-    auto &tickCache = MDD::g_tickCaches[stockIndex()];
-    for (int32_t i = 0; i < tickCache.wantBuyTimestamp.size(); ++i) {
-        if (timestamp == tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed)) {
-            factorListCache[i].dumpFactors(timestamp, stockState().stockCode);
-            return;
-        }
-    }
-
-    factorList.dumpFactors(futureTimestamp, stockState().stockCode);
 }

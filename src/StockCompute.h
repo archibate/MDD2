@@ -30,7 +30,7 @@ private:
     {
         int32_t lastPrice;
         int32_t numTrades;
-        int64_t quantity;
+        int64_t volume;
         int64_t amount;
     };
 
@@ -52,6 +52,7 @@ private:
     int32_t upperLimitPriceApproach{};
     bool alive{true};
     bool approachingLimitUp{};
+    bool firstCompute{};
 
     FState fState;
     BState bState;

@@ -3,6 +3,22 @@
 import pandas as pd
 import numpy as np
 
+def linear_time(time: pd.Series):
+    time = (pd.to_datetime(time, format='%H%M%S%f') - pd.to_datetime('09:30:00', format='%H:%M:%S')).dt.total_seconds()
+
+    market_open = pd.to_datetime('09:30:00', format='%H:%M:%S')
+    open_duration = (market_open - pd.to_datetime('9:25:00', format='%H:%M:%S')).total_seconds()
+    break_start = (pd.to_datetime('11:30:00', format='%H:%M:%S') - market_open).total_seconds()
+    break_end = (pd.to_datetime('13:00:00', format='%H:%M:%S') - market_open).total_seconds()
+    break_duration = break_end - break_start
+
+    time.loc[(time > break_start) & (time < break_end)] = break_start
+    time.loc[time >= break_end] -= break_duration
+    time.loc[(time > -open_duration) & (time < 0)] = -open_duration
+    time.loc[time <= -open_duration] += open_duration
+
+    return time
+
 
 correct = pd.read_csv('build/pred_correct.csv')
 factors = pd.read_csv('build/factors.csv')
@@ -24,5 +40,7 @@ diff = (((factors - correct) / correct).replace([np.inf, -np.inf], np.nan).filln
 diff[correct.isna() & factors.isna()] = 0
 diff[correct.isna() & ~factors.isna()] = -100
 diff[~correct.isna() & factors.isna()] = 100
+if 'timestamp' in correct.columns and 'timestamp' in factors.columns:
+    diff['timestamp'] = ((linear_time(correct['timestamp']) * 1000) + 90) // 100 / 10  - linear_time(factors['timestamp']) # type: ignore
 diff = diff.reset_index()
 print(diff)

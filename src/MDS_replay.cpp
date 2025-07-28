@@ -85,8 +85,8 @@ void MDS::start(const char *config)
         std::ifstream(config) >> json;
 
         g_date = json["date"];
-        if (json.contains("time_scale")) {
-            g_timeScale = json["time_scale"];
+        if (json.contains("time_speed")) {
+            g_timeScale = 1.0 / double(json["time_speed"]);
         }
 
     } catch (std::exception const &e) {

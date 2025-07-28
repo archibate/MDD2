@@ -26,9 +26,29 @@ struct FactorList
         double diffZScore; // momentum_o_h_z_diff_0.1
     };
 
+    struct Volatility
+    {
+        double time; // vol_4_7_time
+        double consecTime; // vol_4_7_consecutive_time
+        double amountRatio; // vol_4_7_amaount_ratio
+        double volumeRatio; // vol_4_7_volume_ratio
+        double turnover; // vol_4_7_turnover
+        double consecAmountRatio; // vol_4_7_consecutive_amount_ratios
+        double consecVolumeRatio; // vol_4_7_consecutive_volume_ratios
+        double consecTurnover; // vol_4_7_consecutive_turnovers
+        double upVolume; // vol_4_7_up
+        double upRatio; // vol_4_7_up_ratio
+        double upStd; // vol_4_7_up_std
+        double vwapSkew; // vol_4_7_vwap_skew
+        double vwapKurt; // vol_4_7_vwap_kurt
+        double consecVwapSkew; // vol_4_7_filter_vwap_skews
+        double consecVwapKurt; // vol_4_7_filter_vwap_kurts
+    };
+
     union {
         struct {
             Momentum momentum[kMomentumDurations.size()];
+            Volatility volatility[3];
         };
 
         struct {

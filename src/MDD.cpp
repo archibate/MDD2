@@ -237,12 +237,12 @@ void MDD::start(const char *config)
     int64_t startTime = steadyNow() + 20'000'000;
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c] = std::jthread([c, startTime] (std::stop_token stop) {
-            setThisThreadAffinity(kChannelCpuBegin + c);
+            setThisThreadAffinity(kChannelCpus[c]);
 
             int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
             int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
 
-            int64_t sleepInterval = 95'000'000;
+            int64_t sleepInterval = 98'000'000;
 #if REPLAY
             sleepInterval *= MDS::g_timeScale;
 #endif

@@ -1,11 +1,12 @@
 #include "FactorList.h"
+#include "heatZone.h"
 #include <magic_enum/magic_enum.hpp>
 #include <fstream>
 #include <iomanip>
 #include <cstdio>
 
 
-void FactorList::dumpFactors(int32_t timestamp, int32_t stock) const
+COLD_ZONE void FactorList::dumpFactors(int32_t timestamp, int32_t stock) const
 {
     auto data = reinterpret_cast<double const *>(this);
     constexpr int32_t size = sizeof(FactorList) / sizeof(double);

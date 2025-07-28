@@ -38,8 +38,10 @@
 
 [[gnu::noinline]] inline void setThisThreadAffinity(int32_t cpu)
 {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu, &cpuset);
-    sched_setaffinity(getpid(), sizeof(cpuset), &cpuset);
+    if (cpu >= 0) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(cpu, &cpuset);
+        sched_setaffinity(getpid(), sizeof(cpuset), &cpuset);
+    }
 }

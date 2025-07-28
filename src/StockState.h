@@ -15,6 +15,7 @@ struct alignas(64) StockState
     int32_t upperLimitPrice{};
     int32_t upperLimitPriceApproach{};
     int32_t preClosePrice{};
+    double floatMV{};
     int32_t openPrice{};
     bool alive{};
 

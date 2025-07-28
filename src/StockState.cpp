@@ -15,6 +15,7 @@ void StockState::start()
     auto stat = MDS::getStatic(stockCode);
     preClosePrice = stat.preClosePrice;
     upperLimitPrice = stat.upperLimitPrice;
+    floatMV = stat.floatMV;
     openPrice = 0;
 
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice * 0.996)) - 2;
@@ -22,7 +23,7 @@ void StockState::start()
                  stockCode, preClosePrice, upperLimitPrice, upperLimitPriceApproach);
 }
 
-COLD_ZONE void StockState::stop(int32_t timestamp)
+void StockState::stop(int32_t timestamp)
 {
     if (alive) {
         alive = false;
