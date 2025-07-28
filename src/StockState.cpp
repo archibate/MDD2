@@ -1,5 +1,6 @@
 #include "StockState.h"
 #include "MDD.h"
+#include "OES.h"
 #include "timestamp.h"
 #include "TickCache.h"
 #include "heatZone.h"
@@ -18,6 +19,12 @@ void StockState::start()
 
     SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={}",
                  stockCode, preClosePrice, upperLimitPrice);
+
+    reqOrder = {};
+    reqOrder.stockCode = stockCode;
+    reqOrder.price = upperLimitPrice;
+    reqOrder.quantity = 300;
+    reqOrder.limitType = 'U';
 }
 
 void StockState::stop(int32_t timestamp)
@@ -41,7 +48,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     if (limitUp) {
         auto intent = MDD::g_tickCaches[stockIndex()].checkWantBuyAtTimestamp(tick.timestamp);
         if (intent == TickCache::WantBuy) [[likely]] {
-            /* send buy request */;
+            OES::sendRequest(reqOrder);
         }
 
         stop(tick.timestamp + static_cast<int32_t>(intent));
@@ -49,6 +56,15 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     }
 
     MDD::g_tickCaches[stockIndex()].pushTick(tick);
+}
+
+HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
+{
+    if (rspOrder.errorId != 0) {
+        SPDLOG_ERROR("response order error: errorId={}", rspOrder.errorId);
+        return;
+    }
+    SPDLOG_INFO("response order: messageType={} stock={} orderStatus={} orderSysId={} orderPrice={} orderQuantity={}", rspOrder.messageType, rspOrder.stockCode, rspOrder.orderStatus, rspOrder.orderSysId, rspOrder.orderPrice, rspOrder.orderQuantity);
 }
 
 [[gnu::always_inline]] int32_t StockState::stockIndex() const

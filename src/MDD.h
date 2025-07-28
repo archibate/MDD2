@@ -3,6 +3,7 @@
 #include <array>
 #include <thread>
 #include "MDS.h"
+#include "OES.h"
 #include "constants.h"
 #include "StockState.h"
 #include "StockCompute.h"
@@ -24,5 +25,6 @@ void stop();
 void requestStop();
 bool isFinished();
 void handleTick(MDS::Tick &tick);
+void handleRspOrder(OES::RspOrder &rspOrder);
 
 }

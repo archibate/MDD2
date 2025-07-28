@@ -1,5 +1,6 @@
 #include "MDD.h"
 #include "MDS.h"
+#include "OES.h"
 #include "constants.h"
 #include "StockState.h"
 #include "threadAffinity.h"
@@ -211,10 +212,22 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
     MDD::g_stockStates[id].onTick(tick);
 }
 
+HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
+{
+    int32_t id = g_stockIdLut[static_cast<int16_t>(rspOrder.stockCode & 0x7FFF)];
+    if (id == -1) [[unlikely]] {
+        return;
+    }
+    MDD::g_stockStates[id].onRspOrder(rspOrder);
+    // todo: forward to StockState
+}
+
 void MDD::start(const char *config)
 {
     parseDailyConfig(config);
 
+    SPDLOG_INFO("initializing trade api");
+    OES::start(config);
     SPDLOG_INFO("subscribing {} stocks", MDD::g_stockCodes.size());
     MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
     MDS::start(config);
@@ -255,12 +268,12 @@ void MDD::start(const char *config)
 
 void MDD::stop()
 {
+    MDS::stop();
+
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c].request_stop();
         g_computeThreads[c].join();
     }
-
-    MDS::stop();
 
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockComputes[i].stop();
@@ -275,6 +288,8 @@ void MDD::stop()
     g_stockComputes.reset();
     g_stockStates.reset();
     g_tickCaches.reset();
+
+    OES::stop();
 }
 
 void MDD::requestStop()
