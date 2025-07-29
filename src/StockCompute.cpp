@@ -304,7 +304,7 @@ HEAT_ZONE_COMPUTE void computeSkewKurt(double &skew, double &kurt, double *first
 
 HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
 {
-    if (openPrice == 0) {
+    if (openPrice == 0 || fState.snapshots.empty()) {
         return false;
     }
 
@@ -369,15 +369,20 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
 
         size_t n = (fState.snapshots.size() + 4) / 5;
         if (n != 0) {
-            std::vector<int64_t> volumeGather(n);
-            std::vector<int64_t> amountGather(n);
+            thread_local std::vector<int64_t> volumeGather;
+            thread_local std::vector<int64_t> amountGather;
+            thread_local std::vector<double> vwap;
 
+            volumeGather.clear();
+            amountGather.clear();
+            volumeGather.resize(n);
+            amountGather.resize(n);
             for (size_t i = 0; i < fState.snapshots.size(); ++i) {
                 volumeGather[i / 5] += fState.snapshots[i].volume;
                 amountGather[i / 5] += fState.snapshots[i].amount;
             }
 
-            std::vector<double> vwap(n);
+            vwap.resize(n);
             double lastVWAP = openPrice;
             for (size_t i = 0; i < n; ++i) {
                 if (volumeGather[i] != 0) {
@@ -499,6 +504,86 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
                     computeSkewKurt(factor.consecVwapSkew, factor.consecVwapKurt, vwap.data() + range.start, vwap.data() + range.stop + 1);
                 }
             }
+        }
+    }
+
+    /* kaiyuan factors */
+    {
+        struct Transaction
+        {
+            double meanAmount;
+            double sumAmount;
+
+            bool operator<(Transaction const &right) const
+            {
+                return meanAmount < right.meanAmount;
+            }
+        };
+
+        thread_local std::vector<Transaction> transactions;
+        transactions.clear();
+        transactions.reserve(fState.snapshots.size() / 10);
+        for (size_t i = 0; i < fState.snapshots.size(); ++i) {
+            if (fState.snapshots[i].numTrades != 0) {
+                double a = static_cast<double>(fState.snapshots[i].amount);
+                transactions.push_back({a / fState.snapshots[i].numTrades, a});
+            }
+        }
+
+        std::memset(&factorList.kaiyuan, -1, sizeof(factorList.kaiyuan));
+        if (!transactions.empty()) {
+
+            double A0 = std::min_element(transactions.begin(), transactions.end())->meanAmount;
+            double A100 = std::max_element(transactions.begin(), transactions.end())->meanAmount;
+
+            auto it096 = transactions.begin() + static_cast<size_t>(0.096 * transactions.size());
+            auto it10 = transactions.begin() + static_cast<size_t>(0.10 * transactions.size());
+            auto it96 = transactions.begin() + static_cast<size_t>(0.96 * transactions.size());
+
+            std::nth_element(transactions.begin(), it096, transactions.end());
+            double A096 = it096->meanAmount;
+            std::nth_element(transactions.begin(), it10, transactions.end());
+            double A10 = it10->meanAmount;
+            std::nth_element(transactions.begin(), it96, transactions.end());
+            double A96 = it96->meanAmount;
+
+            if (A100 > A0) {
+                factorList.kaiyuan.quantile = (A10 - A0) / (A100 - A0);
+            }
+            if (A96 > A0) {
+                factorList.kaiyuan.trimmedQuantile = (A096 - A0) / (A96 - A0);
+            }
+
+            double sumT = 0;
+            double sumA = 0;
+            double sumTA = 0;
+            double sumT2 = 0;
+            double sumA2 = 0;
+            for (auto it = transactions.begin(); it != it96; ++it) {
+                sumT += it->meanAmount;
+                sumA += it->sumAmount;
+                sumTA += it->meanAmount * it->sumAmount;
+                sumT2 += it->meanAmount * it->meanAmount;
+                sumA2 += it->sumAmount * it->sumAmount;
+            }
+            double size = it96 - transactions.begin();
+            double numerator = sumTA * size - sumT * sumA;
+            double denominatorX = sumT2 * size - sumT * sumT;
+            double denominatorY = sumA2 * size - sumA * sumA;
+            factorList.kaiyuan.trimmedCorrelation = numerator / std::sqrt(denominatorX * denominatorY);
+
+            for (auto it = it96; it != transactions.end(); ++it) {
+                sumT += it->meanAmount;
+                sumA += it->sumAmount;
+                sumTA += it->meanAmount * it->sumAmount;
+                sumT2 += it->meanAmount * it->meanAmount;
+                sumA2 += it->sumAmount * it->sumAmount;
+            }
+            size = transactions.size();
+            numerator = sumTA * size - sumT * sumA;
+            denominatorX = sumT2 * size - sumT * sumT;
+            denominatorY = sumA2 * size - sumA * sumA;
+            factorList.kaiyuan.correlation = numerator / std::sqrt(denominatorX * denominatorY);
         }
     }
 

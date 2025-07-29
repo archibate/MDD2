@@ -48,9 +48,9 @@ struct FactorList
     struct Kaiyuan
     {
         double quantile; // QUA
-        double transaction; // TS
-        double filterQuantile; // filter_QUA
-        double filterTransaction; // filter_TS
+        double correlation; // TS
+        double trimmedQuantile; // filter_QUA
+        double trimmedCorrelation; // filter_TS
         double signalReturn10; // SR_10
         double signalReturn30; // SR_30
         double signalReturn50; // SR_50
@@ -60,6 +60,7 @@ struct FactorList
         struct {
             Momentum momentum[kMomentumDurations.size()];
             Volatility volatility[3];
+            Kaiyuan kaiyuan;
         };
 
         struct {
