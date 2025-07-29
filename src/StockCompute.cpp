@@ -517,6 +517,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
         {
             double meanAmount;
             double sumAmount;
+            double changeRate;
 
             bool operator<(Transaction const &right) const
             {
@@ -527,34 +528,51 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
         thread_local std::vector<Transaction> transactions;
         transactions.clear();
         transactions.reserve(fState.snapshots.size() / 10);
+        double prevPrice = fState.snapshots[0].lastPrice;
         for (size_t i = 0; i < fState.snapshots.size(); ++i) {
             if (fState.snapshots[i].numTrades != 0) {
+                double currPrice = fState.snapshots[i].lastPrice;
+                double r = currPrice / prevPrice - 1.0;
+                prevPrice = currPrice;
+
                 double a = static_cast<double>(fState.snapshots[i].amount);
-                transactions.push_back({a / fState.snapshots[i].numTrades, a});
+                transactions.push_back({a / fState.snapshots[i].numTrades, a, r});
             }
         }
 
         std::memset(&factorList.kaiyuan, -1, sizeof(factorList.kaiyuan));
         if (!transactions.empty()) {
-            double A0 = std::min_element(transactions.begin(), transactions.end())->meanAmount;
-            double A100 = std::max_element(transactions.begin(), transactions.end())->meanAmount;
+            // double A0 = std::min_element(transactions.begin(), transactions.end())->meanAmount;
+            // double A100 = std::max_element(transactions.begin(), transactions.end())->meanAmount;
 
-            auto it096 = transactions.begin() + static_cast<size_t>(0.096 * transactions.size());
-            auto it10 = transactions.begin() + static_cast<size_t>(0.10 * transactions.size());
-            auto it96 = transactions.begin() + static_cast<size_t>(0.96 * transactions.size());
+            auto it096 = transactions.begin() + static_cast<size_t>(std::ceil(0.096 * transactions.size()));
+            auto it096f = transactions.begin() + static_cast<size_t>(std::floor(0.096 * transactions.size()));
+            auto it10 = transactions.begin() + static_cast<size_t>(std::ceil(0.10 * transactions.size()));
+            auto it10f = transactions.begin() + static_cast<size_t>(std::floor(0.10 * transactions.size()));
+            auto it50 = transactions.begin() + static_cast<size_t>(std::ceil(0.50 * transactions.size()));
+            auto it70 = transactions.begin() + static_cast<size_t>(std::ceil(0.70 * transactions.size()));
+            auto it90 = transactions.begin() + static_cast<size_t>(std::ceil(0.90 * transactions.size()));
+            auto it96 = transactions.begin() + static_cast<size_t>(std::ceil(0.96 * transactions.size()));
+            std::sort(transactions.begin(), transactions.end());
+            // std::nth_element(transactions.begin(), it096, transactions.end());
+            // std::nth_element(it096, it10, transactions.end());
+            // std::nth_element(it10, it50, transactions.end());
+            // std::nth_element(it50, it70, transactions.end());
+            // std::nth_element(it70, it90, transactions.end());
+            // std::nth_element(it90, it96, transactions.end());
 
-            std::nth_element(transactions.begin(), it096, transactions.end());
+            double A0 = transactions.front().meanAmount;
+            double A100 = transactions.back().meanAmount;
             double A096 = it096->meanAmount;
-            std::nth_element(transactions.begin(), it10, transactions.end());
             double A10 = it10->meanAmount;
-            std::nth_element(transactions.begin(), it96, transactions.end());
+            double A096f = it096f->meanAmount;
+            double A10f = it10f->meanAmount;
             double A96 = it96->meanAmount;
-
             if (A100 > A0) {
-                factorList.kaiyuan.quantile = (A10 - A0) / (A100 - A0);
+                factorList.kaiyuan.quantile = (0.5 * (A10 + A10f) - A0) / (A100 - A0);
             }
             if (A96 > A0) {
-                factorList.kaiyuan.trimmedQuantile = (A096 - A0) / (A96 - A0);
+                factorList.kaiyuan.trimmedQuantile = (0.5 * (A096 + A096f) - A0) / (A96 - A0);
             }
 
             double sumT = 0;
@@ -573,7 +591,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
             double numerator = sumTA * size - sumT * sumA;
             double denominatorX = sumT2 * size - sumT * sumT;
             double denominatorY = sumA2 * size - sumA * sumA;
-            factorList.kaiyuan.trimmedCorrelation = numerator / std::sqrt(denominatorX * denominatorY);
+            factorList.kaiyuan.trimmedCorrelation = numerator / std::sqrt(std::max(0.0, denominatorX * denominatorY));
 
             for (auto it = it96; it != transactions.end(); ++it) {
                 sumT += it->meanAmount;
@@ -586,8 +604,26 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
             numerator = sumTA * size - sumT * sumA;
             denominatorX = sumT2 * size - sumT * sumT;
             denominatorY = sumA2 * size - sumA * sumA;
-            factorList.kaiyuan.correlation = numerator / std::sqrt(denominatorX * denominatorY);
+            factorList.kaiyuan.correlation = numerator / std::sqrt(std::max(0.0, denominatorX * denominatorY));
+
+            double sr = 0;
+            for (auto it = it90; it != transactions.end(); ++it) {
+                sr += it->changeRate;
+            }
+            factorList.kaiyuan.signalReturn10 = sr;
+            for (auto it = it70; it != it90; ++it) {
+                sr += it->changeRate;
+            }
+            factorList.kaiyuan.signalReturn30 = sr;
+            for (auto it = it50; it != it70; ++it) {
+                sr += it->changeRate;
+            }
+            factorList.kaiyuan.signalReturn50 = sr;
         }
+    }
+
+    /* crowd factors */
+    {
     }
 
     return computeModel();
