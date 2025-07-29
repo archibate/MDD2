@@ -30,13 +30,13 @@ correct['ts_code'] = pd.to_numeric(correct['ts_code'].str.split('.').str[0])
 
 factors = pd.read_csv('build/factors.csv')
 factors = factors[factors['timestamp'] != 0]
+factors = factors[factors['ts_code'] != 600683]
 assert isinstance(factors, pd.DataFrame)
 
 correct = correct.groupby('ts_code').last().reset_index().sort_values('ts_code').reset_index(drop=True)
 factors = factors.groupby('ts_code').last().reset_index().sort_values('ts_code').reset_index(drop=True)
 correct, factors = correct.merge(factors[['ts_code']], how='inner', on='ts_code').sort_values('ts_code').reset_index(drop=True), factors.merge(correct[['ts_code']], how='inner', on='ts_code').sort_values('ts_code').reset_index(drop=True)
-# factors = factors[['ts_code', 'timestamp'] + [c for c in factors.columns if c.startswith('vol_') and 'vwap' not in c]]
-factors = factors[['ts_code', 'timestamp'] + [c for c in factors.columns if c.startswith('vol_') and 'turnover' in c]]
+factors = factors[['ts_code', 'timestamp'] + [c for c in factors.columns if c.startswith('vol_') and 'vwap' in c]]
 correct = correct[factors.columns]
 
 print(correct)
@@ -53,4 +53,5 @@ diff[~correct.isna() & factors.isna()] = 9999
 if 'timestamp' in correct.columns and 'timestamp' in factors.columns:
     diff['timestamp'] = ((linear_time(correct['timestamp']) * 1000) + 90) // 100 / 10 - linear_time(factors['timestamp']) # type: ignore
 diff = diff.reset_index()
+# diff = diff[diff['timestamp'].abs() <= 0.1]
 print(diff)

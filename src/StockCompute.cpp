@@ -258,6 +258,50 @@ HEAT_ZONE_SNAPSHOT void StockCompute::stepSnapshot()
     fState.currSnapshot.amount = 0;
 }
 
+namespace
+{
+
+HEAT_ZONE_COMPUTE void computeSkewKurt(double &skew, double &kurt, double *first, double *last)
+{
+    size_t n = last - first;
+    if (n <= 3) {
+        skew = kurt = NAN;
+        return;
+    }
+
+    double sum = 0;
+    for (double *p = first; p != last; ++p) {
+        sum += *p;
+    }
+    double mean = sum / n;
+
+    double variance = 0;
+    double skewness = 0;
+    double kurtosis = 0;
+    for (double *p = first; p != last; ++p) {
+        double value = *p - mean;
+        double valueSqr = value * value;
+        variance += valueSqr;
+        skewness += valueSqr * value;
+        kurtosis += valueSqr * valueSqr;
+    }
+
+    if (variance <= 0) {
+        skew = kurt = 0;
+        return;
+    }
+    double var = variance / n;
+    double std = std::sqrt(var);
+
+    skew = skewness / (n * var * std);
+    kurt = kurtosis / (n * var * var) - 3;
+
+    skew = skew * std::sqrt(n * (n - 1)) / (n - 2);
+    kurt = (kurt * (n + 1) + 6) * (n - 1) / ((n - 2) * (n - 3));
+}
+
+}
+
 HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
 {
     if (openPrice == 0) {
@@ -271,19 +315,18 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
 
             if (fState.snapshots.size() >= kMomentumDurations[m] + 1) {
                 {
-                    double value = 0;
-                    double valueSqr = 0;
+                    double sum = 0;
+                    double sumSqr = 0;
                     double prevPrice = fState.snapshots[0].lastPrice;
                     for (int32_t t = 1; t < kMomentumDurations[m] + 1; ++t) {
                         double currPrice = fState.snapshots[t].lastPrice;
                         double changeRate = currPrice / prevPrice - 1.0;
-                        value += changeRate;
-                        valueSqr += changeRate * changeRate;
+                        sum += changeRate;
+                        sumSqr += changeRate * changeRate;
                         prevPrice = currPrice;
                     }
-                    double mean = value * (1.0 / kMomentumDurations[m]);
-                    double meanM1 = value * (1.0 / (kMomentumDurations[m] - 1));
-                    double variance = valueSqr * (1.0 / (kMomentumDurations[m] - 1)) - meanM1 * meanM1;
+                    double mean = sum * (1.0 / kMomentumDurations[m]);
+                    double variance = (sumSqr - sum * sum * (1.0 / (kMomentumDurations[m] - 1))) * (1.0 / (kMomentumDurations[m] - 1));
                     double std = std::sqrt(std::max(0.0, variance));
 
                     factor.openMean = mean;
@@ -292,19 +335,18 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
                 }
 
                 {
-                    double value = 0;
-                    double valueSqr = 0;
+                    double sum = 0;
+                    double sumSqr = 0;
                     double prevPrice = prevPrice = fState.snapshots[fState.snapshots.size() - kMomentumDurations[m] - 1].lastPrice;
                     for (int32_t t = fState.snapshots.size() - kMomentumDurations[m]; t < fState.snapshots.size(); ++t) {
                         double currPrice = fState.snapshots[t].lastPrice;
                         double changeRate = currPrice / prevPrice - 1.0;
-                        value += changeRate;
-                        valueSqr += changeRate * changeRate;
+                        sum += changeRate;
+                        sumSqr += changeRate * changeRate;
                         prevPrice = currPrice;
                     }
-                    double mean = value * (1.0 / kMomentumDurations[m]);
-                    double meanM1 = value * (1.0 / (kMomentumDurations[m] - 1));
-                    double variance = valueSqr * (1.0 / (kMomentumDurations[m] - 1)) - meanM1 * mean;
+                    double mean = sum * (1.0 / kMomentumDurations[m]);
+                    double variance = (sumSqr - sum * sum * (1.0 / (kMomentumDurations[m] - 1))) * (1.0 / (kMomentumDurations[m] - 1));
                     double std = std::sqrt(std::max(0.0, variance));
 
                     factor.highMean = mean;
@@ -336,7 +378,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
             }
 
             std::vector<double> vwap(n);
-            double lastVWAP = NAN;
+            double lastVWAP = openPrice;
             for (size_t i = 0; i < n; ++i) {
                 if (volumeGather[i] != 0) {
                     lastVWAP = static_cast<double>(amountGather[i]) / static_cast<double>(volumeGather[i]);
@@ -406,56 +448,55 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
                 totalVolume += fState.snapshots[i].volume;
             }
 
+            computeSkewKurt(factorList.volatility[0].vwapSkew, factorList.volatility[0].vwapKurt, vwap.data(), vwap.data() + vwap.size());
+            factorList.volatility[2].vwapSkew = factorList.volatility[1].vwapSkew = factorList.volatility[0].vwapSkew;
+            factorList.volatility[2].vwapKurt = factorList.volatility[1].vwapKurt = factorList.volatility[0].vwapKurt;
+
             for (int32_t l = 0; l < 3; ++l) {
                 auto &range = ranges[l];
                 auto &factor = factorList.volatility[l];
 
-                double sumSqr = 0;
-                double sumPosSqr = 0;
-                double sumPosSqrSqr = 0;
-                int32_t nPositive = 0;
-                for (int32_t i = std::max(1, range.start); i <= range.stop; ++i) {
-                    double r = vwap[i] / vwap[i - 1] - 1.0;
-                    double r2 = r * r;
-                    sumSqr += r2;
-                    if (r > 0) {
-                        sumPosSqr += r2;
-                        sumPosSqrSqr += r2 * r2;
-                        ++nPositive;
+                if (range.start <= range.stop) {
+                    double sumSqr = 0;
+                    double sumPosSqr = 0;
+                    double sumPosSqrSqr = 0;
+                    int32_t nPositive = 0;
+                    for (int32_t i = std::max(1, range.start); i <= range.stop; ++i) {
+                        double r = vwap[i] / vwap[i - 1] - 1.0;
+                        double r2 = r * r;
+                        sumSqr += r2;
+                        if (r > 0) {
+                            sumPosSqr += r2;
+                            sumPosSqrSqr += r2 * r2;
+                            ++nPositive;
+                        }
                     }
-                }
 
-                double upwardVol = 0;
-                double upwardVolRatio = 0;
-                double upwardVolStd = 0;
-                if (sumSqr != 0) {
-                    upwardVol = std::sqrt(sumPosSqr);
-                    upwardVolRatio = sumPosSqr / sumSqr;
-                    upwardVolStd = (sumPosSqrSqr - (sumPosSqr * sumPosSqr) / nPositive) / nPositive;
-                }
+                    if (sumSqr != 0) {
+                        factor.upVolume = std::sqrt(sumPosSqr);
+                        factor.upRatio = sumPosSqr / sumSqr;
+                        if (nPositive > 1) {
+                            factor.upStd = std::sqrt(std::max(0.0, (sumPosSqrSqr - (sumPosSqr * sumPosSqr) / (nPositive - 1)) / (nPositive - 1)));
+                        }
+                    }
 
-                if (range.last != -1) {
                     factor.time = range.count * 0.25;
                     factor.consecTime = (range.stop - range.start + 1) * 0.25;
                     factor.turnover = static_cast<double>(range.amount) / floatMV * 0.01;
                     factor.amountRatio = static_cast<double>(range.amount) / totalAmount;
                     factor.volumeRatio = static_cast<double>(range.volume) / totalVolume;
 
-                    if (range.start <= range.stop) {
-                        int64_t lcsAmount = 0;
-                        int64_t lcsVolume = 0;
-                        for (int32_t i = range.start; i <= range.stop; ++i) {
-                            lcsAmount += amountGather[i];
-                            lcsVolume += volumeGather[i];
-                        }
-                        factor.consecTurnover = static_cast<double>(lcsAmount) / floatMV * 0.01;
-                        factor.consecAmountRatio = static_cast<double>(lcsAmount) / totalAmount;
-                        factor.consecVolumeRatio = static_cast<double>(lcsVolume) / totalVolume;
+                    int64_t lcsAmount = 0;
+                    int64_t lcsVolume = 0;
+                    for (int32_t i = range.start; i <= range.stop; ++i) {
+                        lcsAmount += amountGather[i];
+                        lcsVolume += volumeGather[i];
                     }
+                    factor.consecTurnover = static_cast<double>(lcsAmount) / floatMV * 0.01;
+                    factor.consecAmountRatio = static_cast<double>(lcsAmount) / totalAmount;
+                    factor.consecVolumeRatio = static_cast<double>(lcsVolume) / totalVolume;
 
-                    factor.upVolume = upwardVol;
-                    factor.upRatio = upwardVolRatio;
-                    factor.upStd = nPositive ? upwardVolRatio : NAN;
+                    computeSkewKurt(factor.consecVwapSkew, factor.consecVwapKurt, vwap.data() + range.start, vwap.data() + range.stop + 1);
                 }
             }
         }
