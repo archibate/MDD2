@@ -100,7 +100,10 @@ void MDS::start(const char *config)
         SPDLOG_ERROR("invalid config date: {}", g_date);
         throw std::runtime_error("invalid config date");
     }
+}
 
+void MDS::startReceive()
+{
     g_replayThread = std::jthread([] (std::stop_token stop) {
         std::vector<Tick> tickBuf;
 
@@ -141,19 +144,29 @@ void MDS::start(const char *config)
 
         if (g_timeScale > 0) {
             // int64_t lastTimestamp = tickBuf.empty() ? 0 : L2::timestampToAbsoluteMilliseconds(tickBuf.front().timestamp, 10);
-            int64_t lastTimestamp = L2::timestampToAbsoluteMilliseconds(9'15'00'000, 10);
+            int64_t lastTimestamp = timestampAbsLinear(9'30'00'000);
             int64_t nextSleepTime = steadyNow();
             int64_t timeScale = static_cast<int64_t>(1'000'000 * g_timeScale);
+            bool openCalled = false;
 
             for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
                 Tick &tick = tickBuf[i];
 
+                if (!openCalled && tick.timestamp >= 9'30'00'000) [[unlikely]] {
+                    openCalled = true;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                    SPDLOG_CRITICAL("mds replay: open call auction finished");
+                    nextSleepTime = steadyNow();
+                }
+
                 if (tick.timestamp > lastTimestamp) {
-                    int64_t thisTimestamp = L2::timestampToAbsoluteMilliseconds(tick.timestamp, 10);
-                    int64_t dt = thisTimestamp - lastTimestamp;
-                    lastTimestamp = thisTimestamp;
-                    nextSleepTime += dt * timeScale;
-                    spinSleepUntil(nextSleepTime);
+                    if (openCalled) {
+                        int64_t thisTimestamp = timestampAbsLinear(tick.timestamp);
+                        int64_t dt = thisTimestamp - lastTimestamp;
+                        lastTimestamp = thisTimestamp;
+                        nextSleepTime += dt * timeScale;
+                        spinSleepUntil(nextSleepTime);
+                    }
                 } else if (tick.timestamp < lastTimestamp) [[unlikely]] {
                     throw std::runtime_error("timestamp out of order");
                 }

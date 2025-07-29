@@ -225,17 +225,9 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 void MDD::start(const char *config)
 {
     parseDailyConfig(config);
-
-    SPDLOG_INFO("initializing trade api");
-    OES::start(config);
-    SPDLOG_INFO("subscribing {} stocks", MDD::g_stockCodes.size());
-    MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
     MDS::start(config);
-    while (!MDS::isStarted()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
+    SPDLOG_INFO("initializing {} stocks", MDD::g_stockCodes.size());
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_tickCaches[i].start();
     }
@@ -264,6 +256,20 @@ void MDD::start(const char *config)
         });
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    SPDLOG_INFO("initializing trade api");
+    OES::start(config);
+
+    SPDLOG_INFO("subscribing {} stocks", MDD::g_stockCodes.size());
+    MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
+
+    SPDLOG_INFO("start receiving stock quotes");
+    MDS::startReceive();
+    while (!MDS::isStarted()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    SPDLOG_INFO("system fully started");
 }
 
 void MDD::stop()

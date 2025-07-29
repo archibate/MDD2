@@ -42,11 +42,13 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, TickCache::
 void StockCompute::start()
 {
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(stockState().upperLimitPrice / 1.02)) - 1;
-    // upperLimitPriceApproach = static_cast<int32_t>(std::floor(stockState().upperLimitPrice * 0.996)) - 2;
+    openPrice = stockState().preClosePrice;
+
     fState.currSnapshot.lastPrice = stockState().preClosePrice;
     fState.currSnapshot.numTrades = 0;
     fState.currSnapshot.volume = 0;
     fState.currSnapshot.amount = 0;
+
     futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
 
 #if REPLAY
@@ -182,10 +184,12 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTrade(MDS::Tick &tick)
     if (tick.timestamp < 9'30'00'000) {
         openPrice = tick.price;
         openVolume += tick.quantity;
-    } else if (tick.price >= upperLimitPriceApproach) {
-        approachingLimitUp = true;
+        return;
     }
 
+    if (tick.price >= upperLimitPriceApproach) {
+        approachingLimitUp = true;
+    }
     addRealTrade(tick.timestamp, tick.price, tick.quantity);
 }
 
@@ -304,7 +308,7 @@ HEAT_ZONE_COMPUTE void computeSkewKurt(double &skew, double &kurt, double *first
 
 HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
 {
-    if (openPrice == 0 || fState.snapshots.empty()) {
+    if (fState.snapshots.empty()) {
         return false;
     }
 
@@ -367,142 +371,142 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
     {
         std::memset(&factorList.volatility, -1, sizeof(factorList.volatility));
 
-        size_t n = (fState.snapshots.size() + 4) / 5;
-        if (n != 0) {
-            thread_local std::vector<int64_t> volumeGather;
-            thread_local std::vector<int64_t> amountGather;
-            thread_local std::vector<double> vwap;
+        size_t n = fState.snapshots.size() / 5 + 1;
+        thread_local std::vector<int64_t> volumeGather;
+        thread_local std::vector<int64_t> amountGather;
+        thread_local std::vector<double> vwap;
 
-            volumeGather.clear();
-            amountGather.clear();
-            volumeGather.resize(n);
-            amountGather.resize(n);
-            for (size_t i = 0; i < fState.snapshots.size(); ++i) {
-                volumeGather[i / 5] += fState.snapshots[i].volume;
-                amountGather[i / 5] += fState.snapshots[i].amount;
+        volumeGather.clear();
+        amountGather.clear();
+        volumeGather.resize(n);
+        amountGather.resize(n);
+        amountGather[0] = openVolume * openPrice;
+        volumeGather[0] = openVolume;
+        for (size_t i = 0; i < fState.snapshots.size(); ++i) {
+            volumeGather[i / 5] += fState.snapshots[i].volume;
+            amountGather[i / 5] += fState.snapshots[i].amount;
+        }
+
+        vwap.resize(n);
+        double lastVWAP = openPrice;
+        for (size_t i = 0; i < n; ++i) {
+            if (volumeGather[i] != 0) {
+                lastVWAP = static_cast<double>(amountGather[i]) / static_cast<double>(volumeGather[i]);
             }
+            vwap[i] = lastVWAP;
+        }
 
-            vwap.resize(n);
-            double lastVWAP = openPrice;
-            for (size_t i = 0; i < n; ++i) {
-                if (volumeGather[i] != 0) {
-                    lastVWAP = static_cast<double>(amountGather[i]) / static_cast<double>(volumeGather[i]);
-                }
-                vwap[i] = lastVWAP;
-            }
+        double p0 = stockState().preClosePrice;
+        double p4 = p0 * 1.04;
+        double p5 = p0 * 1.05;
+        double p6 = p0 * 1.06;
+        double p7 = p0 * 1.07;
+        double p8 = p0 * 1.08;
+        double p9 = p0 * 1.09;
 
-            double p0 = stockState().preClosePrice;
-            double p4 = p0 * 1.04;
-            double p5 = p0 * 1.05;
-            double p6 = p0 * 1.06;
-            double p7 = p0 * 1.07;
-            double p8 = p0 * 1.08;
-            double p9 = p0 * 1.09;
+        struct LCSRange
+        {
+            int64_t amount{};
+            int64_t volume{};
+            int32_t count{};
 
-            struct LCSRange
+            int32_t start{0};
+            int32_t stop{-1};
+            int32_t curr{-1};
+            int32_t last{-1};
+
+            void lcsAdd(int32_t i)
             {
-                int64_t amount{};
-                int64_t volume{};
-                int32_t count{};
-
-                int32_t start{0};
-                int32_t stop{-1};
-                int32_t curr{-1};
-                int32_t last{-1};
-
-                void lcsAdd(int32_t i)
-                {
-                    if (curr == -1 || i != last + 1) {
-                        curr = i;
-                    } else if (i - curr >= stop - start) {
-                        start = curr;
-                        stop = i;
-                    }
-                    last = i;
+                if (curr == -1 || i != last + 1) {
+                    curr = i;
+                } else if (i - curr >= stop - start) {
+                    start = curr;
+                    stop = i;
                 }
-            };
-
-            LCSRange ranges[3];
-            for (size_t i = 0; i < n; ++i) {
-                double v = vwap[i];
-                if (v >= p4 && v <= p7) {
-                    ranges[0].lcsAdd(i);
-                    ranges[0].amount += amountGather[i];
-                    ranges[0].volume += volumeGather[i];
-                    ++ranges[0].count;
-                }
-                if (v >= p5 && v <= p8) {
-                    ranges[1].lcsAdd(i);
-                    ranges[1].amount += amountGather[i];
-                    ranges[1].volume += volumeGather[i];
-                    ++ranges[1].count;
-                }
-                if (v >= p6 && v <= p9) {
-                    ranges[2].lcsAdd(i);
-                    ranges[2].amount += amountGather[i];
-                    ranges[2].volume += volumeGather[i];
-                    ++ranges[2].count;
-                }
+                last = i;
             }
+        };
 
-            double floatMV = factorList.rawFactors[FactorEnum::circ_mv];
-            int64_t totalAmount = 0;
-            int64_t totalVolume = 0;
-            for (size_t i = 0; i < fState.snapshots.size(); ++i) {
-                totalAmount += fState.snapshots[i].amount;
-                totalVolume += fState.snapshots[i].volume;
+        LCSRange ranges[3];
+        for (size_t i = 0; i < n; ++i) {
+            double v = vwap[i];
+            if (v >= p4 && v <= p7) {
+                ranges[0].lcsAdd(i);
+                ranges[0].amount += amountGather[i];
+                ranges[0].volume += volumeGather[i];
+                ++ranges[0].count;
             }
+            if (v >= p5 && v <= p8) {
+                ranges[1].lcsAdd(i);
+                ranges[1].amount += amountGather[i];
+                ranges[1].volume += volumeGather[i];
+                ++ranges[1].count;
+            }
+            if (v >= p6 && v <= p9) {
+                ranges[2].lcsAdd(i);
+                ranges[2].amount += amountGather[i];
+                ranges[2].volume += volumeGather[i];
+                ++ranges[2].count;
+            }
+        }
 
-            computeSkewKurt(factorList.volatility[0].vwapSkew, factorList.volatility[0].vwapKurt, vwap.data(), vwap.data() + vwap.size());
-            factorList.volatility[2].vwapSkew = factorList.volatility[1].vwapSkew = factorList.volatility[0].vwapSkew;
-            factorList.volatility[2].vwapKurt = factorList.volatility[1].vwapKurt = factorList.volatility[0].vwapKurt;
+        double floatMV = factorList.rawFactors[FactorEnum::circ_mv];
+        int64_t totalAmount = 0;
+        int64_t totalVolume = 0;
+        for (size_t i = 0; i < n; ++i) {
+            totalAmount += amountGather[i];
+            totalVolume += volumeGather[i];
+        }
 
-            for (int32_t l = 0; l < 3; ++l) {
-                auto &range = ranges[l];
-                auto &factor = factorList.volatility[l];
+        computeSkewKurt(factorList.volatility[0].vwapSkew, factorList.volatility[0].vwapKurt, vwap.data(), vwap.data() + vwap.size());
+        factorList.volatility[2].vwapSkew = factorList.volatility[1].vwapSkew = factorList.volatility[0].vwapSkew;
+        factorList.volatility[2].vwapKurt = factorList.volatility[1].vwapKurt = factorList.volatility[0].vwapKurt;
 
-                if (range.start <= range.stop) {
-                    double sumSqr = 0;
-                    double sumPosSqr = 0;
-                    double sumPosSqrSqr = 0;
-                    int32_t nPositive = 0;
-                    for (int32_t i = std::max(1, range.start); i <= range.stop; ++i) {
-                        double r = vwap[i] / vwap[i - 1] - 1.0;
-                        double r2 = r * r;
-                        sumSqr += r2;
-                        if (r > 0) {
-                            sumPosSqr += r2;
-                            sumPosSqrSqr += r2 * r2;
-                            ++nPositive;
-                        }
+        for (int32_t l = 0; l < 3; ++l) {
+            auto &range = ranges[l];
+            auto &factor = factorList.volatility[l];
+
+            if (range.start <= range.stop) {
+                double sumSqr = 0;
+                double sumPosSqr = 0;
+                double sumPosSqrSqr = 0;
+                int32_t nPositive = 0;
+                for (int32_t i = std::max(1, range.start); i <= range.stop; ++i) {
+                    double r = vwap[i] / vwap[i - 1] - 1.0;
+                    double r2 = r * r;
+                    sumSqr += r2;
+                    if (r > 0) {
+                        sumPosSqr += r2;
+                        sumPosSqrSqr += r2 * r2;
+                        ++nPositive;
                     }
-
-                    if (sumSqr != 0) {
-                        factor.upVolume = std::sqrt(sumPosSqr);
-                        factor.upRatio = sumPosSqr / sumSqr;
-                        if (nPositive > 1) {
-                            factor.upStd = std::sqrt(std::max(0.0, (sumPosSqrSqr - (sumPosSqr * sumPosSqr) / (nPositive - 1)) / (nPositive - 1)));
-                        }
-                    }
-
-                    factor.time = range.count * 0.25;
-                    factor.consecTime = (range.stop - range.start + 1) * 0.25;
-                    factor.turnover = static_cast<double>(range.amount) / floatMV * 0.01;
-                    factor.amountRatio = static_cast<double>(range.amount) / totalAmount;
-                    factor.volumeRatio = static_cast<double>(range.volume) / totalVolume;
-
-                    int64_t lcsAmount = 0;
-                    int64_t lcsVolume = 0;
-                    for (int32_t i = range.start; i <= range.stop; ++i) {
-                        lcsAmount += amountGather[i];
-                        lcsVolume += volumeGather[i];
-                    }
-                    factor.consecTurnover = static_cast<double>(lcsAmount) / floatMV * 0.01;
-                    factor.consecAmountRatio = static_cast<double>(lcsAmount) / totalAmount;
-                    factor.consecVolumeRatio = static_cast<double>(lcsVolume) / totalVolume;
-
-                    computeSkewKurt(factor.consecVwapSkew, factor.consecVwapKurt, vwap.data() + range.start, vwap.data() + range.stop + 1);
                 }
+
+                if (sumSqr != 0) {
+                    factor.upVolume = std::sqrt(sumPosSqr);
+                    factor.upRatio = sumPosSqr / sumSqr;
+                    if (nPositive > 1) {
+                        factor.upStd = std::sqrt(std::max(0.0, (sumPosSqrSqr - (sumPosSqr * sumPosSqr) / (nPositive - 1)) / (nPositive - 1)));
+                    }
+                }
+
+                factor.time = range.count * 0.25;
+                factor.consecTime = (range.stop - range.start + 1) * 0.25;
+                factor.turnover = static_cast<double>(range.amount) / floatMV * 0.01;
+                factor.amountRatio = static_cast<double>(range.amount) / totalAmount;
+                factor.volumeRatio = static_cast<double>(range.volume) / totalVolume;
+
+                int64_t lcsAmount = 0;
+                int64_t lcsVolume = 0;
+                for (int32_t i = range.start; i <= range.stop; ++i) {
+                    lcsAmount += amountGather[i];
+                    lcsVolume += volumeGather[i];
+                }
+                factor.consecTurnover = static_cast<double>(lcsAmount) / floatMV * 0.01;
+                factor.consecAmountRatio = static_cast<double>(lcsAmount) / totalAmount;
+                factor.consecVolumeRatio = static_cast<double>(lcsVolume) / totalVolume;
+
+                computeSkewKurt(factor.consecVwapSkew, factor.consecVwapKurt, vwap.data() + range.start, vwap.data() + range.stop + 1);
             }
         }
     }
@@ -532,7 +536,6 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
 
         std::memset(&factorList.kaiyuan, -1, sizeof(factorList.kaiyuan));
         if (!transactions.empty()) {
-
             double A0 = std::min_element(transactions.begin(), transactions.end())->meanAmount;
             double A100 = std::max_element(transactions.begin(), transactions.end())->meanAmount;
 
