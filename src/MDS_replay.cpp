@@ -25,7 +25,7 @@ int32_t g_date;
 
 namespace MDS
 {
-double g_timeScale = 1.0 / 16.0;
+double g_timeScale = 1.0 / 8.0;
 }
 
 void MDS::subscribe(int32_t const *stocks, int32_t n)
@@ -156,7 +156,11 @@ void MDS::startReceive()
                     openCalled = true;
                     std::this_thread::sleep_for(std::chrono::milliseconds(300));
                     SPDLOG_CRITICAL("mds replay: open call auction finished");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
                     nextSleepTime = steadyNow();
+                }
+                if (openCalled && tick.timestamp < 9'30'00'000) [[unlikely]] {
+                    throw;
                 }
 
                 if (tick.timestamp > lastTimestamp) {
@@ -167,8 +171,6 @@ void MDS::startReceive()
                         nextSleepTime += dt * timeScale;
                         spinSleepUntil(nextSleepTime);
                     }
-                } else if (tick.timestamp < lastTimestamp) [[unlikely]] {
-                    throw std::runtime_error("timestamp out of order");
                 }
 
                 if (g_subscribedStocks.contains(tick.stock)) {

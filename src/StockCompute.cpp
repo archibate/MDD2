@@ -64,15 +64,18 @@ COLD_ZONE void StockCompute::stop()
 
 COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
 {
+    int32_t linearTimestamp = timestampLinear(timestamp);
     auto &tickCache = MDD::g_tickCaches[stockIndex()];
     for (int32_t i = 0; i < tickCache.wantBuyTimestamp.size(); ++i) {
-        if (timestamp == tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed)) {
+        int32_t wantTimestamp = tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed);
+        wantTimestamp += wantTimestamp & 1;
+        if (linearTimestamp == wantTimestamp) {
             factorListCache[i].dumpFactors(timestamp, stockState().stockCode);
             return;
         }
     }
 
-    factorList.dumpFactors(timestampAdvance(futureTimestamp, -100), stockState().stockCode);
+    SPDLOG_ERROR("cannot find in factor cache: stock={} timestamp={}", stockState().stockCode, timestamp);
 }
 
 int64_t StockCompute::upSellOrderAmount() const
@@ -126,7 +129,6 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTimer()
     }
 
     if (approachingLimitUp) {
-        // 603662
         futureTimestamp = fState.nextTickTimestamp;
         firstCompute = true;
     }
@@ -182,7 +184,7 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTrade(MDS::Tick &tick)
     }
 
     if (tick.timestamp < 9'30'00'000) {
-        openPrice = tick.price;
+        fState.currSnapshot.lastPrice = openPrice = tick.price;
         openVolume += tick.quantity;
         return;
     }
@@ -330,7 +332,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
                         prevPrice = currPrice;
                     }
                     double mean = sum * (1.0 / kMomentumDurations[m]);
-                    double variance = (sumSqr - sum * sum * (1.0 / (kMomentumDurations[m] - 1))) * (1.0 / (kMomentumDurations[m] - 1));
+                    double variance = sumSqr * (1.0 / kMomentumDurations[m]) - mean * mean;
                     double std = std::sqrt(std::max(0.0, variance));
 
                     factor.openMean = mean;
@@ -350,7 +352,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
                         prevPrice = currPrice;
                     }
                     double mean = sum * (1.0 / kMomentumDurations[m]);
-                    double variance = (sumSqr - sum * sum * (1.0 / (kMomentumDurations[m] - 1))) * (1.0 / (kMomentumDurations[m] - 1));
+                    double variance = sumSqr * (1.0 / kMomentumDurations[m]) - mean * mean;
                     double std = std::sqrt(std::max(0.0, variance));
 
                     factor.highMean = mean;
@@ -362,7 +364,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
                 factor.diffZScore = factor.openZScore - factor.highZScore;
 
             } else {
-                std::memset(&factor, -1, sizeof(factor));
+                std::memset(&factor, 0, sizeof(factor));
             }
         }
     }
@@ -529,7 +531,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
         transactions.clear();
         transactions.reserve(fState.snapshots.size() / 10);
         double prevPrice = fState.snapshots[0].lastPrice;
-        for (size_t i = 0; i < fState.snapshots.size(); ++i) {
+        for (size_t i = 1; i < fState.snapshots.size(); ++i) {
             if (fState.snapshots[i].numTrades != 0) {
                 double currPrice = fState.snapshots[i].lastPrice;
                 double r = currPrice / prevPrice - 1.0;

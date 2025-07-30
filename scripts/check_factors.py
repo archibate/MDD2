@@ -2,6 +2,9 @@
 
 import pandas as pd
 import numpy as np
+import warnings
+
+warnings.filterwarnings('ignore')
 
 def linear_time(time: pd.Series):
     time = (pd.to_datetime(time, format='%H%M%S%f') - pd.to_datetime('09:30:00', format='%H:%M:%S')).dt.total_seconds()
@@ -26,18 +29,26 @@ del correct['up_stat']
 del correct['limit']
 del correct['return_value']
 correct['ts_code'] = pd.to_numeric(correct['ts_code'].str.split('.').str[0])
-# correct = pd.read_csv('build/pred_correct.csv')
+correct.columns = [x.replace('.', 'o') for x in correct.columns]
+correct['timestamp'] = correct['timestamp'].astype('int32')
 
+# correct = pd.read_csv('build/pred_correct.csv')
 factors = pd.read_csv('build/factors.csv')
+# factors = pd.read_csv('build/pred_correct.csv').reindex(columns=factors.columns)
+
 factors = factors[factors['timestamp'] != 0]
-factors = factors[factors['ts_code'] != 600683]
 assert isinstance(factors, pd.DataFrame)
 
 correct = correct.groupby('ts_code').last().reset_index().sort_values('ts_code').reset_index(drop=True)
 factors = factors.groupby('ts_code').last().reset_index().sort_values('ts_code').reset_index(drop=True)
 correct, factors = correct.merge(factors[['ts_code']], how='inner', on='ts_code').sort_values('ts_code').reset_index(drop=True), factors.merge(correct[['ts_code']], how='inner', on='ts_code').sort_values('ts_code').reset_index(drop=True)
-factors = factors[['ts_code', 'timestamp'] + [c for c in factors.columns if 'QUA' in c or 'TS' in c or 'SR' in c]]
+factors = factors[['ts_code', 'timestamp'] + [c for c in factors.columns if 'SR' in c or 'TS' in c or 'QUA' in c]]
 correct = correct[factors.columns]
+
+# afternoon vwap_skew_kurt incorrect
+# some SR incorrect
+# some filter_QUA incorrect
+# some TS incorrect
 
 print(correct)
 print(factors)
@@ -48,7 +59,7 @@ diff = (((factors - correct) / correct).replace([np.inf, -np.inf], np.nan).filln
 diff[correct.isna() & factors.isna()] = 0
 diff[correct.isna() & ~factors.isna()] = -9999
 diff[~correct.isna() & factors.isna()] = 9999
-diff['timestamp'] = correct['timestamp'].astype('int32')
+diff['timestamp'] = correct['timestamp']
 diff['time'] = ((linear_time(correct['timestamp']) * 1000) + 90) // 100 / 10 - linear_time(factors['timestamp']) # type: ignore
 diff = diff.sort_values('timestamp').reset_index()
 print(diff)
