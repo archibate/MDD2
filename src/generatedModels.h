@@ -1,5 +1,5 @@
 #pragma once
 
-bool predictModel(const float *a);
-float predictModelRegression(const float *a);
-float predictModelClassification(const float *a);
+bool predictModel(const double *a);
+double predictModelRegression(const double *a);
+double predictModelClassification(const double *a);

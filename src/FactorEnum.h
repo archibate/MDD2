@@ -137,6 +137,9 @@ enum FactorEnum
     crowdind_last_20,
     crowdind_h5_last_20,
 
+    prev_U_mean_return,
+    circ_mv,
+
     EMA_6_normalized,
     MIDPOINT_14_normalized,
     T3_5_normalized,
@@ -158,9 +161,7 @@ enum FactorEnum
     close_ma_20_normalized,
     return_std_20_vol_adj,
     total_amount_quantile,
-    prev_U_mean_return,
     stock_character,
-    circ_mv,
     kMaxFactors
 };
 

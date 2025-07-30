@@ -13,6 +13,13 @@ endif()
 if (NOT DEFINED REPLAY)
     set(REPLAY ON)
 endif()
+if (NOT DEFINED BUILD_FOR_NE)
+    if (NOT REPLAY)
+        set(BUILD_FOR_NE ON)
+    else()
+        set(BUILD_FOR_NE OFF)
+    endif()
+endif()
 if (NOT DEFINED ASYNC_LOGGER)
     set(ASYNC_LOGGER OFF)
 endif()
@@ -60,24 +67,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Disruptor::Disruptor)
 add_subdirectory(3rd/header-only)
 target_link_libraries(${PROJECT_NAME} PRIVATE header-only)
 
-if (CMAKE_BUILD_TYPE MATCHES "Release")
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
-    if (IPO_SUPPORTED)
-        set_target_properties(${PROJECT_NAME} PROPERTIES
-            INTERPROCEDURAL_OPTIMIZATION TRUE
-        )
-    endif()
-
-    include(CheckCXXCompilerFlag)
-    check_cxx_compiler_flag(-mavx2 HAS_AVX2)
-    if (HAS_AVX2)
-        target_compile_options(${PROJECT_NAME} PRIVATE -mavx2 -mfma -mf16c)
-    endif()
-
-    target_compile_options(${PROJECT_NAME} PRIVATE -w)
-endif()
-
 if (BUILD_SPEED)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         UNITY_BUILD TRUE
@@ -92,8 +81,24 @@ if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo" OR CMAKE_BUILD_TYPE MATCHES "Debug
     target_compile_options(${PROJECT_NAME} PRIVATE -ggdb -Werror=return-type)
 endif()
 
-if (BUILD_FOR_SZ)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE -DSZ)
-else()
-    target_compile_definitions(${PROJECT_NAME} PRIVATE -DSH)
+if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo" OR CMAKE_BUILD_TYPE MATCHES "Release")
+    if (REPLAY)
+        target_compile_options(${PROJECT_NAME} PRIVATE -march=native -mavx512dq -mavx512f)
+    elseif (BUILD_FOR_NE)
+        target_compile_options(${PROJECT_NAME} PRIVATE -march=btver2 -mcx16 -msahf -mmovbe -maes -mpclmul -mpopcnt -mabm -mno-lwp -mfma -mno-fma4 -mno-xop -mbmi -mbmi2 -mno-tbm -mavx -mavx2 -msse4.2 -msse4.1 -mlzcnt -mno-rtm -mno-hle -mrdrnd -mf16c -mfsgsbase -mrdseed -mprfchw -madx -mfxsr -mxsave -mxsaveopt -mpku --param l1-cache-size=48 --param l1-cache-line-size=64 --param l2-cache-size=1024 -mtune=btver2 -mavx512dq -mavx512f)
+    else()
+        target_compile_options(${PROJECT_NAME} PRIVATE -march=core-avx2 -mcx16 -msahf -mmovbe -maes -mpclmul -mpopcnt -mabm -mno-lwp -mfma -mno-fma4 -mno-xop -mbmi -mbmi2 -mno-tbm -mavx -mavx2 -msse4.2 -msse4.1 -mlzcnt -mno-rtm -mno-hle -mrdrnd -mf16c -mfsgsbase -mrdseed -mprfchw -madx -mfxsr -mxsave -mxsaveopt -mpku --param l1-cache-size=32 --param l1-cache-line-size=64 --param l2-cache-size=36864 -mtune=generic)
+    endif()
+endif()
+
+if (CMAKE_BUILD_TYPE MATCHES "Release")
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
+    if (IPO_SUPPORTED)
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            INTERPROCEDURAL_OPTIMIZATION TRUE
+        )
+    endif()
+
+    target_compile_options(${PROJECT_NAME} PRIVATE -w)
 endif()

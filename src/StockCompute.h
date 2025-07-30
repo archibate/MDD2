@@ -5,6 +5,7 @@
 #include "MDS.h"
 #include "config.h"
 #include "FactorList.h"
+#include "IIRState.h"
 
 
 struct StockState;
@@ -39,6 +40,7 @@ private:
         int32_t nextTickTimestamp{};
         Snapshot currSnapshot{};
         std::vector<Snapshot> snapshots;
+        std::unique_ptr<IIRState> iirState{};
     };
 
     struct BState
@@ -46,6 +48,7 @@ private:
         int32_t nextTickTimestamp{};
         Snapshot currSnapshot{};
         size_t oldSnapshotsCount{};
+        std::unique_ptr<IIRState> iirState{};
         bool savingMode{};
     };
 

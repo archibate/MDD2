@@ -289,6 +289,8 @@ for i, name in enumerate(feature_names):
     mapping[i] = feature_order.index(name)
 
 
+is_float = False
+
 print('Converting models')
 models = {}
 for k in ['regression', 'classification']:
@@ -304,7 +306,14 @@ convert_model = /data/daily_csv/{k}_model_{model_version}_reorder.cpp
         f.flush()
         subprocess.check_call(['lightgbm', f'config={f.name}'])
 
-    models[k] = procfile(f'/data/daily_csv/{k}_model_{model_version}_reorder.cpp', is_float=True, key=k, mapping=mapping)
+    models[k] = procfile(f'/data/daily_csv/{k}_model_{model_version}_reorder.cpp', is_float=is_float, key=k, mapping=mapping)
+
+if is_float:
+    ty = 'float'
+    p = 'f'
+else:
+    ty = 'double'
+    p = ''
 
 print('Generating C++ codes')
 for k, code in models.items():
@@ -312,12 +321,12 @@ for k, code in models.items():
     with open(f'src/_generated_model_{k}.inl', 'w') as f:
         f.write(code)
         f.write(f'''
-MODELDECL float {k}(const float *a) {{
+MODELDECL {ty} {k}(const {ty} *a) {{
     ''')
         if k == 'classification':
-            f.write(f'return 1.0f / (1.0f + expf(-{k}f(a))) - {benchmark_values[k]}f;')
+            f.write(f'return 1.0{p} / (1.0{p} + exp{p}(-{k}f(a))) - {benchmark_values[k]}{p};')
         else:
-            f.write(f'return {k}f(a) - {benchmark_values[k]}f;')
+            f.write(f'return {k}f(a) - {benchmark_values[k]}{p};')
         f.write(f'''
 }}
 ''')

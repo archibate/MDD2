@@ -1,6 +1,7 @@
 #pragma once
 
 #cmakedefine01 BUILD_FOR_SZ
+#cmakedefine01 BUILD_FOR_NE
 #cmakedefine01 BUILD_SPEED
 #cmakedefine01 REPLAY
 #cmakedefine01 ASYNC_LOGGER
@@ -20,6 +21,18 @@
 #define MARKET_NAME "SH"
 #define MARKET_NAME_LOWER "sh"
 #define MARKET_ID 1
+#endif
+
+#if !REPLAY
+#if BUILD_FOR_NE
+#ifndef NE
+#define NE 1
+#endif
+#endif
+#else
+#ifndef XC
+#define XC 1
+#endif
 #endif
 
 #define REPLAY_DATA_PATH "/home/ubuntu/data-cache"

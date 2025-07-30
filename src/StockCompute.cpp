@@ -2,9 +2,12 @@
 #include "StockState.h"
 #include "MDD.h"
 #include "timestamp.h"
+#include "IIRState.h"
 #include "heatZone.h"
+#include "generatedModels.h"
 #include <spdlog/spdlog.h>
 #include <cstring>
+#include <execution>
 
 namespace
 {
@@ -48,6 +51,9 @@ void StockCompute::start()
     fState.currSnapshot.numTrades = 0;
     fState.currSnapshot.volume = 0;
     fState.currSnapshot.amount = 0;
+
+    fState.iirState = std::make_unique<IIRState>();
+    bState.iirState = std::make_unique<IIRState>();
 
     futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
 
@@ -246,6 +252,8 @@ HEAT_ZONE_COMPUTE void StockCompute::saveSnapshot()
     bState.nextTickTimestamp = fState.nextTickTimestamp;
     bState.currSnapshot = fState.currSnapshot;
     bState.oldSnapshotsCount = fState.snapshots.size();
+    *bState.iirState = *fState.iirState;
+    bState.iirState.swap(fState.iirState);
 }
 
 HEAT_ZONE_COMPUTE void StockCompute::restoreSnapshot()
@@ -254,10 +262,12 @@ HEAT_ZONE_COMPUTE void StockCompute::restoreSnapshot()
     fState.nextTickTimestamp = bState.nextTickTimestamp;
     fState.currSnapshot = bState.currSnapshot;
     fState.snapshots.resize(bState.oldSnapshotsCount);
+    fState.iirState.swap(bState.iirState);
 }
 
 HEAT_ZONE_SNAPSHOT void StockCompute::stepSnapshot()
 {
+    fState.iirState->addVolumeTick(fState.currSnapshot.volume);
     fState.snapshots.push_back(fState.currSnapshot);
     fState.currSnapshot.numTrades = 0;
     fState.currSnapshot.volume = 0;
@@ -452,7 +462,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
             }
         }
 
-        double floatMV = factorList.rawFactors[FactorEnum::circ_mv];
+        double floatMV = factorList.floatMV;
         int64_t totalAmount = 0;
         int64_t totalVolume = 0;
         for (size_t i = 0; i < n; ++i) {
@@ -555,7 +565,7 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
             auto it70 = transactions.begin() + static_cast<size_t>(std::ceil(0.70 * transactions.size()));
             auto it90 = transactions.begin() + static_cast<size_t>(std::ceil(0.90 * transactions.size()));
             auto it96 = transactions.begin() + static_cast<size_t>(std::ceil(0.96 * transactions.size()));
-            std::sort(transactions.begin(), transactions.end());
+            std::sort(std::execution::unseq, transactions.begin(), transactions.end());
             // std::nth_element(transactions.begin(), it096, transactions.end());
             // std::nth_element(it096, it10, transactions.end());
             // std::nth_element(it10, it50, transactions.end());
@@ -624,17 +634,21 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
         }
     }
 
-    /* crowd factors */
+    /* crowdind factors */
     {
+        fState.iirState->finalCompute(factorList.crowdind);
     }
 
     return computeModel();
 }
 
-HEAT_ZONE_COMPUTE bool StockCompute::computeModel()
+HEAT_ZONE_MODEL bool StockCompute::computeModel()
 {
-    /* LightGBM here */
-    return true;
+    double cls = predictModelClassification(factorList.rawFactors);
+    double reg = predictModelRegression(factorList.rawFactors);
+    SPDLOG_DEBUG("model prediction: stock={} timestamp={} cls={} reg={}", stockState().stockCode, futureTimestamp, cls, reg);
+    return cls > 0 && reg > 0;
+    // return predictModel(factorList.rawFactors);
 }
 
 [[gnu::always_inline]] int32_t StockCompute::stockIndex() const

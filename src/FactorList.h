@@ -56,11 +56,23 @@ struct FactorList
         double signalReturn50; // SR_50
     };
 
+    struct Crowdind
+    {
+        double crowdIndTop20; // crowdind_20
+        double crowdIndLast500Top20; // crowdind_h5_20
+        double crowdIndBottom20; // crowdind_last_20
+        double crowdIndLast500Bottom20; // crowdind_h5_last_20
+    };
+
     union {
         struct {
             Momentum momentum[kMomentumDurations.size()];
             Volatility volatility[3];
             Kaiyuan kaiyuan;
+            Crowdind crowdind;
+            
+            double prevUMeanReturn;
+            double floatMV;
         };
 
         struct {
