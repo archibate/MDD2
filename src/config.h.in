@@ -1,9 +1,10 @@
 #pragma once
 
-#cmakedefine01 BUILD_FOR_SZ
-#cmakedefine01 BUILD_FOR_NE
 #cmakedefine01 BUILD_SPEED
+#cmakedefine01 BUILD_FOR_SZ
 #cmakedefine01 REPLAY
+#cmakedefine01 BUILD_FOR_NE
+#cmakedefine01 RECORD
 #cmakedefine01 ASYNC_LOGGER
 
 

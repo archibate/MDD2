@@ -19,8 +19,11 @@ struct alignas(64) StockState
     int32_t preClosePrice{};
     bool alive{};
 
-#if SH
+#if NE && SH
     uint32_t upperLimitPrice1000{};
+#endif
+#if NE && SZ
+    uint64_t upperLimitPrice10000{};
 #endif
 
     TickCache *tickCache{};

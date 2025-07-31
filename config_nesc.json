@@ -2,5 +2,27 @@
     "date": 20250731,
     "username": "18930727",
     "password": "220401",
+    "xele_config_file": "xele_config.txt",
+    "xele_trade_node": 0,
+    "xele_config": [
+        "DependentCounterVersion=2",
+        "ManagerURL=tcp://10.101.58.32:50000;tcp://10.101.58.33:50000",
+        "QueryURL=",
+        "TradeURL=",
+        "HeartBeatInterval=6",
+        "HeartBeatTimeOutCnt=3",
+        "OrderWarm=1",
+        "CpuCore=-1,9",
+        "SoftRspRcv=0",
+        "SocketBlockFlag=0",
+        "ApiMode=1",
+        "RecvSendDetach=1",
+        "SuperLog=0",
+        "IsJustConnectManager=0",
+        "AppID=DQsig:V1.0",
+        "FlowRebuildFlag=0",
+        "OperWay=7",
+        "PcPrefix="
+    ],
     "comment": "mds nesc config"
 }

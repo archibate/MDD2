@@ -42,7 +42,12 @@ struct Tick {
     union {
         NescForesight::TradeSz tradeSz;
         NescForesight::OrderSz orderSz;
-        uint8_t messageType;
+        struct {
+            uint8_t messageType;
+            uint32_t sequence;
+            uint8_t exchangeID;
+            char securityID[9];
+        };
     };
 };
 #endif

@@ -205,7 +205,13 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t startId, int32_t stopId, int64_t 
 
 HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 {
-    int32_t stock = std::atoi(tick.tickMergeSse.securityID);
+#if REPLAY
+    int32_t stock = tick.stock;
+#elif NE && SH
+    int32_t stock = std::strtoul(tick.tickMergeSse.securityID, nullptr, 10);
+#elif NE && SZ
+    int32_t stock = std::strtoul(tick.securityID, nullptr, 10);
+#endif
     int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {
         return;
@@ -260,6 +266,11 @@ void MDD::start(const char *config)
 
     SPDLOG_INFO("initializing trade api");
     OES::start(config);
+
+    while (!OES::isStarted()) {
+        SPDLOG_DEBUG("wait for trade initial");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
 
     SPDLOG_INFO("subscribing {} stocks", MDD::g_stockCodes.size());
     MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());

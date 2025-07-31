@@ -22,6 +22,11 @@ void OES::start(const char *config)
     }
 }
 
+void OES::isStarted()
+{
+    return true;
+}
+
 void OES::stop()
 {
 }

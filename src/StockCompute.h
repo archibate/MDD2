@@ -77,7 +77,7 @@ private:
     int64_t openVolume{};
     double floatMV{};
 
-#if REPLAY
+#if RECORD
     std::unique_ptr<FactorList[]> factorListCache;
 #endif
 

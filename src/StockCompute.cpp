@@ -1,5 +1,6 @@
 #include "StockCompute.h"
 #include "StockState.h"
+#include "config.h"
 #include "MDD.h"
 #include "timestamp.h"
 #include "IIRState.h"
@@ -58,7 +59,7 @@ void StockCompute::start()
 
     futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
 
-#if REPLAY
+#if RECORD
     factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<TickCache>().wantBuyTimestamp)>);
 #endif
 }
@@ -77,7 +78,7 @@ COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
         int32_t wantTimestamp = tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed);
         wantTimestamp += wantTimestamp & 1;
         if (linearTimestamp == wantTimestamp) {
-#if REPLAY
+#if RECORD
             factorListCache[i].dumpFactors(timestamp, stockState().stockCode);
 #endif
             return;
@@ -99,6 +100,7 @@ int64_t StockCompute::upSellOrderAmount() const
 
 HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
 {
+#if REPLAY
     if (tick.stock == 0) [[unlikely]] {
         logLimitUp(stockIndex(), tick.timestamp / 10 * 10,
                    static_cast<TickCache::Intent>(tick.timestamp % 10));
@@ -116,6 +118,41 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
     } else if (tick.isTrade()) {
         onTrade(tick);
     }
+
+#elif NE && SH
+    if (tick.tickMergeSse.tickType == 0) [[unlikely]] {
+        logLimitUp(stockIndex(), tick.tickMergeSse.tickTime * 10,
+                   static_cast<TickCache::Intent>(tick.tickMergeSse.tickBSFlag));
+        stop();
+        return;
+    }
+
+    switch (tick.tickMergeSse.tickType) {
+    case 'A':
+        onOrder(tick);
+        break;
+    case 'D':
+        onCancel(tick);
+        break;
+    case 'T':
+        onTrade(tick);
+        break;
+    default:
+        break;
+    }
+
+#elif NE && SZ
+    if (tick.messageType == 0) [[unlikely]] {
+        logLimitUp(stockIndex(), tick.tradeSz.transactTime / 10 * 10,
+                   static_cast<TickCache::Intent>(tick.tradeSz.transactTime % 10));
+        stop();
+        return;
+    }
+
+    switch (tick.messageType) {
+#error not implemented
+    }
+#endif
 }
 
 HEAT_ZONE_ORDBOOK void StockCompute::onTimer()
@@ -163,26 +200,53 @@ HEAT_ZONE_BUSY void StockCompute::onBusy()
 
 HEAT_ZONE_ORDBOOK void StockCompute::onOrder(MDS::Tick &tick)
 {
-    if (tick.price >= upperLimitPriceApproach && tick.isSellOrder()) {
+#if REPLAY
+    if (tick.isSellOrder() && tick.price >= upperLimitPriceApproach) {
         UpSell sell;
         sell.price = tick.price;
         sell.quantity = tick.quantity;
         upSellOrders.insert({tick.orderNo(), sell});
     }
+
+#elif NE && SH
+    if (tick.tickMergeSse.price >= upperLimitPriceApproach * 10) {
+        UpSell sell;
+        sell.price = tick.tickMergeSse.price / 10;
+        sell.quantity = tick.tickMergeSse.qty / 1000;
+        upSellOrders.insert({tick.tickMergeSse.sellOrderNo, sell});
+    }
+
+#elif NE && SZ
+#error not implemented
+#endif
 }
 
 HEAT_ZONE_ORDBOOK void StockCompute::onCancel(MDS::Tick &tick)
 {
+#if REPLAY
     if (tick.isSellOrder()) {
         auto it = upSellOrders.find(tick.orderNo());
         if (it != upSellOrders.end()) {
             upSellOrders.erase(it);
         }
     }
+
+#elif NE && SH
+    if (tick.tickMergeSse.tickBSFlag == '1') {
+        auto it = upSellOrders.find(tick.tickMergeSse.sellOrderNo);
+        if (it != upSellOrders.end()) {
+            upSellOrders.erase(it);
+        }
+    }
+
+#elif NE && SZ
+#error not implemented
+#endif
 }
 
 HEAT_ZONE_ORDBOOK void StockCompute::onTrade(MDS::Tick &tick)
 {
+#if REPLAY
     auto it = upSellOrders.find(tick.sellOrderNo);
     if (it != upSellOrders.end()) {
         it->second.quantity -= tick.quantity;
@@ -201,6 +265,33 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTrade(MDS::Tick &tick)
         approachingLimitUp = true;
     }
     addRealTrade(tick.timestamp, tick.price, tick.quantity);
+
+#elif NE && SH
+    int32_t quantity = tick.tickMergeSse.qty / 1000;
+    int32_t price = tick.tickMergeSse.price / 10;
+
+    auto it = upSellOrders.find(tick.tickMergeSse.sellOrderNo);
+    if (it != upSellOrders.end()) {
+        it->second.quantity -= quantity;
+        if (it->second.quantity <= 0) {
+            upSellOrders.erase(it);
+        }
+    }
+
+    if (tick.tickMergeSse.tickTime < 9'30'00'00) {
+        fState.currSnapshot.lastPrice = openPrice = price;
+        openVolume += quantity;
+        return;
+    }
+
+    if (price >= upperLimitPriceApproach) {
+        approachingLimitUp = true;
+    }
+    addRealTrade(tick.tickMergeSse.tickTime * 10, price, quantity);
+
+#elif NE && SZ
+#error not implemented
+#endif
 }
 
 HEAT_ZONE_ORDBOOK void StockCompute::addRealTrade(int32_t timestamp, int32_t price, int32_t quantity)
@@ -231,7 +322,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy()
     bool wantBuy = decideWantBuy();
     auto &tickCache = MDD::g_tickCaches[stockIndex()];
     tickCache.pushWantBuyTimestamp(futureTimestamp, wantBuy);
-#if REPLAY
+#if RECORD
     factorListCache[(tickCache.wantBuyCurrentIndex - 1) & (tickCache.wantBuyTimestamp.size() - 1)] = factorList;
 #endif
 
@@ -654,12 +745,12 @@ HEAT_ZONE_MODEL bool StockCompute::computeModel()
     return predictModel(factorList.rawFactors);
 }
 
-[[gnu::always_inline]] int32_t StockCompute::stockIndex() const
+int32_t StockCompute::stockIndex() const
 {
     return this - MDD::g_stockComputes.get();
 }
 
-[[gnu::always_inline]] StockState &StockCompute::stockState() const
+StockState &StockCompute::stockState() const
 {
     return MDD::g_stockStates[stockIndex()];
 }

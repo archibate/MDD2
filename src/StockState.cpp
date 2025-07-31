@@ -1,4 +1,5 @@
 #include "StockState.h"
+#include "config.h"
 #include "MDD.h"
 #include "OES.h"
 #include "timestamp.h"
@@ -19,7 +20,26 @@ void StockState::start()
 #if REPLAY
     preClosePrice = stat.preClosePrice;
     upperLimitPrice = stat.upperLimitPrice;
-#else NE
+#elif NE
+    switch (stat.marketType) {
+        case NescForesight::SSE:
+            preClosePrice = static_cast<int32_t>(std::round(stat.staticSseInfo.prevClosePx * 100));
+            upperLimitPrice = static_cast<int32_t>(std::round(stat.staticSseInfo.upperLimitPrice * 100));
+#if SH
+            upperLimitPrice1000 = static_cast<uint32_t>(upperLimitPrice) * 10;
+#endif
+            break;
+        case NescForesight::SZE:
+            preClosePrice = static_cast<int32_t>(std::round(stat.staticSzInfo.prevClosePx * 100));
+            upperLimitPrice = static_cast<int32_t>(std::round(stat.staticSzInfo.upperLimitPrice * 100));
+#if SZ
+            upperLimitPrice10000 = static_cast<uint64_t>(upperLimitPrice) * 100;
+#endif
+            break;
+        default:
+            SPDLOG_ERROR("failed to get static: stock={}", stockCode);
+            return;
+    }
 #endif
 
     SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={}",
@@ -37,7 +57,16 @@ void StockState::stop(int32_t timestamp)
     if (alive) {
         alive = false;
         MDS::Tick endSign{};
+#if REPLAY
+        endSign.stock = 0;
         endSign.timestamp = timestamp;
+#elif NE && SH
+        endSign.tickMergeSse.tickType = 0;
+        endSign.tickMergeSse.tickTime = timestamp / 10;
+        endSign.tickMergeSse.tickBSFlag = timestamp % 10;
+#elif NE && SZ
+        endSign.tradeSz.transactTime = timestamp;
+#endif
         MDD::g_tickCaches[stockIndex()].pushTick(endSign);
     }
 }
@@ -60,6 +89,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         stop(tick.timestamp + static_cast<int32_t>(intent));
         return;
     }
+
 #elif NE && SH
     bool limitUp = tick.tickMergeSse.tickType == 'A' && tick.tickMergeSse.tickBSFlag == '0'
         && tick.tickMergeSse.price == upperLimitPrice1000 && tick.tickMergeSse.tickTime >= 9'30'00'00
@@ -76,7 +106,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     }
 
 #elif NE && SZ
-    static_assert(0, "not implemented");
+#error not implemented
 #endif
 
     tickCache->pushTick(tick);
@@ -91,12 +121,12 @@ HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
     SPDLOG_INFO("response order: messageType={} stock={} orderStatus={} orderSysId={} orderPrice={} orderQuantity={}", rspOrder.messageType, rspOrder.stockCode, rspOrder.orderStatus, rspOrder.orderSysId, rspOrder.orderPrice, rspOrder.orderQuantity);
 }
 
-[[gnu::always_inline]] int32_t StockState::stockIndex() const
+int32_t StockState::stockIndex() const
 {
     return this - MDD::g_stockStates.get();
 }
 
-[[gnu::always_inline]] StockCompute &StockState::stockCompute() const
+StockCompute &StockState::stockCompute() const
 {
     return MDD::g_stockComputes[stockIndex()];
 }

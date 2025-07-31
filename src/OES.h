@@ -2,11 +2,16 @@
 
 
 #include <cstdint>
+#include "config.h"
+#if XC || NE
+#include <xele/XeleSecuritiesUserApiStruct.h>
+#endif
 
 
 namespace OES
 {
 
+#if REPLAY
 struct ReqOrder
 {
     int32_t stockCode;
@@ -31,7 +36,20 @@ struct RspOrder
     int32_t cancelledQuantity;
 };
 
+#elif XC || NE
+struct ReqOrder
+{
+    CXeleReqOrderInsertField xeleReq;
+};
+
+struct RspOrder
+{
+    CXeleRspOrderInsertField xeleRsp;
+};
+#endif
+
 void start(const char *config);
+bool isStarted();
 void stop();
 void sendRequest(ReqOrder &reqOrder);
 

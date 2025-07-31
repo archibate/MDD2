@@ -28,10 +28,11 @@ int main(int argc, char **argv)
 {
     SPDLOG_CRITICAL("program started, compiled at {} {}", __DATE__, __TIME__);
 #define COMPILE_FLAG(x) SPDLOG_CRITICAL("compile flag: " #x "={}", x);
-    COMPILE_FLAG(BUILD_FOR_SZ);
-    COMPILE_FLAG(BUILD_FOR_NE);
     COMPILE_FLAG(BUILD_SPEED);
+    COMPILE_FLAG(BUILD_FOR_SZ);
     COMPILE_FLAG(REPLAY);
+    COMPILE_FLAG(BUILD_FOR_NE);
+    COMPILE_FLAG(RECORD);
     COMPILE_FLAG(ASYNC_LOGGER);
 #undef COMPILE_FLAG
     for (int i = 0; i < argc; ++i) {
