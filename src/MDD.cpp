@@ -205,7 +205,8 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t startId, int32_t stopId, int64_t 
 
 HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 {
-    int32_t id = g_stockIdLut[static_cast<int16_t>(tick.stock & 0x7FFF)];
+    int32_t stock = std::atoi(tick.tickMergeSse.securityID);
+    int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {
         return;
     }

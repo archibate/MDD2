@@ -3,8 +3,8 @@
 #include "config.h"
 #include <cstdint>
 #if REPLAY
-#include "L2/Tick.h"
 #include "L2/Stat.h"
+#include "L2/Tick.h"
 #elif NE
 #include <nesc/Const.h>
 #include <nesc/SseMdStruct.h>
@@ -16,24 +16,9 @@ namespace MDS
 {
 
 #if REPLAY
-using Tick = L2::Tick;
 using Stat = L2::Stat;
+using Tick = L2::Tick;
 #elif NE
-
-#if SH
-struct Tick {
-    NescForesight::TickMergeSse tickMergeSse;
-};
-#endif
-
-#if SZ
-struct Tick {
-    union {
-        NescForesight::TradeSz tradeSz;
-        NescForesight::OrderSz orderSz;
-    };
-};
-#endif
 
 struct Stat {
     NescForesight::MarketType marketType;
@@ -42,6 +27,25 @@ struct Stat {
         NescForesight::StaticSzInfo staticSzInfo;
     };
 };
+
+#if SH
+struct Tick {
+    union {
+        NescForesight::TickMergeSse tickMergeSse;
+        uint8_t messageType;
+    };
+};
+#endif
+
+#if SZ
+struct Tick {
+    union {
+        NescForesight::TradeSz tradeSz;
+        NescForesight::OrderSz orderSz;
+        uint8_t messageType;
+    };
+};
+#endif
 
 #endif
 

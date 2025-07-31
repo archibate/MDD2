@@ -16,8 +16,11 @@ void StockState::start()
     tickCache = &MDD::g_tickCaches[stockIndex()];
 
     auto stat = MDS::getStatic(stockCode);
+#if REPLAY
     preClosePrice = stat.preClosePrice;
     upperLimitPrice = stat.upperLimitPrice;
+#else NE
+#endif
 
     SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={}",
                  stockCode, preClosePrice, upperLimitPrice);
@@ -45,6 +48,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         return;
     }
 
+#if REPLAY
     bool limitUp = tick.buyOrderNo != 0 && tick.sellOrderNo == 0 && tick.quantity > 0
         && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000 && tick.timestamp < 14'57'00'000;
     if (limitUp) {
@@ -56,6 +60,24 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         stop(tick.timestamp + static_cast<int32_t>(intent));
         return;
     }
+#elif NE && SH
+    bool limitUp = tick.tickMergeSse.tickType == 'A' && tick.tickMergeSse.tickBSFlag == '0'
+        && tick.tickMergeSse.price == upperLimitPrice1000 && tick.tickMergeSse.tickTime >= 9'30'00'00
+        && tick.tickMergeSse.tickTime < 14'57'00'00;
+    if (limitUp) {
+        int32_t timestamp = tick.tickMergeSse.tickTime * 10;
+        auto intent = tickCache->checkWantBuyAtTimestamp(timestamp);
+        if (intent == TickCache::WantBuy) [[likely]] {
+            OES::sendRequest(reqOrder);
+        }
+
+        stop(timestamp + static_cast<int32_t>(intent));
+        return;
+    }
+
+#elif NE && SZ
+    static_assert(0, "not implemented");
+#endif
 
     tickCache->pushTick(tick);
 }

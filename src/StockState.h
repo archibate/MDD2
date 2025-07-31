@@ -3,6 +3,7 @@
 #include <array>
 #include <absl/container/btree_map.h>
 #include <vector>
+#include "config.h"
 #include "MDS.h"
 #include "OES.h"
 #include "FactorList.h"
@@ -17,6 +18,10 @@ struct alignas(64) StockState
     int32_t upperLimitPrice{};
     int32_t preClosePrice{};
     bool alive{};
+
+#if SH
+    uint32_t upperLimitPrice1000{};
+#endif
 
     TickCache *tickCache{};
 

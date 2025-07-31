@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <cassert>
 
 namespace
 {
@@ -81,6 +82,40 @@ MDS::Stat MDS::getStatic(int32_t stock)
     }
 }
 
+namespace
+{
+
+#if SH
+void handleShTickMerge(const uint8_t *buf, int len)
+{
+    assert(buf[0] == MSG_TYPE_TICK_MERGE_SSE);
+    auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));
+    if (tick.tickMergeSse.channelNo > 6 || tick.tickMergeSse.channelNo < 1) [[unlikely]]
+        return;
+    MDD::handleTick(tick);
+}
+#endif
+
+#if SZ
+void handleSzTradeAndOrder(const uint8_t *buf, int len)
+{
+    assert(buf[0] == MSG_TYPE_TRADE_SZ || buf[0] == MSG_TYPE_ORDER_SZ);
+    MDD::handleTick(const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf)));
+}
+#endif
+
+void handleShSnapShotLevel1(const uint8_t *buf, int len)
+{
+    assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SSE);
+}
+
+void handleSzSnapShotLevel1(const uint8_t *buf, int len)
+{
+    assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SZ);
+}
+
+}
+
 void MDS::start(const char *config)
 {
     std::string username;
@@ -118,6 +153,7 @@ void MDS::start(const char *config)
             .m_mcastPort = 23501,
             .m_bindCpuId = kMDSBindCpu,
             .m_nicType = NescForesight::E_NIC_SOLARFLARE_EFVI,
+            .handler = handleShTickMerge,
 
             .m_backupIntName = "enp2s0f0",
             .m_backupLocalIp = "10.102.139.102",
@@ -137,6 +173,7 @@ void MDS::start(const char *config)
             .m_mcastPort = 16599,
             .m_bindCpuId = kMDSBindCpu,
             .m_nicType = NescForesight::E_NIC_SOLARFLARE_EFVI,
+            .m_handler = handleSzTradeAndOrder,
 
             .m_backupIntName = "enp2s0f0",
             .m_backupLocalIp = "10.107.52.102",
