@@ -81,7 +81,7 @@ MDS::Stat MDS::getStatic(int32_t stock)
             return {};
         }
         if (stat->securityStatus[0] || stat->securityStatus[3] || stat->securityStatus[4] || stat->securityStatus[5] || stat->securityStatus[9] || stat->securityStatus[16] || stat->securityStatus[17]) {
-            SPDLOG_WARN("stock has bad product status: stock={} status={:.20s}", stock, stat->securityStatus);
+            SPDLOG_WARN("stock has bad product status: stock={} status={:.20s}", stock, reinterpret_cast<const char *>(stat->securityStatus));
         }
         return {.marketType = NescForesight::SZE, .staticSzInfo = *stat};
     }
