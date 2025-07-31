@@ -8,25 +8,26 @@
 #include <xele/XeleSecuritiesTraderApi.h>
 #include <fstream>
 #include <cstdio>
+#include <cstdlib>
 #include "LOG.h"
 
 namespace
 {
 
-void fmtSecurityId(TXeleSecuritiesIDType securityID, int32_t stock)
-{
-    securityID[5] = '0' + stock % 10;
-    stock /= 10;
-    securityID[4] = '0' + stock % 10;
-    stock /= 10;
-    securityID[3] = '0' + stock % 10;
-    stock /= 10;
-    securityID[2] = '0' + stock % 10;
-    stock /= 10;
-    securityID[1] = '0' + stock % 10;
-    stock /= 10;
-    securityID[0] = '0' + stock % 10;
-}
+// void fmtSecurityId(TXeleSecuritiesIDType securityID, int32_t stock)
+// {
+//     securityID[5] = '0' + stock % 10;
+//     stock /= 10;
+//     securityID[4] = '0' + stock % 10;
+//     stock /= 10;
+//     securityID[3] = '0' + stock % 10;
+//     stock /= 10;
+//     securityID[2] = '0' + stock % 10;
+//     stock /= 10;
+//     securityID[1] = '0' + stock % 10;
+//     stock /= 10;
+//     securityID[0] = '0' + stock % 10;
+// }
 
 class XeleTdSpi final : public XeleSecuritiesTraderSpi
 {
@@ -117,6 +118,13 @@ private:
 XeleTdSpi *g_userSpi;
 XeleSecuritiesTraderApi *g_tradeApi;
 int32_t g_requestID;
+int32_t g_maxUserLocalID;
+
+std::string g_username;
+std::string g_password;
+std::string g_xeleConfigFile;
+int32_t g_xeleTradeNode;
+
 
 /// 艾科管理中心登录应答,当只有登录管理中心的需求时，收到该回报即可进行管理中心相关接口操作
 void XeleTdSpi::onRspLoginManager(CXeleRspUserLoginManagerField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
@@ -138,7 +146,7 @@ void XeleTdSpi::onRspLogin(CXeleRspUserLoginField* pRspField, CXeleRspInfo* pRsp
     if (pRspInfo->ErrorID == 0)
     {
         canQuery = true;
-        CContext::getInstance()->m_MaxUserLocalID = pRspField->MaxUserLocalID;
+        g_maxUserLocalID = pRspField->MaxUserLocalID;
         LOGf(INFO, "now can use query interface, maxUserLocalID:%d\n", pRspField->MaxUserLocalID);
     }
     else
@@ -225,7 +233,7 @@ void XeleTdSpi::onFrontTradeDisconnected(int nReason)
     /// 可以在回调函数中处理，也可以进行实时的异常检测另起线程处理
     ///*********************************///
     /// 先发送登出请求，取消用户注册权限
-    CommInterface::getInstance()->pUserApi->reqLogout(MyConfigure::getInstance()->TDUser.data(), g_RequestID++);
+    g_tradeApi->reqLogout(g_username.c_str(), g_requestID++);
     LOGf(INFO, "reqLogout\n");
     sleep(2);
     /// 此处等待所有连接都断开后，再进行下一步处理
@@ -239,8 +247,8 @@ void XeleTdSpi::onFrontTradeDisconnected(int nReason)
     LOGf(INFO, "now api disconnect,start re-login\n");
 
     /// 发送登录请求，重新获取账户权限
-    while (CommInterface::getInstance()->pUserApi->reqLogin(MyConfigure::getInstance()->TDConfigFilePath.c_str(), MyConfigure::getInstance()->TDUser.data(), MyConfigure::getInstance()->TDPassword.data(),
-        MyConfigure::getInstance()->TDNode, MyConfigure::getInstance()->TDMarket, g_RequestID++))
+    while (g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(),
+                                   g_xeleTradeNode, '0' + MARKET_ID, ++g_requestID) != 0)
     {
         LOGf(ERROR, "call reqLogin fail,try again\n");
         sleep(3);
@@ -273,219 +281,219 @@ void XeleTdSpi::onApiMsg(int ret, const char* strFormat, ...)
 //////////////////////////////
 
 /// 报单应答
-void XeleTdSpi::onRspInsertOrder(CXeleRspOrderInsertField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
+HEAT_ZONE_RSPORDER void XeleTdSpi::onRspInsertOrder(CXeleRspOrderInsertField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    extern CStrategyTrade* g_pStrategy; g_pStrategy->perfTick(PerfTickRspInsertOrder);
-
-    // SPDLOG_TRACE("onRspInsertOrder {}", nRequestID);
-    Td_RtnOrder rtnOrder;
-    std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
-    std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    rtnOrder.msgType = MsgType_RspOrder;
-    rtnOrder.bsType = pRspField->Direction;
-    rtnOrder.symbolId = atoi(pRspField->SecuritiesID);
-    rtnOrder.orderSysId = pRspField->OrderSysID;
-    rtnOrder.userLocalId = pRspField->UserLocalID;
-    rtnOrder.origOrdPrice = pRspField->LimitPrice * 10000;
-    rtnOrder.origOrdQty = pRspField->Volume;
-    if (pRspInfo->ErrorID == 0)
-        rtnOrder.ordStatus = ODRSTAT_REPORTED;
-    else
-        rtnOrder.ordStatus = ODRSTAT_ERROR;
-    rtnOrder.errorId = pRspInfo->ErrorID;
-    rtnOrder.requestId = nRequestID;
-
-    uint32_t index = stoi(pRspField->SecuritiesID) % 1000000;
-    uint32_t channelIndex = CContext::getInstance()->m_SymobolList[index].channelNo % MyConfigure::getInstance()->ChannelNum;
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RspOrder;
-    std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
-    MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
+    // extern CStrategyTrade* g_pStrategy; g_pStrategy->perfTick(PerfTickRspInsertOrder);
+    //
+    // // SPDLOG_TRACE("onRspInsertOrder {}", nRequestID);
+    // Td_RtnOrder rtnOrder;
+    // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
+    // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // rtnOrder.msgType = MsgType_RspOrder;
+    // rtnOrder.bsType = pRspField->Direction;
+    // rtnOrder.symbolId = atoi(pRspField->SecuritiesID);
+    // rtnOrder.orderSysId = pRspField->OrderSysID;
+    // rtnOrder.userLocalId = pRspField->UserLocalID;
+    // rtnOrder.origOrdPrice = pRspField->LimitPrice * 10000;
+    // rtnOrder.origOrdQty = pRspField->Volume;
+    // if (pRspInfo->ErrorID == 0)
+    //     rtnOrder.ordStatus = ODRSTAT_REPORTED;
+    // else
+    //     rtnOrder.ordStatus = ODRSTAT_ERROR;
+    // rtnOrder.errorId = pRspInfo->ErrorID;
+    // rtnOrder.requestId = nRequestID;
+    //
+    // uint32_t index = stoi(pRspField->SecuritiesID) % 1000000;
+    // uint32_t channelIndex = CContext::getInstance()->m_SymobolList[index].channelNo % MyConfigure::getInstance()->ChannelNum;
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RspOrder;
+    // std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
+    // MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
 };
 
 /// 报单错误回报
 void XeleTdSpi::onErrRtnInsertOrder(CXeleRspOrderInsertField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    Td_RtnOrder rtnOrder;
-    std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
-    std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    rtnOrder.msgType = MsgType_RspOrder;
-    rtnOrder.bsType = pRspField->Direction;
-    rtnOrder.symbolId = atoi(pRspField->SecuritiesID);
-    rtnOrder.orderSysId = pRspField->OrderSysID;
-    rtnOrder.userLocalId = pRspField->UserLocalID;
-    rtnOrder.origOrdPrice = pRspField->LimitPrice * 10000;
-    rtnOrder.origOrdQty = pRspField->Volume;
-    rtnOrder.ordStatus = ODRSTAT_ERROR;
-    rtnOrder.errorId = pRspInfo->ErrorID;
-    rtnOrder.requestId = nRequestID;
-
-    uint32_t index = stoi(pRspField->SecuritiesID) % 1000000;
-    uint32_t channelIndex = CContext::getInstance()->m_SymobolList[index].channelNo % MyConfigure::getInstance()->ChannelNum;
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RspOrder;
-    std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
-    MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
+    // Td_RtnOrder rtnOrder;
+    // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
+    // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // rtnOrder.msgType = MsgType_RspOrder;
+    // rtnOrder.bsType = pRspField->Direction;
+    // rtnOrder.symbolId = atoi(pRspField->SecuritiesID);
+    // rtnOrder.orderSysId = pRspField->OrderSysID;
+    // rtnOrder.userLocalId = pRspField->UserLocalID;
+    // rtnOrder.origOrdPrice = pRspField->LimitPrice * 10000;
+    // rtnOrder.origOrdQty = pRspField->Volume;
+    // rtnOrder.ordStatus = ODRSTAT_ERROR;
+    // rtnOrder.errorId = pRspInfo->ErrorID;
+    // rtnOrder.requestId = nRequestID;
+    //
+    // uint32_t index = stoi(pRspField->SecuritiesID) % 1000000;
+    // uint32_t channelIndex = CContext::getInstance()->m_SymobolList[index].channelNo % MyConfigure::getInstance()->ChannelNum;
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RspOrder;
+    // std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
+    // MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
 };
 
 /// 撤单应答
-void XeleTdSpi::onRspCancelOrder(CXeleRspOrderActionField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
+HEAT_ZONE_RSPORDER void XeleTdSpi::onRspCancelOrder(CXeleRspOrderActionField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    Td_RtnOrder rtnOrder;
-    std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
-    std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    rtnOrder.msgType = MsgType_RspCancel;
-    rtnOrder.orderSysId = pRspField->OrderSysID;
-    rtnOrder.userLocalId = pRspField->UserLocalID;
-    if (pRspInfo->ErrorID == 0)
-        rtnOrder.ordStatus = ODRSTAT_REPORTED;
-    else
-        rtnOrder.ordStatus = ODRSTAT_ERROR;
-    rtnOrder.errorId = pRspInfo->ErrorID;
-    rtnOrder.requestId = nRequestID;
-
-    uint32_t channelNo = CContext::getInstance()->RegisterLoaclID(pRspField->OrigUserLocalID, 0);
-    uint32_t channelIndex = channelNo % MyConfigure::getInstance()->ChannelNum;
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RspCancel;
-    std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
-    MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
+    // Td_RtnOrder rtnOrder;
+    // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
+    // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // rtnOrder.msgType = MsgType_RspCancel;
+    // rtnOrder.orderSysId = pRspField->OrderSysID;
+    // rtnOrder.userLocalId = pRspField->UserLocalID;
+    // if (pRspInfo->ErrorID == 0)
+    //     rtnOrder.ordStatus = ODRSTAT_REPORTED;
+    // else
+    //     rtnOrder.ordStatus = ODRSTAT_ERROR;
+    // rtnOrder.errorId = pRspInfo->ErrorID;
+    // rtnOrder.requestId = nRequestID;
+    //
+    // uint32_t channelNo = CContext::getInstance()->RegisterLoaclID(pRspField->OrigUserLocalID, 0);
+    // uint32_t channelIndex = channelNo % MyConfigure::getInstance()->ChannelNum;
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RspCancel;
+    // std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
+    // MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
 };
 
 /// 撤单错误回报
 void XeleTdSpi::onErrRtnCancelOrder(CXeleRspOrderActionField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    Td_RtnOrder rtnOrder;
-    std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
-    std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    rtnOrder.msgType = MsgType_RspCancel;
-    rtnOrder.orderSysId = pRspField->OrderSysID;
-    rtnOrder.userLocalId = pRspField->UserLocalID;
-    rtnOrder.ordStatus = ODRSTAT_ERROR;
-    rtnOrder.errorId = pRspInfo->ErrorID;
-    rtnOrder.requestId = nRequestID;
-
-    uint32_t channelNo = CContext::getInstance()->RegisterLoaclID(pRspField->OrigUserLocalID, 0);
-    uint32_t channelIndex = channelNo % MyConfigure::getInstance()->ChannelNum;
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RspCancel;
-    std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
-    MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
+    // Td_RtnOrder rtnOrder;
+    // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
+    // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // rtnOrder.msgType = MsgType_RspCancel;
+    // rtnOrder.orderSysId = pRspField->OrderSysID;
+    // rtnOrder.userLocalId = pRspField->UserLocalID;
+    // rtnOrder.ordStatus = ODRSTAT_ERROR;
+    // rtnOrder.errorId = pRspInfo->ErrorID;
+    // rtnOrder.requestId = nRequestID;
+    //
+    // uint32_t channelNo = CContext::getInstance()->RegisterLoaclID(pRspField->OrigUserLocalID, 0);
+    // uint32_t channelIndex = channelNo % MyConfigure::getInstance()->ChannelNum;
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RspCancel;
+    // std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
+    // MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
 };
 
 /// 报单回报
-void XeleTdSpi::onRtnOrder(CXeleRtnOrderField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
+HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnOrder(CXeleRtnOrderField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    if (pRspField->OrderStatus == ODRSTAT_REPORTED) {
-        extern CStrategyTrade* g_pStrategy; g_pStrategy->perfTick(PerfTickRtnOrder);
-    }
-
-    Td_RtnOrder rtnOrder;
-    std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
-    std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    rtnOrder.msgType = MsgType_RtnOrder;
-    rtnOrder.bsType = pRspField->Direction;
-    rtnOrder.symbolId = atoi(pRspField->SecuritiesID);
-    rtnOrder.orderSysId = pRspField->OrderSysID;
-    rtnOrder.userLocalId = pRspField->UserLocalID;
-    rtnOrder.origOrdPrice = pRspField->LimitPrice * 10000;
-    rtnOrder.origOrdQty = pRspField->Volume;
-    rtnOrder.origUserLocalId = pRspField->OrigUserLocalID;
-    rtnOrder.origOrderSysId = pRspField->OrigOrderSysID;
-    rtnOrder.ordStatus = pRspField->OrderStatus;
-    rtnOrder.trdQty = pRspField->TradeVolume;
-    rtnOrder.leaveQty = pRspField->LeavesVolume;
-    rtnOrder.errorId = pRspInfo->ErrorID;
-    rtnOrder.requestId = nRequestID;
-
-    uint32_t index = stoi(pRspField->SecuritiesID) % 1000000;
-    uint32_t channelIndex = CContext::getInstance()->m_SymobolList[index].channelNo % MyConfigure::getInstance()->ChannelNum;
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RtnOrder;
-    std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
-    MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
+    // if (pRspField->OrderStatus == ODRSTAT_REPORTED) {
+    //     extern CStrategyTrade* g_pStrategy; g_pStrategy->perfTick(PerfTickRtnOrder);
+    // }
+    //
+    // Td_RtnOrder rtnOrder;
+    // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
+    // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // rtnOrder.msgType = MsgType_RtnOrder;
+    // rtnOrder.bsType = pRspField->Direction;
+    // rtnOrder.symbolId = atoi(pRspField->SecuritiesID);
+    // rtnOrder.orderSysId = pRspField->OrderSysID;
+    // rtnOrder.userLocalId = pRspField->UserLocalID;
+    // rtnOrder.origOrdPrice = pRspField->LimitPrice * 10000;
+    // rtnOrder.origOrdQty = pRspField->Volume;
+    // rtnOrder.origUserLocalId = pRspField->OrigUserLocalID;
+    // rtnOrder.origOrderSysId = pRspField->OrigOrderSysID;
+    // rtnOrder.ordStatus = pRspField->OrderStatus;
+    // rtnOrder.trdQty = pRspField->TradeVolume;
+    // rtnOrder.leaveQty = pRspField->LeavesVolume;
+    // rtnOrder.errorId = pRspInfo->ErrorID;
+    // rtnOrder.requestId = nRequestID;
+    //
+    // uint32_t index = stoi(pRspField->SecuritiesID) % 1000000;
+    // uint32_t channelIndex = CContext::getInstance()->m_SymobolList[index].channelNo % MyConfigure::getInstance()->ChannelNum;
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RtnOrder;
+    // std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
+    // MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
 };
 
 /// 成交回报
-void XeleTdSpi::onRtnTrade(CXeleRtnTradeField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
+HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnTrade(CXeleRtnTradeField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    Td_RtnOrder rtnOrder;
-    std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
-    std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    rtnOrder.msgType = MsgType_RtnTrade;
-    rtnOrder.bsType = pRspField->Direction;
-    rtnOrder.symbolId = atoi(pRspField->SecuritiesID);
-    rtnOrder.orderSysId = pRspField->OrderSysID;
-    rtnOrder.userLocalId = pRspField->UserLocalID;
-    rtnOrder.origOrdPrice = pRspField->LimitPrice * 10000;
-    rtnOrder.origOrdQty = pRspField->Volume;
-    rtnOrder.tradeId = pRspField->TradeID;
-    rtnOrder.trdPrice = pRspField->TradePrice * 10000;
-    rtnOrder.trdQty = pRspField->TradeVolume;
-    rtnOrder.cumQty = pRspField->CumQty;
-    rtnOrder.leaveQty = pRspField->LeavesVolume;
-    rtnOrder.ordStatus = pRspField->OrderStatus;
-    rtnOrder.errorId = pRspInfo->ErrorID;
-    rtnOrder.requestId = nRequestID;
-
-    uint32_t index = stoi(pRspField->SecuritiesID) % 1000000;
-    uint32_t channelIndex = CContext::getInstance()->m_SymobolList[index].channelNo % MyConfigure::getInstance()->ChannelNum;
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RtnTrade;
-    std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
-    MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
+    // Td_RtnOrder rtnOrder;
+    // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
+    // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // rtnOrder.msgType = MsgType_RtnTrade;
+    // rtnOrder.bsType = pRspField->Direction;
+    // rtnOrder.symbolId = atoi(pRspField->SecuritiesID);
+    // rtnOrder.orderSysId = pRspField->OrderSysID;
+    // rtnOrder.userLocalId = pRspField->UserLocalID;
+    // rtnOrder.origOrdPrice = pRspField->LimitPrice * 10000;
+    // rtnOrder.origOrdQty = pRspField->Volume;
+    // rtnOrder.tradeId = pRspField->TradeID;
+    // rtnOrder.trdPrice = pRspField->TradePrice * 10000;
+    // rtnOrder.trdQty = pRspField->TradeVolume;
+    // rtnOrder.cumQty = pRspField->CumQty;
+    // rtnOrder.leaveQty = pRspField->LeavesVolume;
+    // rtnOrder.ordStatus = pRspField->OrderStatus;
+    // rtnOrder.errorId = pRspInfo->ErrorID;
+    // rtnOrder.requestId = nRequestID;
+    //
+    // uint32_t index = stoi(pRspField->SecuritiesID) % 1000000;
+    // uint32_t channelIndex = CContext::getInstance()->m_SymobolList[index].channelNo % MyConfigure::getInstance()->ChannelNum;
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RtnTrade;
+    // std::memcpy(sCachData.FnParam1, &rtnOrder, sizeof(Td_RtnOrder));
+    // MarketMaker::getInstance()->m_ChannelPool[channelIndex]->tryPush(sCachData);
 };
 
 /// 报单查询应答
 void XeleTdSpi::onRspQryOrder(CXeleRspQryOrderField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    Td_RspQryOrder RspQryOrder;
-    std::memset(&RspQryOrder, 0, sizeof(Td_RspQryOrder));
-    RspQryOrder.msgType = MsgType_RspQryOrder;
-    RspQryOrder.symbolId = atoi(pRspField->SecuritiesID);
-    std::memcpy(RspQryOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    RspQryOrder.requestId = nRequestID;                     // 自增长请求号
-    RspQryOrder.userLocalId = pRspField->UserLocalID;       // 用户自定义编号
-    RspQryOrder.orderSysId = pRspField->OrderSysID;         // 系统订单号
-    RspQryOrder.bsType = pRspField->Direction;              // 买卖方向 TdDirectionType
-    RspQryOrder.ordPrice = pRspField->LimitPrice * 10000;   // 委托价格, 单位精确到元后四位, 即1元 = 10000
-    RspQryOrder.ordQty = pRspField->Volume;                 // 委托数量
-    RspQryOrder.trdQty = pRspField->TradeVolume;            // 成交数量
-    RspQryOrder.trdMoney = pRspField->TradeAmount * 100000; // 成交金额 (单位精确到元后四位, 即: 1元=10000)
-    RspQryOrder.ordStatus = pRspField->OrderStatus;         // 订单当前状态 TdOrdStatus
-    RspQryOrder.errorId = pRspInfo->ErrorID;                // 错误码
-    RspQryOrder.isLast = bIsLast;                           // 是否结束
-
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RspQryOrder;
-    std::memcpy(sCachData.FnParam1, &RspQryOrder, sizeof(Td_RspQryOrder));
-    MarketMaker::getInstance()->m_NotifyPool->tryPush(sCachData);
+    // Td_RspQryOrder RspQryOrder;
+    // std::memset(&RspQryOrder, 0, sizeof(Td_RspQryOrder));
+    // RspQryOrder.msgType = MsgType_RspQryOrder;
+    // RspQryOrder.symbolId = atoi(pRspField->SecuritiesID);
+    // std::memcpy(RspQryOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // RspQryOrder.requestId = nRequestID;                     // 自增长请求号
+    // RspQryOrder.userLocalId = pRspField->UserLocalID;       // 用户自定义编号
+    // RspQryOrder.orderSysId = pRspField->OrderSysID;         // 系统订单号
+    // RspQryOrder.bsType = pRspField->Direction;              // 买卖方向 TdDirectionType
+    // RspQryOrder.ordPrice = pRspField->LimitPrice * 10000;   // 委托价格, 单位精确到元后四位, 即1元 = 10000
+    // RspQryOrder.ordQty = pRspField->Volume;                 // 委托数量
+    // RspQryOrder.trdQty = pRspField->TradeVolume;            // 成交数量
+    // RspQryOrder.trdMoney = pRspField->TradeAmount * 100000; // 成交金额 (单位精确到元后四位, 即: 1元=10000)
+    // RspQryOrder.ordStatus = pRspField->OrderStatus;         // 订单当前状态 TdOrdStatus
+    // RspQryOrder.errorId = pRspInfo->ErrorID;                // 错误码
+    // RspQryOrder.isLast = bIsLast;                           // 是否结束
+    //
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RspQryOrder;
+    // std::memcpy(sCachData.FnParam1, &RspQryOrder, sizeof(Td_RspQryOrder));
+    // MarketMaker::getInstance()->m_NotifyPool->tryPush(sCachData);
 };
 
 /// 成交查询应答
 void XeleTdSpi::onRspQryTrade(CXeleRspQryTradeField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    Td_RspQryTrade RspQryTrade;
-    std::memset(&RspQryTrade, 0, sizeof(Td_RspQryTrade));
-    RspQryTrade.msgType = MsgType_RspQryTrade; // 消息类型
-    RspQryTrade.symbolId = atoi(pRspField->SecuritiesID);
-    std::memcpy(RspQryTrade.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    RspQryTrade.requestId = nRequestID;                    // 自增长请求号
-    RspQryTrade.userLocalId = pRspField->UserLocalID;      // 用户自定义编号
-    RspQryTrade.orderSysId = pRspField->OrderSysID;        // 系统订单号
-    RspQryTrade.tradeId = pRspField->TradeID;              // 成交编号
-    RspQryTrade.bsType = pRspField->Direction;             // 买卖方向 TdDirectionType
-    RspQryTrade.trdPrice = pRspField->TradePrice * 10000;  // 成交价格 (单位精确到元后四位, 即: 1元=10000)
-    RspQryTrade.trdQty = pRspField->TradeVolume;           // 成交数量
-    RspQryTrade.trdMoney = pRspField->TradeAmount * 10000; // 成交金额 (单位精确到元后四位, 即: 1元=10000)
-    RspQryTrade.ordStatus = pRspField->OrderStatus;        // 订单当前状态 TdOrdStatus
-    RspQryTrade.errorId = pRspInfo->ErrorID;               // 错误码
-    RspQryTrade.isLast = bIsLast;                          // 是否结束
-
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RspQryTrade;
-    std::memcpy(sCachData.FnParam1, &RspQryTrade, sizeof(Td_RspQryTrade));
-    MarketMaker::getInstance()->m_NotifyPool->tryPush(sCachData);
+    // Td_RspQryTrade RspQryTrade;
+    // std::memset(&RspQryTrade, 0, sizeof(Td_RspQryTrade));
+    // RspQryTrade.msgType = MsgType_RspQryTrade; // 消息类型
+    // RspQryTrade.symbolId = atoi(pRspField->SecuritiesID);
+    // std::memcpy(RspQryTrade.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // RspQryTrade.requestId = nRequestID;                    // 自增长请求号
+    // RspQryTrade.userLocalId = pRspField->UserLocalID;      // 用户自定义编号
+    // RspQryTrade.orderSysId = pRspField->OrderSysID;        // 系统订单号
+    // RspQryTrade.tradeId = pRspField->TradeID;              // 成交编号
+    // RspQryTrade.bsType = pRspField->Direction;             // 买卖方向 TdDirectionType
+    // RspQryTrade.trdPrice = pRspField->TradePrice * 10000;  // 成交价格 (单位精确到元后四位, 即: 1元=10000)
+    // RspQryTrade.trdQty = pRspField->TradeVolume;           // 成交数量
+    // RspQryTrade.trdMoney = pRspField->TradeAmount * 10000; // 成交金额 (单位精确到元后四位, 即: 1元=10000)
+    // RspQryTrade.ordStatus = pRspField->OrderStatus;        // 订单当前状态 TdOrdStatus
+    // RspQryTrade.errorId = pRspInfo->ErrorID;               // 错误码
+    // RspQryTrade.isLast = bIsLast;                          // 是否结束
+    //
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RspQryTrade;
+    // std::memcpy(sCachData.FnParam1, &RspQryTrade, sizeof(Td_RspQryTrade));
+    // MarketMaker::getInstance()->m_NotifyPool->tryPush(sCachData);
 };
 
 ///////////////////////////////
@@ -495,28 +503,29 @@ void XeleTdSpi::onRspQryTrade(CXeleRspQryTradeField* pRspField, CXeleRspInfo* pR
 /// 证券资金查询应答
 void XeleTdSpi::onRspQryFund(CXeleRspQryStockClientAccountField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    Td_RspQryCashAsset RspQryCashAsset;
-    std::memset(&RspQryCashAsset, 0, sizeof(Td_RspQryCashAsset));
-
-    RspQryCashAsset.msgType = MsgType_RspQryCashasset; // 消息类型
-    std::memcpy(RspQryCashAsset.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    RspQryCashAsset.requestId = nRequestID;                           // 自增长请求号
-    RspQryCashAsset.frozeCapital = pRspField->FrozeCapital * 10000;   /// 冻结资金
-    RspQryCashAsset.frozenFee = pRspField->FrozenFee * 10000;         /// 冻结手续费
-    RspQryCashAsset.usedFee = pRspField->UsedFee * 10000;             /// 已付手续费
-    RspQryCashAsset.initTotalFund = pRspField->InitTotalFund * 10000; /// 初始上场资金（不变）
-    RspQryCashAsset.totalFund = pRspField->TotalFund * 10000;         /// 上场资金（可变）； 初始上场资金 + 出入金额 ，可能为负（建议客户不使用）
-    RspQryCashAsset.sellFund = pRspField->SellFund * 10000;           /// 总卖出
-    RspQryCashAsset.buyFund = pRspField->BuyFund * 10000;             /// 总买入
-    RspQryCashAsset.availableFund = pRspField->AvailableFund * 10000; /// 可用资金
-    RspQryCashAsset.errorId = pRspInfo->ErrorID;                      // 错误码
-    RspQryCashAsset.isLast = bIsLast;                                 // 是否结束
-
     LOGf(INFO, "onRspQryFund:%s,AvailableFund:%ld\n", RspQryCashAsset.accountId, RspQryCashAsset.availableFund);
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RspQryCashasset;
-    std::memcpy(sCachData.FnParam1, &RspQryCashAsset, sizeof(Td_RspQryCashAsset));
-    MarketMaker::getInstance()->m_NotifyPool->tryPush(sCachData);
+
+    // Td_RspQryCashAsset RspQryCashAsset;
+    // std::memset(&RspQryCashAsset, 0, sizeof(Td_RspQryCashAsset));
+    //
+    // RspQryCashAsset.msgType = MsgType_RspQryCashasset; // 消息类型
+    // std::memcpy(RspQryCashAsset.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // RspQryCashAsset.requestId = nRequestID;                           // 自增长请求号
+    // RspQryCashAsset.frozeCapital = pRspField->FrozeCapital * 10000;   /// 冻结资金
+    // RspQryCashAsset.frozenFee = pRspField->FrozenFee * 10000;         /// 冻结手续费
+    // RspQryCashAsset.usedFee = pRspField->UsedFee * 10000;             /// 已付手续费
+    // RspQryCashAsset.initTotalFund = pRspField->InitTotalFund * 10000; /// 初始上场资金（不变）
+    // RspQryCashAsset.totalFund = pRspField->TotalFund * 10000;         /// 上场资金（可变）； 初始上场资金 + 出入金额 ，可能为负（建议客户不使用）
+    // RspQryCashAsset.sellFund = pRspField->SellFund * 10000;           /// 总卖出
+    // RspQryCashAsset.buyFund = pRspField->BuyFund * 10000;             /// 总买入
+    // RspQryCashAsset.availableFund = pRspField->AvailableFund * 10000; /// 可用资金
+    // RspQryCashAsset.errorId = pRspInfo->ErrorID;                      // 错误码
+    // RspQryCashAsset.isLast = bIsLast;                                 // 是否结束
+    //
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RspQryCashasset;
+    // std::memcpy(sCachData.FnParam1, &RspQryCashAsset, sizeof(Td_RspQryCashAsset));
+    // MarketMaker::getInstance()->m_NotifyPool->tryPush(sCachData);
 };
 
 /// 证券持仓查询应答
@@ -524,49 +533,44 @@ void XeleTdSpi::onRspQryPosition(CXeleRspQryStockPositionField* pRspField, CXele
 {
     LOGf(INFO, "onRspQryPosition:%s,SecuritiesID:%s,AvailablePosition:%ld, errorId:%d,%s\n", pRspField->AccountID, pRspField->SecuritiesID, pRspField->AvailablePosition, pRspInfo->ErrorID, pRspInfo->ErrorMsg);
 
-    Td_RspQryPosition RspQryPosition;
-    std::memset(&RspQryPosition, 0, sizeof(Td_RspQryPosition));
-
-    RspQryPosition.msgType = MsgType_RspQryPosition;         // 消息类型
-    RspQryPosition.symbolId = atoi(pRspField->SecuritiesID); // 证券代码
-    std::memcpy(RspQryPosition.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
-    RspQryPosition.requestId = nRequestID;                           // 自增长请求号
-    RspQryPosition.tdBuyPosition = pRspField->TdBuyPosition;         /// 今买仓
-    RspQryPosition.tdSellPosition = pRspField->TdSellPosition;       /// 今卖仓
-    RspQryPosition.unTdBuyPosition = pRspField->UnTdBuyPosition;     /// 在途买仓
-    RspQryPosition.unTdSellPosition = pRspField->UnTdSellPosition;   /// 在途卖仓
-    RspQryPosition.ydPosition = pRspField->YdPosition;               /// 昨持仓（不变）
-    RspQryPosition.totalCost = pRspField->TotalCost * 10000;         /// 持仓成本
-    RspQryPosition.remainingPosition = pRspField->RemainingPosition; /// 现有持仓数量（含未卖持仓）=老仓 + 今买仓 (-+)出入仓 - 今卖仓
-    RspQryPosition.availablePosition = pRspField->AvailablePosition; /// 可卖持仓数量
-    RspQryPosition.errorId = pRspInfo->ErrorID;                      // 错误码
-    RspQryPosition.isLast = bIsLast;                                 // 是否结束
-
-    sCacheDataType sCachData;
-    sCachData.FnType = MsgType_RspQryPosition;
-    std::memcpy(sCachData.FnParam1, &RspQryPosition, sizeof(Td_RspQryPosition));
-    MarketMaker::getInstance()->m_NotifyPool->tryPush(sCachData);
+    // Td_RspQryPosition RspQryPosition;
+    // std::memset(&RspQryPosition, 0, sizeof(Td_RspQryPosition));
+    //
+    // RspQryPosition.msgType = MsgType_RspQryPosition;         // 消息类型
+    // RspQryPosition.symbolId = atoi(pRspField->SecuritiesID); // 证券代码
+    // std::memcpy(RspQryPosition.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
+    // RspQryPosition.requestId = nRequestID;                           // 自增长请求号
+    // RspQryPosition.tdBuyPosition = pRspField->TdBuyPosition;         /// 今买仓
+    // RspQryPosition.tdSellPosition = pRspField->TdSellPosition;       /// 今卖仓
+    // RspQryPosition.unTdBuyPosition = pRspField->UnTdBuyPosition;     /// 在途买仓
+    // RspQryPosition.unTdSellPosition = pRspField->UnTdSellPosition;   /// 在途卖仓
+    // RspQryPosition.ydPosition = pRspField->YdPosition;               /// 昨持仓（不变）
+    // RspQryPosition.totalCost = pRspField->TotalCost * 10000;         /// 持仓成本
+    // RspQryPosition.remainingPosition = pRspField->RemainingPosition; /// 现有持仓数量（含未卖持仓）=老仓 + 今买仓 (-+)出入仓 - 今卖仓
+    // RspQryPosition.availablePosition = pRspField->AvailablePosition; /// 可卖持仓数量
+    // RspQryPosition.errorId = pRspInfo->ErrorID;                      // 错误码
+    // RspQryPosition.isLast = bIsLast;                                 // 是否结束
+    //
+    // sCacheDataType sCachData;
+    // sCachData.FnType = MsgType_RspQryPosition;
+    // std::memcpy(sCachData.FnParam1, &RspQryPosition, sizeof(Td_RspQryPosition));
+    // MarketMaker::getInstance()->m_NotifyPool->tryPush(sCachData);
 };
 
 }
 
 void OES::start(const char *config)
 {
-    std::string username;
-    std::string password;
-    std::string xeleConfigFile;
-    int32_t xeleTradeNode;
-
     try {
         nlohmann::json json;
         std::ifstream(config) >> json;
-        username = json["username"];
-        password = json["password"];
-        xeleTradeNode = json["xele_trade_node"];
+        g_username = json["username"];
+        g_password = json["password"];
+        g_xeleTradeNode = json["xele_trade_node"];
 
         char nameBuf[L_tmpnam];
-        xeleConfigFile = std::tmpnam(nameBuf) ?: "tmp_xele_config.txt";
-        std::ofstream fout(xeleConfigFile, std::ios::binary);
+        g_xeleConfigFile = std::tmpnam(nameBuf) ?: "tmp_xele_config.txt";
+        std::ofstream fout(g_xeleConfigFile, std::ios::binary);
         for (int32_t i = 0; i < json["xele_config"].size(); ++i) {
             fout << json["xele_config"][i] << '\n';
         }
@@ -580,15 +584,13 @@ void OES::start(const char *config)
     g_tradeApi = XeleSecuritiesTraderApi::createTraderApi();
     g_tradeApi->registerSpi(g_userSpi);
 
-    int ret = g_tradeApi->reqLogin(xeleConfigFile.c_str(), username.c_str(), password.c_str(),
-                                   xeleTradeNode, '0' + MARKET_ID, ++g_requestID);
+    int ret = g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(),
+                                   g_xeleTradeNode, '0' + MARKET_ID, ++g_requestID);
     if (ret != 0) {
         /// ret可以结合XeleSecuritiesTraderApi.h中ApiReturnValue枚举返回值对应错误来判断常见的异常
         SPDLOG_INFO("oes xele login error: ret={}", ret);
         throw std::runtime_error("oes xele login error");
     }
-
-    std::remove(xeleConfigFile.c_str());
 }
 
 bool OES::isStarted()
@@ -603,6 +605,9 @@ void OES::stop()
     g_userSpi = nullptr;
     g_tradeApi->release();
     g_tradeApi = nullptr;
+    if (!g_xeleConfigFile.empty()) {
+        std::remove(g_xeleConfigFile.c_str());
+    }
 }
 
 HEAT_ZONE_REQORDER void OES::sendRequest(ReqOrder &reqOrder)
