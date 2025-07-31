@@ -52,18 +52,20 @@ private:
         bool savingMode{};
     };
 
+    int32_t stockCode{};
     int32_t upperLimitPrice{};
     int32_t preClosePrice{};
     int32_t upperLimitPriceApproach{};
     bool alive{true};
     bool approachingLimitUp{};
-    bool firstCompute{};
 
     FState fState;
     BState bState;
 
-public:
     int32_t futureTimestamp{};
+    bool firstCompute{};
+
+public:
     FactorList factorList{};
 private:
 

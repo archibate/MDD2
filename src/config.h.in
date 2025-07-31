@@ -36,4 +36,6 @@
 #endif
 #endif
 
+#if REPLAY
 #define REPLAY_DATA_PATH "/home/ubuntu/data-cache"
+#endif

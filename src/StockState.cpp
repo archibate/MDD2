@@ -7,6 +7,9 @@
 #include "heatZone.h"
 #include <spdlog/spdlog.h>
 #include <atomic>
+#include <cstring>
+#include <cstdlib>
+#include <cstdio>
 
 
 void StockState::start()
@@ -42,14 +45,34 @@ void StockState::start()
     }
 #endif
 
-    SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={}",
-                 stockCode, preClosePrice, upperLimitPrice);
+    int32_t quantity = 100;
 
-    reqOrder = {};
-    reqOrder.stockCode = stockCode;
-    reqOrder.price = upperLimitPrice;
-    reqOrder.quantity = 100;
-    reqOrder.limitType = 'U';
+    SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={} reportQuantity={}",
+                 stockCode, preClosePrice, upperLimitPrice, quantity);
+
+    reqOrder = std::make_unique<OES::ReqOrder>();
+    std::memset(reqOrder.get(), 0, sizeof(OES::ReqOrder));
+#if REPLAY
+    reqOrder->stockCode = stockCode;
+    reqOrder->price = upperLimitPrice;
+    reqOrder->quantity = qty;
+    reqOrder->limitType = 'U';
+#elif XC || NE
+    std::sprintf(reqOrder->xeleReq.SecuritiesID, "%06d", stockCode);
+    reqOrder->xeleReq.Direction = XELE_ORDER_BUY;
+#if SZ
+    reqOrder->xeleReq.LimitPrice = stat.staticSzInfo.upperLimitPrice;
+#endif
+#if SH
+    reqOrder->xeleReq.LimitPrice = stat.staticSseInfo.upperLimitPrice;
+#endif
+    reqOrder->xeleReq.Volume = quantity;
+    reqOrder->xeleReq.OrderType = XELE_LIMIT_PRICE_TYPE;
+    reqOrder->xeleReq.TimeCondition = XELE_TIMEINFORCE_TYPE_GFD;
+    reqOrder->xeleReq.SecuritiesType = '0';
+    reqOrder->xeleReq.Operway = API_OPERWAY;
+    reqOrder->xeleReq.ExchangeFrontID = 0;
+#endif
 }
 
 void StockState::stop(int32_t timestamp)
@@ -98,7 +121,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         int32_t timestamp = tick.tickMergeSse.tickTime * 10;
         auto intent = tickCache->checkWantBuyAtTimestamp(timestamp);
         if (intent == TickCache::WantBuy) [[likely]] {
-            OES::sendRequest(reqOrder);
+            OES::sendRequest(*reqOrder);
         }
 
         stop(timestamp + static_cast<int32_t>(intent));
@@ -114,11 +137,19 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
 
 HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
 {
+#if REPLAY
     if (rspOrder.errorId != 0) {
         SPDLOG_ERROR("response order error: errorId={}", rspOrder.errorId);
         return;
     }
-    SPDLOG_INFO("response order: messageType={} stock={} orderStatus={} orderSysId={} orderPrice={} orderQuantity={}", rspOrder.messageType, rspOrder.stockCode, rspOrder.orderStatus, rspOrder.orderSysId, rspOrder.orderPrice, rspOrder.orderQuantity);
+    SPDLOG_INFO("response order: messageType={} stock={} orderStatus={} orderSysId={} orderPrice={} orderQuantity={} orderDirection={}", rspOrder.messageType, rspOrder.stockCode, rspOrder.orderStatus, rspOrder.orderSysId, rspOrder.orderPrice, rspOrder.orderQuantity, rspOrder.orderDirection);
+#elif XC || NE
+    if (rspOrder.xeleRsp.ErrorId != 0) {
+        SPDLOG_ERROR("response order error: errorId={}", rspOrder.xeleRsp.ErrorId);
+        return;
+    }
+    SPDLOG_INFO("response order: stock={} orderSysId={} orderPrice={} orderQuantity={} orderDirection={}", std::atoi(rspOrder.xeleRsp.SecuritiesID), rspOrder.xeleRsp.OrderSysID, rspOrder.xeleRsp.LimitPrice, rspOrder.xeleRsp.Volume, rspOrder.xeleRsp.Direction == '1' ? "BUY" : rspOrder.xeleRsp.Direction == '2' ? "SELL" : "WARM");
+#endif
 }
 
 int32_t StockState::stockIndex() const

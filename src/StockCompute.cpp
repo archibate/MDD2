@@ -46,7 +46,11 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, TickCache::
 
 void StockCompute::start()
 {
-    upperLimitPriceApproach = static_cast<int32_t>(std::floor(stockState().upperLimitPrice / 1.02)) - 1;
+    stockCode = stockState().stockCode;
+    upperLimitPrice = stockState().upperLimitPrice;
+    preClosePrice = stockState().preClosePrice;
+
+    upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
     openPrice = stockState().preClosePrice;
 
     fState.currSnapshot.lastPrice = stockState().preClosePrice;
@@ -79,13 +83,13 @@ COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
         wantTimestamp += wantTimestamp & 1;
         if (linearTimestamp == wantTimestamp) {
 #if RECORD
-            factorListCache[i].dumpFactors(timestamp, stockState().stockCode);
+            factorListCache[i].dumpFactors(timestamp, stockCode);
 #endif
             return;
         }
     }
 
-    SPDLOG_ERROR("cannot find in factor cache: stock={} timestamp={}", stockState().stockCode, timestamp);
+    SPDLOG_ERROR("cannot find in factor cache: stock={} timestamp={}", stockCode, timestamp);
 }
 
 int64_t StockCompute::upSellOrderAmount() const
@@ -316,7 +320,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy()
         fState.currSnapshot.volume += q64;
         fState.currSnapshot.amount += sell.price * q64;
     }
-    fState.currSnapshot.lastPrice = stockState().upperLimitPrice;
+    fState.currSnapshot.lastPrice = upperLimitPrice;
     stepSnapshot();
 
     bool wantBuy = decideWantBuy();
@@ -509,7 +513,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeVolatility()
         vwap[i] = lastVWAP;
     }
 
-    double p0 = stockState().preClosePrice;
+    double p0 = preClosePrice;
     double p4 = p0 * 1.04;
     double p5 = p0 * 1.05;
     double p6 = p0 * 1.06;

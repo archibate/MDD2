@@ -54,6 +54,8 @@ assert len(stocks) == len(factors)
 
 print('Loading prev limit up')
 stock_prev_limits = pd.read_json(f'/data/daily_csv/previous_trading_day_limit_up_data_{today}.json')['ts_code'].str.split('.').str[0].astype('int32')
+print('Done!')
+print()
 
 
 config = pd.DataFrame([

@@ -28,7 +28,7 @@ struct alignas(64) StockState
 
     TickCache *tickCache{};
 
-    OES::ReqOrder reqOrder{};
+    std::unique_ptr<OES::ReqOrder> reqOrder{};
 
     void start();
     void stop(int32_t timestamp = 0);

@@ -221,7 +221,12 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 
 HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 {
-    int32_t id = g_stockIdLut[static_cast<int16_t>(rspOrder.stockCode & 0x7FFF)];
+#if REPLAY
+    int32_t stock = tick.stock;
+#elif XC || NE
+    int32_t stock = std::strtoul(rspOrder.xeleRsp.SecuritiesID, nullptr, 10);
+#endif
+    int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {
         return;
     }

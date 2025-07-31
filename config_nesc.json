@@ -1,5 +1,6 @@
 {
-    "date": 20250731,
+    "date": 20250801,
+    "factor_file": "/data/daily_csv/mdd2_factors_sh_20250801.bin",
     "username": "18930727",
     "password": "220401",
     "xele_config_file": "xele_config.txt",

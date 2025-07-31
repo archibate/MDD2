@@ -1,10 +1,10 @@
 #include "config.h"
-#include "heatZone.h"
 #if NE
 #include "MDS.h"
 #include "MDD.h"
 #include "timestamp.h"
 #include "threadAffinity.h"
+#include "heatZone.h"
 #include <nesc/NescMd.h>
 #include <spdlog/spdlog.h>
 #include <fmt/core.h>
@@ -34,9 +34,13 @@ void MDS::subscribe(int32_t const *stocks, int32_t n)
     }
 
     static const NescForesight::EMdMsgType messageTypes[] = {
+#if SZ
         NescForesight::eSzTrade,
         NescForesight::eSzOrder,
+#endif
+#if SH
         NescForesight::eShTickMerge,
+#endif
         NescForesight::eSzSnapShotLevel1,
         NescForesight::eShSnapShotLevel1,
     };
@@ -98,8 +102,9 @@ HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
 {
     assert(buf[0] == MSG_TYPE_TICK_MERGE_SSE);
     auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));
-    if (tick.tickMergeSse.channelNo > 6 || tick.tickMergeSse.channelNo < 1) [[unlikely]]
+    if (tick.tickMergeSse.channelNo > 6 || tick.tickMergeSse.channelNo < 1) [[unlikely]] {
         return;
+    }
     if (!firstCongress) [[unlikely]] {
         firstCongress = true;
         reportFirstCongress();

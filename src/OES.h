@@ -29,6 +29,7 @@ struct RspOrder
     int32_t orderSysId;
     int32_t orderPrice;
     int32_t tradePrice;
+    char orderDirection;
     int32_t orderQuantity;
     int32_t tradeQuantity;
     int32_t totalTradedQuantity;

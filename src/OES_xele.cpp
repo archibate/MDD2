@@ -118,7 +118,7 @@ private:
 XeleTdSpi *g_userSpi;
 XeleSecuritiesTraderApi *g_tradeApi;
 int32_t g_requestID;
-int32_t g_maxUserLocalID;
+TXeleOrderIDType g_maxUserLocalID;
 
 std::string g_username;
 std::string g_password;
@@ -503,7 +503,7 @@ void XeleTdSpi::onRspQryTrade(CXeleRspQryTradeField* pRspField, CXeleRspInfo* pR
 /// 证券资金查询应答
 void XeleTdSpi::onRspQryFund(CXeleRspQryStockClientAccountField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    LOGf(INFO, "onRspQryFund:%s,AvailableFund:%ld\n", RspQryCashAsset.accountId, RspQryCashAsset.availableFund);
+    LOGf(INFO, "onRspQryFund:%.15s,AvailableFund:%lf,TotalFund:%lf,InitTotalFund:%lf\n", pRspField->AccountID, pRspField->AvailableFund, pRspField->TotalFund, pRspField->InitTotalFund);
 
     // Td_RspQryCashAsset RspQryCashAsset;
     // std::memset(&RspQryCashAsset, 0, sizeof(Td_RspQryCashAsset));
@@ -612,6 +612,8 @@ void OES::stop()
 
 HEAT_ZONE_REQORDER void OES::sendRequest(ReqOrder &reqOrder)
 {
-    g_tradeApi->reqInsertOrder(reqOrder.xeleReq, ++g_requestID);
+    int32_t requestID = ++g_requestID;
+    reqOrder.xeleReq.UserLocalID = g_maxUserLocalID + requestID;
+    g_tradeApi->reqInsertOrder(reqOrder.xeleReq, requestID);
 }
 #endif
