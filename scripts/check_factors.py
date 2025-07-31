@@ -68,7 +68,7 @@ diff[~correct.isna() & factors.isna()] = 9999
 diff['timestamp'] = correct['timestamp']
 diff['time'] = ((linear_time(correct['timestamp']) * 1000) + 90) // 100 / 10 - linear_time(factors['timestamp']) # type: ignore
 diff = diff.sort_values('timestamp').reset_index()
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'up' in c]])
+print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'TS' in c or 'QUA' in c]])
 
 
 del diff['ts_code']

@@ -9,6 +9,7 @@
 
 
 struct StockCompute;
+struct TickCache;
 
 struct alignas(64) StockState
 {
@@ -16,6 +17,8 @@ struct alignas(64) StockState
     int32_t upperLimitPrice{};
     int32_t preClosePrice{};
     bool alive{};
+
+    TickCache *tickCache{};
 
     OES::ReqOrder reqOrder{};
 

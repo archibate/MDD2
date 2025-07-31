@@ -96,6 +96,11 @@ private:
     bool decideWantBuy();
     bool computeModel();
 
+    void computeMomentum();
+    void computeVolatility();
+    void computeKaiyuan();
+    void computeCrowdind();
+
     int32_t stockIndex() const;
     StockState &stockState() const;
 };

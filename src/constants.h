@@ -4,11 +4,9 @@
 #include <cstdint>
 #include "config.h"
 
-constexpr int32_t kOESRecvCpu = 13;
-constexpr int32_t kOESSendCpu = -1;
-
-constexpr int32_t kMDSBindCpu = 14;
-constexpr int32_t kMDSCacheCpu = 15;
+constexpr int32_t kOESSendCpu = 13;
+constexpr int32_t kOESRecvCpu = 14;
+constexpr int32_t kMDSBindCpu = 15;
 
 constexpr int32_t kChannelCount = 12;
 constexpr std::array<int32_t, kChannelCount> kChannelCpus = {

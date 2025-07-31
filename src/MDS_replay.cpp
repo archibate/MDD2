@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <execution>
 #include <fstream>
-#include <unordered_set>
+#include <absl/container/flat_hash_set.h>
 #include <thread>
 #include <nlohmann/json.hpp>
 
@@ -16,7 +16,7 @@ namespace
 {
 
 std::jthread g_replayThread;
-std::unordered_set<int32_t> g_subscribedStocks;
+absl::flat_hash_set<int32_t> g_subscribedStocks;
 std::atomic_bool g_isFinished{false};
 std::atomic_bool g_isStarted{false};
 int32_t g_date;

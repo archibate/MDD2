@@ -37,6 +37,7 @@ namespace NescForesight {
 
 
 
+  #pragma pack(push)
   #pragma pack(1)
 
   struct BidAskPriceQtySz {
@@ -622,7 +623,7 @@ namespace NescForesight {
     uint64_t	resv5;                   // 保留字段
   };
 
-  #pragma pack(8)
+  #pragma pack(pop)
 
 }
 #endif

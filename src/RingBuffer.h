@@ -21,8 +21,16 @@ private:
     alignas(64) uint32_t write_pos{0};
     alignas(64) uint32_t read_pos{0};
 
+
+    [[gnu::cold]] [[noreturn]] static void overflowed(uint32_t n)
+    {
+        std::fprintf(stderr, "RingBuffer overflow: %d\n", n);
+        std::fflush(stderr);
+        std::_Exit(1);
+    }
+
 public:
-    void write(T const *buf, uint32_t n) noexcept
+    [[gnu::always_inline]] void write(T const *buf, uint32_t n) noexcept
     {
         for (T const *p = buf, *pe = buf + n; p != pe; ++p, ++write_pos) {
             ring[write_pos & (N - 1)] = *p;
@@ -30,33 +38,31 @@ public:
         write_ok_pos.store(write_pos, std::memory_order_release);
     }
 
-    void writeOne(T const &value) noexcept
+    [[gnu::always_inline]] void writeOne(T const &value) noexcept
     {
         ring[write_pos & (N - 1)] = value;
         ++write_pos;
         write_ok_pos.store(write_pos, std::memory_order_release);
     }
 
-    uint32_t fetch() noexcept
+    [[gnu::always_inline]] uint32_t fetch() noexcept
     {
         uint32_t w_pos = write_ok_pos.load(std::memory_order_acquire);
         uint32_t n = w_pos - read_pos;
         if (n >= N) [[unlikely]] {
-            std::fprintf(stderr, "RingBuffer overflow: %d\n", n);
-            std::fflush(stderr);
-            std::_Exit(1);
+            overflowed(n);
         }
         return n;
     }
 
-    T readOne() noexcept
+    [[gnu::always_inline]] T readOne() noexcept
     {
         T value = ring[read_pos & (N - 1)];
         ++read_pos;
         return value;
     }
 
-    void read(T *buf, uint32_t n) noexcept
+    [[gnu::always_inline]] void read(T *buf, uint32_t n) noexcept
     {
         for (T *p = buf, *pe = buf + n; p != pe; ++p, ++read_pos) {
             *p = ring[read_pos & (N - 1)];

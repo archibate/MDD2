@@ -13,6 +13,8 @@ void StockState::start()
     alive = true;
 
     stockCode = MDD::g_stockCodes[stockIndex()];
+    tickCache = &MDD::g_tickCaches[stockIndex()];
+
     auto stat = MDS::getStatic(stockCode);
     preClosePrice = stat.preClosePrice;
     upperLimitPrice = stat.upperLimitPrice;
@@ -23,7 +25,7 @@ void StockState::start()
     reqOrder = {};
     reqOrder.stockCode = stockCode;
     reqOrder.price = upperLimitPrice;
-    reqOrder.quantity = 300;
+    reqOrder.quantity = 100;
     reqOrder.limitType = 'U';
 }
 
@@ -46,7 +48,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     bool limitUp = tick.buyOrderNo != 0 && tick.sellOrderNo == 0 && tick.quantity > 0
         && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000 && tick.timestamp < 14'57'00'000;
     if (limitUp) {
-        auto intent = MDD::g_tickCaches[stockIndex()].checkWantBuyAtTimestamp(tick.timestamp);
+        auto intent = tickCache->checkWantBuyAtTimestamp(tick.timestamp);
         if (intent == TickCache::WantBuy) [[likely]] {
             OES::sendRequest(reqOrder);
         }
@@ -55,7 +57,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         return;
     }
 
-    MDD::g_tickCaches[stockIndex()].pushTick(tick);
+    tickCache->pushTick(tick);
 }
 
 HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)

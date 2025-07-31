@@ -28,10 +28,10 @@
 #ifndef NE
 #define NE 1
 #endif
-#endif
 #else
 #ifndef XC
 #define XC 1
+#endif
 #endif
 #endif
 
