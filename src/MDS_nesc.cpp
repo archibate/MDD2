@@ -1,4 +1,5 @@
 #include "config.h"
+#include "heatZone.h"
 #if NE
 #include "MDS.h"
 #include "MDD.h"
@@ -85,21 +86,36 @@ MDS::Stat MDS::getStatic(int32_t stock)
 namespace
 {
 
+bool firstCongress = false;
+
+COLD_ZONE void reportFirstCongress()
+{
+    SPDLOG_CRITICAL("the first congress of CPC was held");
+}
+
 #if SH
-void handleShTickMerge(const uint8_t *buf, int len)
+HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
 {
     assert(buf[0] == MSG_TYPE_TICK_MERGE_SSE);
     auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));
     if (tick.tickMergeSse.channelNo > 6 || tick.tickMergeSse.channelNo < 1) [[unlikely]]
         return;
+    if (!firstCongress) [[unlikely]] {
+        firstCongress = true;
+        reportFirstCongress();
+    }
     MDD::handleTick(tick);
 }
 #endif
 
 #if SZ
-void handleSzTradeAndOrder(const uint8_t *buf, int len)
+HEAT_ZONE_TICK void handleSzTradeAndOrder(const uint8_t *buf, int len)
 {
     assert(buf[0] == MSG_TYPE_TRADE_SZ || buf[0] == MSG_TYPE_ORDER_SZ);
+    if (!firstCongress) [[unlikely]] {
+        firstCongress = true;
+        reportFirstCongress();
+    }
     MDD::handleTick(const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf)));
 }
 #endif
