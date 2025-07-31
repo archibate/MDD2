@@ -27,7 +27,8 @@ endif()
 if (NOT DEFINED CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
-find_program(CMAKE_CXX_COMPILER clang++)
+# find_program(CMAKE_CXX_COMPILER clang++)
+find_program(CMAKE_CXX_COMPILER g++)
 
 project(mdd_v2 LANGUAGES CXX)
 
@@ -77,8 +78,16 @@ endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
-if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo" OR CMAKE_BUILD_TYPE MATCHES "Debug")
+if (CMAKE_BUILD_TYPE MATCHES "Debug")
     target_compile_options(${PROJECT_NAME} PRIVATE -ggdb -Werror=return-type)
+endif()
+
+if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo")
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        -ggdb3
+        -fno-omit-frame-pointer
+        -finline-limit=50
+    )
 endif()
 
 if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo" OR CMAKE_BUILD_TYPE MATCHES "Release")

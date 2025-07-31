@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 #include <cstring>
 #include <execution>
+#include <emmintrin.h>
 
 namespace
 {
@@ -120,18 +121,16 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTimer()
     if (!alive) [[unlikely]] {
         return;
     }
-    auto &tickCache = MDD::g_tickCaches[stockIndex()];
-    if (!tickCache.tryObtainReadCopy()) {
-        return;
-    }
-    auto &ticks = tickCache.getReadCopy();
-    if (ticks.empty()) [[unlikely]] {
-        return;
-    }
-
     approachingLimitUp = false;
-    for (auto &tick: ticks) {
-        onTick(tick);
+
+    thread_local MDS::Tick tickBuf[256];
+    auto &tickCache = MDD::g_tickCaches[stockIndex()];
+    size_t n;
+
+    while ((n = tickCache.fetchTicks(tickBuf)) != 0) {
+        for (MDS::Tick *tick = tickBuf, *tickEnd = tickBuf + n; tick != tickEnd; ++tick) {
+            onTick(*tick);
+        }
     }
 
     if (approachingLimitUp) {
@@ -153,10 +152,11 @@ HEAT_ZONE_COMPUTE void StockCompute::onPostTimer()
     }
 }
 
-HEAT_ZONE_COMPUTE void StockCompute::onBusy()
+HEAT_ZONE_BUSY void StockCompute::onBusy()
 {
     bool wantBuy = computeModel();
     asm volatile ("" :: "r" (wantBuy));
+    _mm_pause();
 }
 
 HEAT_ZONE_ORDBOOK void StockCompute::onOrder(MDS::Tick &tick)
@@ -640,15 +640,15 @@ HEAT_ZONE_COMPUTE bool StockCompute::decideWantBuy()
     }
 
     return computeModel();
+
+    // double cls = predictModelClassification(factorList.rawFactors);
+    // double reg = predictModelRegression(factorList.rawFactors);
+    // return cls > 0 && reg > 0;
 }
 
 HEAT_ZONE_MODEL bool StockCompute::computeModel()
 {
-    double cls = predictModelClassification(factorList.rawFactors);
-    double reg = predictModelRegression(factorList.rawFactors);
-    SPDLOG_DEBUG("model prediction: stock={} timestamp={} cls={} reg={}", stockState().stockCode, futureTimestamp, cls, reg);
-    return cls > 0 && reg > 0;
-    // return predictModel(factorList.rawFactors);
+    return predictModel(factorList.rawFactors);
 }
 
 [[gnu::always_inline]] int32_t StockCompute::stockIndex() const

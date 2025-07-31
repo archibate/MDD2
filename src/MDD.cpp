@@ -168,11 +168,11 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t startId, int32_t stopId, int64_t 
 
     while (!stop.stop_requested()) [[likely]] {
 #if BUSY_COMPUTE
-        for (int32_t id = startId; std::chrono::steady_clock::now() < nextSleepTime; id = id == stopId ? startId : id + 1) {
+        for (int32_t id = startId; steadyNow() < nextSleepTime && !stop.stop_requested(); id = id == stopId ? startId : id + 1) {
             MDD::g_stockComputes[id].onBusy();
         }
 #else
-        spinSleepUntil(nextSleepTime);
+        blockingSleepUntil(nextSleepTime);
 #endif
         nextSleepTime += sleepInterval;
 

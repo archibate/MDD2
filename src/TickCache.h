@@ -10,53 +10,37 @@
 #include "FastMutex.h"
 #include "timestamp.h"
 #include "constants.h"
+#include "RingBuffer.h"
 
 
 struct alignas(64) TickCache {
-    /* StoC */ alignas(64) struct {
-        std::vector<MDS::Tick> tickCachedW;
-        SpinMutex tickCachedWMutex;
-    };
-    /* StoC */ alignas(64) std::atomic_flag tickCachedWEmpty{true};
-    /* C */ alignas(64) struct {
-        std::vector<MDS::Tick> tickCachedR;
-        int32_t wantBuyCurrentIndex{};
-    };
+    /* StoC */ alignas(64) RingBuffer<MDS::Tick, 0x10000> tickRing;
     /* CtoS */ alignas(64) std::array<std::atomic<int32_t>, 16> wantBuyTimestamp{};
+    /* C */ alignas(64) int32_t wantBuyCurrentIndex{};
 
     void start()
     {
-        tickCachedW.reserve(512);
-        tickCachedR.reserve(512);
     }
 
     void stop() {}
 
     [[gnu::always_inline]] void pushTick(MDS::Tick const &tick)
     {
-        {
-            std::lock_guard lck(tickCachedWMutex);
-            tickCachedW.push_back(tick);
-        }
-        tickCachedWEmpty.clear(std::memory_order_release);
+        tickRing.writeOne(tick);
     }
 
-    [[gnu::always_inline]] bool tryObtainReadCopy()
+    template <size_t BufSize>
+    [[gnu::always_inline]] size_t fetchTicks(MDS::Tick (&buf)[BufSize])
     {
-        if (tickCachedWEmpty.test_and_set(std::memory_order_acquire)) {
-            return false;
+        uint32_t n = tickRing.fetch();
+        if (n == 0) {
+            return 0;
         }
-        tickCachedR.clear();
-        {
-            std::lock_guard lck(tickCachedWMutex);
-            tickCachedW.swap(tickCachedR);
+        if (n > BufSize) {
+            n = BufSize;
         }
-        return true;
-    }
-
-    [[gnu::always_inline]] std::vector<MDS::Tick> &getReadCopy()
-    {
-        return tickCachedR;
+        tickRing.read(buf, n);
+        return n;
     }
 
     [[gnu::always_inline]] void pushWantBuyTimestamp(int32_t timestamp, bool wantBuy)

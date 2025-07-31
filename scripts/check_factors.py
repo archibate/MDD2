@@ -23,17 +23,19 @@ def linear_time(time: pd.Series):
     return time
 
 
-correct = pd.read_csv('build/predictions_real_20250102.csv').rename(columns={'code': 'ts_code', 'limit_up_time': 'timestamp'})
-del correct['date']
-del correct['up_stat']
-del correct['limit']
-del correct['return_value']
-correct['ts_code'] = pd.to_numeric(correct['ts_code'].str.split('.').str[0])
-correct.columns = [x.replace('.', 'o') for x in correct.columns]
-correct['timestamp'] = correct['timestamp'].astype('int32')
-
 factors = pd.read_csv('build/factors.csv')
-ancient = pd.read_csv('build/pred_correct.csv').reindex(columns=factors.columns)
+
+if 1:
+    correct = pd.read_csv('build/predictions_real_20250102.csv').rename(columns={'code': 'ts_code', 'limit_up_time': 'timestamp'})
+    del correct['date']
+    del correct['up_stat']
+    del correct['limit']
+    del correct['return_value']
+    correct['ts_code'] = pd.to_numeric(correct['ts_code'].str.split('.').str[0])
+    correct.columns = [x.replace('.', 'o') for x in correct.columns]
+    correct['timestamp'] = correct['timestamp'].astype('int32')
+else:
+    correct = pd.read_csv('build/pred_correct.csv').reindex(columns=factors.columns)
 
 factors = factors[factors['timestamp'] != 0]
 assert isinstance(factors, pd.DataFrame)
@@ -42,7 +44,11 @@ correct = correct.groupby('ts_code').last().reset_index().sort_values('ts_code')
 factors = factors.groupby('ts_code').last().reset_index().sort_values('ts_code').reset_index(drop=True)
 correct, factors = correct.merge(factors[['ts_code']], how='inner', on='ts_code').sort_values('ts_code').reset_index(drop=True), factors.merge(correct[['ts_code']], how='inner', on='ts_code').sort_values('ts_code').reset_index(drop=True)
 # factors = factors[['ts_code', 'timestamp'] + [c for c in factors.columns if 'SR' in c or 'TS' in c or 'QUA' in c]]
-correct = correct[factors.columns]
+correct = correct[[x for x in factors.columns if x in correct.columns]]
+factors = factors[correct.columns]
+
+# print(factors)
+# print(correct)
 
 # afternoon vwap_skew_kurt incorrect
 # some SR incorrect
@@ -62,7 +68,7 @@ diff[~correct.isna() & factors.isna()] = 9999
 diff['timestamp'] = correct['timestamp']
 diff['time'] = ((linear_time(correct['timestamp']) * 1000) + 90) // 100 / 10 - linear_time(factors['timestamp']) # type: ignore
 diff = diff.sort_values('timestamp').reset_index()
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'crowd' in c]])
+print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'up' in c]])
 
 
 del diff['ts_code']
