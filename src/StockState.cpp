@@ -105,6 +105,9 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000 && tick.timestamp < 14'57'00'000;
     if (limitUp) {
         auto intent = tickCache->checkWantBuyAtTimestamp(tick.timestamp);
+#if ALWAYS_BUY
+        intent = TickCache::WantBuy;
+#endif
         if (intent == TickCache::WantBuy) [[likely]] {
             OES::sendRequest(*reqOrder);
         }
@@ -120,6 +123,9 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     if (limitUp) {
         int32_t timestamp = tick.tickMergeSse.tickTime * 10;
         auto intent = tickCache->checkWantBuyAtTimestamp(timestamp);
+#if ALWAYS_BUY
+        intent = TickCache::WantBuy;
+#endif
         if (intent == TickCache::WantBuy) [[likely]] {
             OES::sendRequest(*reqOrder);
         }

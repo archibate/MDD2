@@ -256,10 +256,10 @@ MODELDECL {ty} {key}f(const {ty} *a) {{
     return res
 
 
-model_version = '20250604'
+model_version = '20250801'
 benchmark_values = {
-    'regression': 0.003,
-    'classification': 0.55,
+    'regression': 0.005,
+    'classification': 0.6,
 }
 
 

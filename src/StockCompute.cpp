@@ -64,7 +64,7 @@ void StockCompute::start()
 
     futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
 
-#if RECORD
+#if RECORD_FACTORS
     factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<TickCache>().wantBuyTimestamp)>);
 #endif
 }
@@ -83,7 +83,7 @@ COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
         int32_t wantTimestamp = tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed);
         wantTimestamp += wantTimestamp & 1;
         if (linearTimestamp == wantTimestamp) {
-#if RECORD
+#if RECORD_FACTORS
             factorListCache[i].dumpFactors(timestamp, stockCode);
 #endif
             return;
@@ -332,7 +332,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy()
     bool wantBuy = decideWantBuy();
     auto &tickCache = MDD::g_tickCaches[stockIndex()];
     tickCache.pushWantBuyTimestamp(futureTimestamp, wantBuy);
-#if RECORD
+#if RECORD_FACTORS
     factorListCache[(tickCache.wantBuyCurrentIndex - 1) & (tickCache.wantBuyTimestamp.size() - 1)] = factorList;
 #endif
 

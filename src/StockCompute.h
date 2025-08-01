@@ -80,7 +80,7 @@ private:
     int64_t openVolume{};
     double floatMV{};
 
-#if RECORD
+#if RECORD_FACTORS
     std::unique_ptr<FactorList[]> factorListCache;
 #endif
 

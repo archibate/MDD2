@@ -8,7 +8,6 @@
 #include <xele/XeleSecuritiesTraderApi.h>
 #include <fstream>
 #include <cstdio>
-#include <cstdlib>
 #include "LOG.h"
 
 namespace
@@ -122,8 +121,56 @@ TXeleOrderIDType g_maxUserLocalID;
 
 std::string g_username;
 std::string g_password;
-std::string g_xeleConfigFile;
-int32_t g_xeleTradeNode;
+
+int callReqLogin()
+{
+    ConfigParam param{};
+    param.IsJustConnectManager = false;
+    param.DependentCounterVersion = 2;
+#if NE
+    param.ManagerURL = "tcp://10.101.58.32:50000;tcp://10.101.58.33:50000";
+#endif
+#if XC
+    param.ManagerURL = "tcp://10.208.48.27:50000;tcp://10.208.48.28:50000";
+#endif
+    param.QueryURL = "";
+    param.TradeURL = "";
+    param.AccountId = g_username;
+    param.Password = g_password;
+    param.HeartBeatInterval = 6;
+    param.HeartBeatTimeOutCnt = 3;
+    param.OrderWarm = 1;
+    param.SoftRspRcv = 0;
+    param.FpgaRspRcv = '1';
+    param.CpuCore[0] = kOESSendCpu;
+    param.CpuCore[1] = kOESRecvCpu;
+    param.SocketBlockFlag = 0;
+    param.ApiMode = 1;
+    param.SuperLog = 0;
+    param.CreateRtnOrderByRtnTrade = 0;
+    param.Market = '0' + MARKET_ID;
+#if NE
+    param.OperWay = '7';
+#endif
+#if XC
+    param.OperWay = 'E';
+#endif
+    param.PcPrefix = "";
+#if NE
+    param.AppID = "DQsig:V1.0";
+#else
+    param.AppID = "xele_dev_1.0";
+#endif
+    param.FlowRebuildFlag = 0;
+    param.AutoReLogin = 1;
+    param.LoopRepeatConnect = 1;
+    param.RecvSendDetach = 1;
+    param.solarfareTradeEthName = "enp1s0f1";
+    param.openEncryption = 0;
+    param.CaptureSignal = 1;
+    return g_tradeApi->reqLoginEx(&param, ++g_requestID);
+    // return g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(), g_xeleTradeNode, '0' + MARKET_ID, ++g_requestID);
+}
 
 
 /// 艾科管理中心登录应答,当只有登录管理中心的需求时，收到该回报即可进行管理中心相关接口操作
@@ -216,7 +263,7 @@ void XeleTdSpi::onFrontManagerQueryDisconnected(int nReason)
 void XeleTdSpi::onFrontQueryDisconnected(int nReason)
 {
     canQuery = false;
-    LOGf(DEBUG, "need relogin\n");
+    LOGf(DEBUG, "query disconnect, need re-login\n");
 };
 
 /// 当客户端与服务端交易通信连接断开时，该方法被调用。
@@ -225,8 +272,9 @@ void XeleTdSpi::onFrontQueryDisconnected(int nReason)
 void XeleTdSpi::onFrontTradeDisconnected(int nReason)
 {
     canOrder = false;
-    LOGf(DEBUG, "need re-login\n");
+    LOGf(DEBUG, "trade disconnect, need re-login\n");
 
+#if 0
     ///***当盘中发生了断连，可以采取如下的处理方式，来重新获取操作权限***///
     /// 当这三种回调被调用时onFrontManagerQueryDisconnected、onFrontQueryDisconnected、onFrontTradeDisconnected可以进行如下异常处理
     /// 可以选择三种回调中某一种进行处理
@@ -247,14 +295,14 @@ void XeleTdSpi::onFrontTradeDisconnected(int nReason)
     LOGf(DEBUG, "now api disconnect,start re-login\n");
 
     /// 发送登录请求，重新获取账户权限
-    while (g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(),
-                                   g_xeleTradeNode, '0' + MARKET_ID, ++g_requestID) != 0)
+    while (callReqLogin() != 0)
     {
         LOGf(ERROR, "call reqLogin fail,try again\n");
         sleep(3);
     }
     LOGf(DEBUG, "relogin send success,now wait a moment,then you can reuse other Api interface\n");
     ///***登录请求发送完成后，就可以等待onRspLoginManager、onRspLogin、onRspInitTrader回调响应，再调用其他接口***///
+#endif
 };
 
 /// api内部消息打印回调 1:error, 0:normal
@@ -562,14 +610,6 @@ void OES::start(const char *config)
         std::ifstream(config) >> json;
         g_username = json["username"];
         g_password = json["password"];
-        g_xeleTradeNode = json["xele_trade_node"];
-
-        char nameBuf[L_tmpnam];
-        g_xeleConfigFile = tmpnam_r(nameBuf) ?: "tmp_xele_config.txt";
-        std::ofstream fout(g_xeleConfigFile, std::ios::binary);
-        for (int32_t i = 0; i < json["xele_config"].size(); ++i) {
-            fout << json["xele_config"][i].get<std::string>() << '\n';
-        }
 
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
@@ -580,8 +620,7 @@ void OES::start(const char *config)
     g_tradeApi = XeleSecuritiesTraderApi::createTraderApi();
     g_tradeApi->registerSpi(g_userSpi);
 
-    int ret = g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(),
-                                   g_xeleTradeNode, '0' + MARKET_ID, ++g_requestID);
+    int ret = callReqLogin();
     if (ret != 0) {
         /// ret可以结合XeleSecuritiesTraderApi.h中ApiReturnValue枚举返回值对应错误来判断常见的异常
         SPDLOG_ERROR("oes xele login error: ret={}", ret);
@@ -601,9 +640,6 @@ void OES::stop()
     g_userSpi = nullptr;
     g_tradeApi->release();
     g_tradeApi = nullptr;
-    if (!g_xeleConfigFile.empty()) {
-        std::remove(g_xeleConfigFile.c_str());
-    }
 }
 
 HEAT_ZONE_REQORDER void OES::sendRequest(ReqOrder &reqOrder)
