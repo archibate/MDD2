@@ -4,6 +4,7 @@
 #include "MDD.h"
 #include "timestamp.h"
 #include "threadAffinity.h"
+#include "radixSort.h"
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <execution>
@@ -132,9 +133,7 @@ void readReplayTicks(std::vector<MDS::Tick> &tickBuf)
     fp = nullptr;
 
     SPDLOG_INFO("sorting {} ticks", tickBuf.size());
-    std::stable_sort(std::execution::par_unseq, tickBuf.begin(), tickBuf.end(), [] (MDS::Tick const &lhs, MDS::Tick const &rhs) {
-        return lhs.timestamp < rhs.timestamp;
-    });
+    radixSort<8, 4, sizeof(uint32_t), offsetof(MDS::Tick, timestamp), sizeof(MDS::Tick)>(tickBuf.data(), tickBuf.size());
 }
 
 void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
@@ -144,6 +143,8 @@ void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
         int64_t nextSleepTime = steadyNow();
         int64_t timeScale = static_cast<int64_t>(1'000'000 * MDS::g_timeScale);
         bool openCalled = false;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
             MDS::Tick &tick = tickBuf[i];

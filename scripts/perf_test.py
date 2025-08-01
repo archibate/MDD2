@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 
+import shutil
 import subprocess
 import time
 import os
 
 
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+
 
 def flamegraph():
-    os.chdir('build')
+    os.chdir('build/perf-build')
     try:
         subprocess.run('perf record -e cycles -g --call-graph fp ./mdd_v2', shell=True)
     except KeyboardInterrupt:
@@ -18,19 +21,33 @@ def flamegraph():
 
 
 def callgrind():
-    os.chdir('build')
+    os.chdir('build/perf-build')
     try:
-        subprocess.run('valgrind --tool=callgrind --callgrind-out-file=callgrind.out ./mdd2', shell=True)
+        subprocess.run('valgrind --tool=callgrind --callgrind-out-file=callgrind.out ./mdd_v2', shell=True)
     except KeyboardInterrupt:
         time.sleep(1)
     subprocess.check_call('kcachegrind callgrind.out', shell=True)
 
 
+options = [
+    '-DCMAKE_BUILD_TYPE=RelWithDebInfo',
+    '-DBUILD_SPEED=ON',
+    '-DRECORD_FACTORS=OFF',
+    '-DASYNC_LOGGER=OFF',
+    '-DALWAYS_BUY=OFF',
+    '-DTARGET_SECURITY=REPLAY',
+    '-DTARGET_MARKET=SH',
+]
+
+
 def build():
-    os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-    subprocess.check_call(['cmake', '-B', 'build'])
-    subprocess.check_call(['cmake', '--build', 'build', '--target', 'mdd_v2'])
+    shutil.rmtree('build/perf-build', ignore_errors=True)
+    os.makedirs('build/perf-build', exist_ok=True)
+    shutil.copyfile('config/REPLAY.json', 'build/perf-build/config.json')
+    subprocess.check_call(['cmake', '-B', 'build/perf-build'] + options)
+    subprocess.check_call(['cmake', '--build', 'build/perf-build', '--target', 'mdd_v2'])
 
 
 build()
-flamegraph()
+# flamegraph()
+callgrind()

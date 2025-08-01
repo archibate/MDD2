@@ -5,6 +5,7 @@
 #include "timestamp.h"
 #include "IIRState.h"
 #include "heatZone.h"
+#include "radixSort.h"
 #include "generatedModels.h"
 #include <spdlog/spdlog.h>
 #include <cstring>
@@ -37,7 +38,7 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, TickCache::
     // todo: find the correct factor list time and dump:
     stockCompute.dumpFactors(timestampDelinear(minLinearTimestamp));
 
-    SPDLOG_INFO("limit up model status: stock={} tickTimestamp={} roundTimestamp={} minTimestamp={} minDt={} toleranceDt={} intent={}", stockState.stockCode, tickTimestamp, timestampLinear((timestampDelinear(tickTimestamp) + 90) / 100 * 100), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, magic_enum::enum_name(intent));
+    SPDLOG_INFO("limit up model status: stock={} tickTimestamp={} roundTimestamp={} minTimestamp={} minDt={} toleranceDt={} intent={}", stockState.stockCode, tickTimestamp, timestampDelinear(linearTimestamp), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, magic_enum::enum_name(intent));
     SPDLOG_TRACE("limit up detected: stock={} timestamp={} intent={}", stockState.stockCode, tickTimestamp, magic_enum::enum_name(intent));
 }
 
@@ -90,6 +91,11 @@ COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
     }
 
     SPDLOG_ERROR("cannot find in factor cache: stock={} timestamp={}", stockCode, timestamp);
+}
+
+void StockCompute::loadFactors(FactorList const &factors)
+{
+    factorList = factors;
 }
 
 int64_t StockCompute::upSellOrderAmount() const
@@ -659,8 +665,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeKaiyuan()
 
     std::memset(&factorList.kaiyuan, -1, sizeof(factorList.kaiyuan));
     if (!transactions.empty()) {
-        // double A0 = std::min_element(transactions.begin(), transactions.end())->meanAmount;
-        // double A100 = std::max_element(transactions.begin(), transactions.end())->meanAmount;
+        radixSort<16, 4, sizeof(double), offsetof(Transaction, meanAmount), sizeof(Transaction)>(transactions.data(), transactions.size());
 
         auto it096 = transactions.begin() + static_cast<size_t>(std::ceil(0.096 * transactions.size()));
         auto it096f = transactions.begin() + static_cast<size_t>(std::floor(0.096 * transactions.size()));
@@ -670,13 +675,6 @@ HEAT_ZONE_COMPUTE void StockCompute::computeKaiyuan()
         auto it70 = transactions.begin() + static_cast<size_t>(std::ceil(0.70 * transactions.size()));
         auto it90 = transactions.begin() + static_cast<size_t>(std::ceil(0.90 * transactions.size()));
         auto it96 = transactions.begin() + static_cast<size_t>(std::ceil(0.96 * transactions.size()));
-        std::sort(std::execution::unseq, transactions.begin(), transactions.end());
-        // std::nth_element(transactions.begin(), it096, transactions.end());
-        // std::nth_element(it096, it10, transactions.end());
-        // std::nth_element(it10, it50, transactions.end());
-        // std::nth_element(it50, it70, transactions.end());
-        // std::nth_element(it70, it90, transactions.end());
-        // std::nth_element(it90, it96, transactions.end());
 
         double A0 = transactions.front().meanAmount;
         double A100 = transactions.back().meanAmount;

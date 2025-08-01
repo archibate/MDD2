@@ -1,41 +1,43 @@
 #pragma once
 
 #cmakedefine01 BUILD_SPEED
-#cmakedefine01 BUILD_FOR_SZ
-#cmakedefine01 REPLAY
-#cmakedefine01 BUILD_FOR_NE
-#cmakedefine01 RECORD
+#cmakedefine01 RECORD_FACTORS
+#cmakedefine01 ALWAYS_BUY
 #cmakedefine01 ASYNC_LOGGER
+#define TARGET_SECURITY TARGET_SECURITY_@TARGET_SECURITY@
+#define TARGET_MARKET TARGET_MARKET_@TARGET_MARKET@
 
 
-#if BUILD_FOR_SZ
-#ifndef SZ
-#define SZ 1
-#endif
-#define MARKET_NAME "SZ"
-#define MARKET_NAME_LOWER "sz"
-#define MARKET_ID 2
-#else
-#ifndef SH
+#define TARGET_MARKET_SH 1
+#define TARGET_MARKET_SZ 2
+#define TARGET_SECURITY_REPLAY 1
+#define TARGET_SECURITY_NE 2
+#define TARGET_SECURITY_XC 3
+
+#if TARGET_MARKET == TARGET_MARKET_SH
 #define SH 1
-#endif
 #define MARKET_NAME "SH"
 #define MARKET_NAME_LOWER "sh"
 #define MARKET_ID 1
 #endif
 
-#if !REPLAY
-#if BUILD_FOR_NE
-#ifndef NE
-#define NE 1
-#endif
-#else
-#ifndef XC
-#define XC 1
-#endif
-#endif
+
+#if TARGET_MARKET == TARGET_MARKET_SZ
+#define SZ 1
+#define MARKET_NAME "SZ"
+#define MARKET_NAME_LOWER "sz"
+#define MARKET_ID 2
 #endif
 
-#if REPLAY
+#if TARGET_SECURITY == TARGET_SECURITY_REPLAY
+#define REPLAY 1
 #define REPLAY_DATA_PATH "/home/ubuntu/data-cache"
+#endif
+
+#if TARGET_SECURITY == TARGET_SECURITY_NE
+#define NE 1
+#endif
+
+#if TARGET_SECURITY == TARGET_SECURITY_XC
+#define XC 1
 #endif

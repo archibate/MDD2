@@ -55,7 +55,7 @@ void StockState::start()
 #if REPLAY
     reqOrder->stockCode = stockCode;
     reqOrder->price = upperLimitPrice;
-    reqOrder->quantity = qty;
+    reqOrder->quantity = quantity;
     reqOrder->limitType = 'U';
 #elif XC || NE
     std::sprintf(reqOrder->xeleReq.SecuritiesID, "%06d", stockCode);
@@ -106,7 +106,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     if (limitUp) {
         auto intent = tickCache->checkWantBuyAtTimestamp(tick.timestamp);
         if (intent == TickCache::WantBuy) [[likely]] {
-            OES::sendRequest(reqOrder);
+            OES::sendRequest(*reqOrder);
         }
 
         stop(tick.timestamp + static_cast<int32_t>(intent));

@@ -22,7 +22,7 @@ void OES::start(const char *config)
     }
 }
 
-void OES::isStarted()
+bool OES::isStarted()
 {
     return true;
 }

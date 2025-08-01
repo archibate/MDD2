@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <fstream>
 #include <nlohmann/json.hpp>
-#include <cassert>
+#include <cstdlib>
 
 namespace
 {
@@ -19,6 +19,7 @@ namespace
 NescForesight::NescMdUDPClient g_nesc;
 NescForesight::SseStaticInfoField g_sseStatic;
 NescForesight::SzStaticInfoField g_szStatic;
+std::atomic_flag g_isStopped{false};
 
 }
 
@@ -44,10 +45,15 @@ void MDS::subscribe(int32_t const *stocks, int32_t n)
         NescForesight::eSzSnapShotLevel1,
         NescForesight::eShSnapShotLevel1,
     };
-    if (g_nesc.SubscribeMarketData(
-        messageTypes, sizeof(messageTypes) / sizeof(messageTypes[0]),
-        NescForesight::MarketType(MARKET_ID),
-        securityIds.data(), securityIds.size()) != 0) {
+    // if (g_nesc.SubscribeMarketData(
+    //     messageTypes, sizeof(messageTypes) / sizeof(messageTypes[0]),
+    //     NescForesight::MarketType(MARKET_ID),
+    //     securityIds.data(), securityIds.size()) != 0) {
+    //     SPDLOG_ERROR("mds nesc subscribe failed");
+    //     throw std::runtime_error("mds nesc subscribe failed");
+    // }
+
+    if (g_nesc.SubscribeAll(messageTypes, sizeof(messageTypes) / sizeof(messageTypes[0])) != 0) {
         SPDLOG_ERROR("mds nesc subscribe failed");
         throw std::runtime_error("mds nesc subscribe failed");
     }
@@ -59,7 +65,9 @@ MDS::Stat MDS::getStatic(int32_t stock)
         auto *stat = g_sseStatic.staticInfos;
         auto *statEnd = g_sseStatic.staticInfos + g_sseStatic.count;
         for (; stat < statEnd; ++stat) {
-            break;
+            if (std::atoi(stat->securityID) == stock) {
+                break;
+            }
         }
         if (stat == statEnd) {
             SPDLOG_ERROR("not found in static info: stock={}", stock);
@@ -90,24 +98,25 @@ MDS::Stat MDS::getStatic(int32_t stock)
 namespace
 {
 
+#if SH
 bool firstCongress = false;
 
-COLD_ZONE void reportFirstCongress()
+COLD_ZONE void onFirstCongress()
 {
+    firstCongress = true;
     SPDLOG_CRITICAL("the first congress of CPC was held");
 }
 
-#if SH
 HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
 {
-    assert(buf[0] == MSG_TYPE_TICK_MERGE_SSE);
+    if (!firstCongress) [[unlikely]] {
+        onFirstCongress();
+    }
+
+    // assert(buf[0] == MSG_TYPE_TICK_MERGE_SSE);
     auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));
     if (tick.tickMergeSse.channelNo > 6 || tick.tickMergeSse.channelNo < 1) [[unlikely]] {
         return;
-    }
-    if (!firstCongress) [[unlikely]] {
-        firstCongress = true;
-        reportFirstCongress();
     }
     MDD::handleTick(tick);
 }
@@ -116,23 +125,20 @@ HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
 #if SZ
 HEAT_ZONE_TICK void handleSzTradeAndOrder(const uint8_t *buf, int len)
 {
-    assert(buf[0] == MSG_TYPE_TRADE_SZ || buf[0] == MSG_TYPE_ORDER_SZ);
-    if (!firstCongress) [[unlikely]] {
-        firstCongress = true;
-        reportFirstCongress();
-    }
-    MDD::handleTick(const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf)));
+    // assert(buf[0] == MSG_TYPE_TRADE_SZ || buf[0] == MSG_TYPE_ORDER_SZ);
+    auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));
+    MDD::handleTick(tick);
 }
 #endif
 
 void handleShSnapShotLevel1(const uint8_t *buf, int len)
 {
-    assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SSE);
+    // assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SSE);
 }
 
 void handleSzSnapShotLevel1(const uint8_t *buf, int len)
 {
-    assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SZ);
+    // assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SZ);
 }
 
 }
@@ -237,17 +243,19 @@ void MDS::startReceive()
 
 void MDS::stop()
 {
-    g_nesc.Stop();
+    if (!g_isStopped.test_and_set()) {
+        g_nesc.Stop();
+    }
 }
 
 void MDS::requestStop()
 {
-    g_nesc.Stop();
+    MDS::stop();
 }
 
 bool MDS::isFinished()
 {
-    return false;
+    return g_isStopped.test();
 }
 
 bool MDS::isStarted()

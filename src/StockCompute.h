@@ -25,6 +25,7 @@ struct alignas(64) StockCompute
 
     int64_t upSellOrderAmount() const;
     void dumpFactors(int32_t timestamp) const;
+    void loadFactors(FactorList const &factors);
 
 private:
     struct Snapshot

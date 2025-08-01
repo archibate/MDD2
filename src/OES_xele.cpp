@@ -565,7 +565,7 @@ void OES::start(const char *config)
         g_xeleTradeNode = json["xele_trade_node"];
 
         char nameBuf[L_tmpnam];
-        g_xeleConfigFile = std::tmpnam(nameBuf) ?: "tmp_xele_config.txt";
+        g_xeleConfigFile = tmpnam_r(nameBuf) ?: "tmp_xele_config.txt";
         std::ofstream fout(g_xeleConfigFile, std::ios::binary);
         for (int32_t i = 0; i < json["xele_config"].size(); ++i) {
             fout << json["xele_config"][i].get<std::string>() << '\n';

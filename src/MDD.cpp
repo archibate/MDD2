@@ -55,7 +55,7 @@ void parseDailyConfig(const char *config)
     try {
         nlohmann::json json;
         std::ifstream(config) >> json;
-        SPDLOG_INFO("config json: {}", json.dump());
+        SPDLOG_DEBUG("config json: {}", json.dump());
 
         date = json["date"];
         if (json.contains("factor_file")) {
@@ -153,9 +153,8 @@ void parseDailyConfig(const char *config)
     bin.close();
     initStockArrays();
 
-    MDD::g_stockComputes.reset(new StockCompute[MDD::g_stockCodes.size()]{});
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        MDD::g_stockComputes[i].factorList = factors[i];
+        MDD::g_stockComputes[i].loadFactors(factors[i]);
     }
 }
 
@@ -222,7 +221,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 {
 #if REPLAY
-    int32_t stock = tick.stock;
+    int32_t stock = rspOrder.stockCode;
 #elif XC || NE
     int32_t stock = std::strtoul(rspOrder.xeleRsp.SecuritiesID, nullptr, 10);
 #endif
@@ -289,18 +288,25 @@ void MDD::start(const char *config)
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
-
     SPDLOG_INFO("system fully started");
 }
 
 void MDD::stop()
 {
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    SPDLOG_INFO("stopping oes");
+    OES::stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    SPDLOG_INFO("stopping mds");
     MDS::stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    SPDLOG_INFO("stopping {} compute channels", kChannelCount);
 
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c].request_stop();
         g_computeThreads[c].join();
     }
+    SPDLOG_INFO("stopping {} stocks", MDD::g_stockCodes.size());
 
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockComputes[i].stop();
@@ -315,8 +321,7 @@ void MDD::stop()
     g_stockComputes.reset();
     g_stockStates.reset();
     g_tickCaches.reset();
-
-    OES::stop();
+    SPDLOG_INFO("system fully stopped");
 }
 
 void MDD::requestStop()
