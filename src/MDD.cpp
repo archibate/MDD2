@@ -238,8 +238,28 @@ void MDD::start(const char *config)
 {
     parseDailyConfig(config);
     MDS::start(config);
-
     SPDLOG_INFO("initializing {} stocks", MDD::g_stockCodes.size());
+
+    SPDLOG_INFO("initializing trade api");
+    OES::start(config);
+
+    while (!OES::isStarted()) {
+        SPDLOG_DEBUG("wait for trade initial");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    SPDLOG_INFO("subscribing {} stocks", MDD::g_stockCodes.size());
+    MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
+
+    SPDLOG_INFO("start receiving stock quotes");
+    MDS::startReceive();
+    while (!MDS::isStarted()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    SPDLOG_INFO("mds receive started");
+
+    SPDLOG_INFO("starting {} stocks", MDD::g_stockCodes.size());
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_tickCaches[i].start();
     }
@@ -269,23 +289,7 @@ void MDD::start(const char *config)
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
-    SPDLOG_INFO("initializing trade api");
-    OES::start(config);
 
-    while (!OES::isStarted()) {
-        SPDLOG_DEBUG("wait for trade initial");
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-
-    SPDLOG_INFO("subscribing {} stocks", MDD::g_stockCodes.size());
-    MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
-
-    SPDLOG_INFO("start receiving stock quotes");
-    MDS::startReceive();
-    while (!MDS::isStarted()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
     SPDLOG_INFO("system fully started");
 }
 

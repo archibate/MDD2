@@ -1,9 +1,10 @@
 {
     "date": 20250801,
     "factor_file": "/data/daily_csv/mdd2_factors_sh_20250801.bin",
+    "mds_username": "xele0069",
+    "mds_password": "hnsr888!",
     "username": "18930727",
     "password": "220401",
-    "xele_config_file": "xele_config.txt",
     "xele_trade_node": 0,
     "xele_config": [
         "DependentCounterVersion=2",
@@ -13,7 +14,7 @@
         "HeartBeatInterval=6",
         "HeartBeatTimeOutCnt=3",
         "OrderWarm=1",
-        "CpuCore=-1,9",
+        "CpuCore=13,14",
         "SoftRspRcv=0",
         "SocketBlockFlag=0",
         "ApiMode=1",
@@ -25,5 +26,5 @@
         "OperWay=7",
         "PcPrefix="
     ],
-    "comment": "mds nesc config"
+    "comment": "nesc config"
 }

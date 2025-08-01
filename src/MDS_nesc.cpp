@@ -65,9 +65,9 @@ MDS::Stat MDS::getStatic(int32_t stock)
             SPDLOG_ERROR("not found in static info: stock={}", stock);
             return {};
         }
-        if (stat->productStatus[0] == 'N' || stat->productStatus[3] != 'D' || stat->productStatus[6] != 'F' || stat->productStatus[9] != 'N') {
-            SPDLOG_WARN("stock has bad product status: stock={} status={:.21s}", stock, stat->productStatus);
-        }
+        // if (stat->productStatus[0] == 'N' || stat->productStatus[3] != 'D' || stat->productStatus[6] != 'F' || stat->productStatus[9] != 'N') {
+        //     SPDLOG_WARN("stock has bad product status: stock={} status={:.21s}", stock, stat->productStatus);
+        // }
         return {.marketType = NescForesight::SSE, .staticSseInfo = *stat};
 
     } else {
@@ -80,9 +80,9 @@ MDS::Stat MDS::getStatic(int32_t stock)
             SPDLOG_ERROR("not found in static info: stock={}", stock);
             return {};
         }
-        if (stat->securityStatus[0] || stat->securityStatus[3] || stat->securityStatus[4] || stat->securityStatus[5] || stat->securityStatus[9] || stat->securityStatus[16] || stat->securityStatus[17]) {
-            SPDLOG_WARN("stock has bad product status: stock={} status={:.20s}", stock, reinterpret_cast<const char *>(stat->securityStatus));
-        }
+        // if (stat->securityStatus[0] || stat->securityStatus[3] || stat->securityStatus[4] || stat->securityStatus[5] || stat->securityStatus[9] || stat->securityStatus[16] || stat->securityStatus[17]) {
+        //     SPDLOG_WARN("stock has bad product status: stock={} status={:.20s}", stock, reinterpret_cast<const char *>(stat->securityStatus));
+        // }
         return {.marketType = NescForesight::SZE, .staticSzInfo = *stat};
     }
 }
@@ -145,8 +145,8 @@ void MDS::start(const char *config)
     try {
         nlohmann::json json;
         std::ifstream(config) >> json;
-        username = json["username"];
-        password = json["password"];
+        username = json["mds_username"];
+        password = json["mds_password"];
 
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
@@ -210,7 +210,7 @@ void MDS::start(const char *config)
     for (size_t i = 0; i < kNumMdParams; ++i) {
         params[i] = &mdChannels[i];
     }
-    if (g_nesc.Init(params, kNumMdParams) == 0) {
+    if (g_nesc.Init(params, kNumMdParams) != 0) {
         SPDLOG_ERROR("mds nesc channels init failed");
         throw std::runtime_error("mds nesc channels init failed");
     }

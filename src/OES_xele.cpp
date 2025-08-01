@@ -132,7 +132,7 @@ void XeleTdSpi::onRspLoginManager(CXeleRspUserLoginManagerField* pRspField, CXel
     if (pRspInfo->ErrorID == 0)
     {
         canFundTransfer = true;
-        LOGf(INFO, "now can use manager interface\n");
+        LOGf(DEBUG, "now can use manager interface\n");
     }
     else
     {
@@ -147,7 +147,7 @@ void XeleTdSpi::onRspLogin(CXeleRspUserLoginField* pRspField, CXeleRspInfo* pRsp
     {
         canQuery = true;
         g_maxUserLocalID = pRspField->MaxUserLocalID;
-        LOGf(INFO, "now can use query interface, maxUserLocalID:%d\n", pRspField->MaxUserLocalID);
+        LOGf(DEBUG, "now can use query interface, maxUserLocalID:%d\n", pRspField->MaxUserLocalID);
     }
     else
     {
@@ -161,7 +161,7 @@ void XeleTdSpi::onRspInitTrader(CXeleRspInitTraderField* pRspField, CXeleRspInfo
     if (pRspInfo->ErrorID == 0)
     {
         canOrder = true;
-        LOGf(INFO, "now can use order interface\n");
+        LOGf(DEBUG, "now can use order interface\n");
     }
     else
     {
@@ -172,12 +172,12 @@ void XeleTdSpi::onRspInitTrader(CXeleRspInitTraderField* pRspField, CXeleRspInfo
 /// 艾科管理中心登出应答
 void XeleTdSpi::onRspLogoutManager(CXeleRspUserLogoutManagerField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    LOGf(INFO, "  Test LogoutManager pass\n");
-    LOGf(INFO, "=======================");
+    LOGf(DEBUG, "  Test LogoutManager pass\n");
+    LOGf(DEBUG, "=======================");
     if (pRspInfo->ErrorID == 0)
     {
         canFundTransfer = false;
-        LOGf(INFO, "now can't use manager interface\n");
+        LOGf(DEBUG, "now can't use manager interface\n");
     }
     else
     {
@@ -188,12 +188,12 @@ void XeleTdSpi::onRspLogoutManager(CXeleRspUserLogoutManagerField* pRspField, CX
 /// 艾科柜台登出应答
 void XeleTdSpi::onRspLogout(CXeleRspUserLogoutField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    LOGf(INFO, "  Test Logout pass\n");
-    LOGf(INFO, "=======================\n");
+    LOGf(DEBUG, "  Test Logout pass\n");
+    LOGf(DEBUG, "=======================\n");
     if (pRspInfo->ErrorID == 0)
     {
         canQuery = false;
-        LOGf(INFO, "now can't use query interface\n");
+        LOGf(DEBUG, "now can't use query interface\n");
     }
     else
     {
@@ -207,7 +207,7 @@ void XeleTdSpi::onRspLogout(CXeleRspUserLogoutField* pRspField, CXeleRspInfo* pR
 void XeleTdSpi::onFrontManagerQueryDisconnected(int nReason)
 {
     canFundTransfer = false;
-    LOGf(INFO, "need relogin\n");
+    LOGf(DEBUG, "need relogin\n");
 };
 
 /// 当客户端与服务端查询通信连接断开时，该方法被调用。
@@ -216,7 +216,7 @@ void XeleTdSpi::onFrontManagerQueryDisconnected(int nReason)
 void XeleTdSpi::onFrontQueryDisconnected(int nReason)
 {
     canQuery = false;
-    LOGf(INFO, "need relogin\n");
+    LOGf(DEBUG, "need relogin\n");
 };
 
 /// 当客户端与服务端交易通信连接断开时，该方法被调用。
@@ -225,7 +225,7 @@ void XeleTdSpi::onFrontQueryDisconnected(int nReason)
 void XeleTdSpi::onFrontTradeDisconnected(int nReason)
 {
     canOrder = false;
-    LOGf(INFO, "need re-login\n");
+    LOGf(DEBUG, "need re-login\n");
 
     ///***当盘中发生了断连，可以采取如下的处理方式，来重新获取操作权限***///
     /// 当这三种回调被调用时onFrontManagerQueryDisconnected、onFrontQueryDisconnected、onFrontTradeDisconnected可以进行如下异常处理
@@ -234,17 +234,17 @@ void XeleTdSpi::onFrontTradeDisconnected(int nReason)
     ///*********************************///
     /// 先发送登出请求，取消用户注册权限
     g_tradeApi->reqLogout(g_username.c_str(), g_requestID++);
-    LOGf(INFO, "reqLogout\n");
+    LOGf(DEBUG, "reqLogout\n");
     sleep(2);
     /// 此处等待所有连接都断开后，再进行下一步处理
     while (true)
     {
-        LOGf(INFO, "wait !canOrder && !canQuery && !canFundTransfer\n");
+        LOGf(DEBUG, "wait !canOrder && !canQuery && !canFundTransfer\n");
         sleep(1);
         if (!canOrder && !canQuery && !canFundTransfer)
             break;
     }
-    LOGf(INFO, "now api disconnect,start re-login\n");
+    LOGf(DEBUG, "now api disconnect,start re-login\n");
 
     /// 发送登录请求，重新获取账户权限
     while (g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(),
@@ -253,26 +253,22 @@ void XeleTdSpi::onFrontTradeDisconnected(int nReason)
         LOGf(ERROR, "call reqLogin fail,try again\n");
         sleep(3);
     }
-    LOGf(INFO, "relogin send success,now wait a moment,then you can reuse other Api interface\n");
+    LOGf(DEBUG, "relogin send success,now wait a moment,then you can reuse other Api interface\n");
     ///***登录请求发送完成后，就可以等待onRspLoginManager、onRspLogin、onRspInitTrader回调响应，再调用其他接口***///
 };
 
-/// api内部消息打印回调
+/// api内部消息打印回调 1:error, 0:normal
 void XeleTdSpi::onApiMsg(int ret, const char* strFormat, ...)
 {
-    char strLog[2048]{};
-    va_list arglist;
-    va_start(arglist, strFormat);
-    vsprintf(strLog, strFormat, arglist);
-    va_end(arglist);
-    // 1:error, 0:normal
-    if (ret)
-    {
-        LOGf(ERROR, "apiError:%s\n", strLog);
-    }
-    else
-    {
-        LOGf(INFO, "api:%s\n", strLog);
+    char strLog[2048];
+    va_list argList;
+    va_start(argList, strFormat);
+    strLog[std::vsnprintf(strLog, sizeof strLog, strFormat, argList)] = 0;
+    va_end(argList);
+    if (ret) {
+        SPDLOG_ERROR("(API) {}", strLog);
+    } else {
+        SPDLOG_INFO("(API) {}", strLog);
     }
 };
 
@@ -503,7 +499,7 @@ void XeleTdSpi::onRspQryTrade(CXeleRspQryTradeField* pRspField, CXeleRspInfo* pR
 /// 证券资金查询应答
 void XeleTdSpi::onRspQryFund(CXeleRspQryStockClientAccountField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    LOGf(INFO, "onRspQryFund:%.15s,AvailableFund:%lf,TotalFund:%lf,InitTotalFund:%lf\n", pRspField->AccountID, pRspField->AvailableFund, pRspField->TotalFund, pRspField->InitTotalFund);
+    LOGf(DEBUG, "onRspQryFund:%.15s,AvailableFund:%lf,TotalFund:%lf,InitTotalFund:%lf\n", pRspField->AccountID, pRspField->AvailableFund, pRspField->TotalFund, pRspField->InitTotalFund);
 
     // Td_RspQryCashAsset RspQryCashAsset;
     // std::memset(&RspQryCashAsset, 0, sizeof(Td_RspQryCashAsset));
@@ -531,7 +527,7 @@ void XeleTdSpi::onRspQryFund(CXeleRspQryStockClientAccountField* pRspField, CXel
 /// 证券持仓查询应答
 void XeleTdSpi::onRspQryPosition(CXeleRspQryStockPositionField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
-    LOGf(INFO, "onRspQryPosition:%s,SecuritiesID:%s,AvailablePosition:%ld, errorId:%d,%s\n", pRspField->AccountID, pRspField->SecuritiesID, pRspField->AvailablePosition, pRspInfo->ErrorID, pRspInfo->ErrorMsg);
+    LOGf(DEBUG, "onRspQryPosition:%s,SecuritiesID:%s,AvailablePosition:%ld, errorId:%d,%s\n", pRspField->AccountID, pRspField->SecuritiesID, pRspField->AvailablePosition, pRspInfo->ErrorID, pRspInfo->ErrorMsg);
 
     // Td_RspQryPosition RspQryPosition;
     // std::memset(&RspQryPosition, 0, sizeof(Td_RspQryPosition));
@@ -572,7 +568,7 @@ void OES::start(const char *config)
         g_xeleConfigFile = std::tmpnam(nameBuf) ?: "tmp_xele_config.txt";
         std::ofstream fout(g_xeleConfigFile, std::ios::binary);
         for (int32_t i = 0; i < json["xele_config"].size(); ++i) {
-            fout << json["xele_config"][i] << '\n';
+            fout << json["xele_config"][i].get<std::string>() << '\n';
         }
 
     } catch (std::exception const &e) {
@@ -588,7 +584,7 @@ void OES::start(const char *config)
                                    g_xeleTradeNode, '0' + MARKET_ID, ++g_requestID);
     if (ret != 0) {
         /// ret可以结合XeleSecuritiesTraderApi.h中ApiReturnValue枚举返回值对应错误来判断常见的异常
-        SPDLOG_INFO("oes xele login error: ret={}", ret);
+        SPDLOG_ERROR("oes xele login error: ret={}", ret);
         throw std::runtime_error("oes xele login error");
     }
 }
