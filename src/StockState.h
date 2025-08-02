@@ -28,7 +28,7 @@ struct alignas(64) StockState
 #endif
 
     WantCache *wantCache{};
-    TickRing *tickRing{(TickRing *)-1};
+    TickRing *tickRing{};
 
     std::unique_ptr<OES::ReqOrder> reqOrder{};
 

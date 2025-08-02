@@ -33,6 +33,8 @@ public:
         T *read_end_pos;
 
     public:
+        ring_reader() = default;
+
         explicit ring_reader(spsc_ring_queue *queue_) noexcept : queue(queue_) {
             read_end_pos = queue->write_ok_pos.load(std::memory_order_acquire);
             read_pos = read_end_pos;
@@ -99,6 +101,8 @@ public:
         T *write_end_pos;
 
     public:
+        ring_writer() = default;
+
         explicit ring_writer(spsc_ring_queue *queue_) noexcept : queue(queue_) {
             write_end_pos = queue->read_ok_pos.load(std::memory_order_acquire);
             write_pos = write_end_pos;

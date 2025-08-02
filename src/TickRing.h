@@ -2,6 +2,9 @@
 
 
 #include "MDS.h"
+
+
+#if 0
 #include "RingBuffer.h"
 
 
@@ -28,3 +31,35 @@ struct alignas(64) TickRing
         return n;
     }
 };
+#else
+#include "SPSC.h"
+
+
+struct alignas(64) TickRing
+{
+    using RingType = spsc_ring_queue<MDS::Tick, 0x40000>;
+
+    alignas(64) RingType::ring_reader reader;
+    alignas(64) RingType::ring_writer writer;
+    alignas(64) RingType ring;
+
+    void start()
+    {
+        reader = ring.reader();
+        writer = ring.writer();
+    }
+
+    void stop() {}
+
+    void pushTick(MDS::Tick const &tick)
+    {
+        writer.write(&tick, &tick + 1);
+    }
+
+    size_t fetchTicks(MDS::Tick *buf, size_t size)
+    {
+        return reader.read_n(buf, size);
+    }
+};
+
+#endif

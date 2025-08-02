@@ -42,7 +42,7 @@ void initStockArrays()
         g_stockIdLut[static_cast<int16_t>(MDD::g_stockCodes[i] & 0x7FFF)] = i;
     }
 
-    MDD::g_tickRings = std::make_unique<TickRing[]>(MDD::g_stockCodes.size());
+    MDD::g_tickRings = std::make_unique<TickRing[]>(kChannelCount);
     MDD::g_wantCaches = std::make_unique<WantCache[]>(MDD::g_stockCodes.size());
     MDD::g_stockStates = std::make_unique<StockState[]>(MDD::g_stockCodes.size());
     MDD::g_stockComputes = std::make_unique<StockCompute[]>(MDD::g_stockCodes.size());
@@ -271,7 +271,7 @@ void MDD::start(const char *config)
     }
 
     SPDLOG_INFO("starting {} stocks", MDD::g_stockCodes.size());
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
+    for (int32_t i = 0; i < kChannelCount; ++i) {
         g_tickRings[i].start();
     }
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
@@ -356,7 +356,7 @@ void MDD::stop()
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_wantCaches[i].stop();
     }
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
+    for (int32_t i = 0; i < kChannelCount; ++i) {
         g_tickRings[i].stop();
     }
 
