@@ -2,7 +2,6 @@
 
 
 #include <mutex>
-#include <spdlog/spdlog.h>
 #include <array>
 #include <atomic>
 #include <vector>
@@ -13,14 +12,13 @@
 #include "RingBuffer.h"
 
 
-struct alignas(64) TickCache {
+struct alignas(64) TickCache
+{
     /* StoC */ alignas(64) RingBuffer<MDS::Tick, 0x10000> tickRing;
     /* CtoS */ alignas(64) std::array<std::atomic<int32_t>, 16> wantBuyTimestamp{};
     /* C */ alignas(64) int32_t wantBuyCurrentIndex{};
 
-    void start()
-    {
-    }
+    void start() {}
 
     void stop() {}
 
