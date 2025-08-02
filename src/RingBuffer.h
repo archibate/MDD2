@@ -24,7 +24,7 @@ private:
 
     [[gnu::cold]] [[noreturn]] static void overflowed(uint32_t n)
     {
-        std::fprintf(stderr, "RingBuffer overflow: %d\n", n);
+        std::fprintf(stderr, "RingBuffer overflow: %#x\n", n);
         std::fflush(stderr);
         std::_Exit(1);
     }

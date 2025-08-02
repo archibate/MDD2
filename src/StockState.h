@@ -10,7 +10,8 @@
 
 
 struct StockCompute;
-struct TickCache;
+struct WantCache;
+struct TickRing;
 
 struct alignas(64) StockState
 {
@@ -26,11 +27,14 @@ struct alignas(64) StockState
     uint64_t upperLimitPrice10000{};
 #endif
 
-    TickCache *tickCache{};
+    WantCache *wantCache{};
+    TickRing *tickRing{(TickRing *)-1};
 
     std::unique_ptr<OES::ReqOrder> reqOrder{};
 
     void start();
+    void setChannelId(int32_t channelId);
+    void setStatic(MDS::Stat const &stat);
     void stop(int32_t timestamp = 0);
     void onTick(MDS::Tick &tick);
     void onRspOrder(OES::RspOrder &rspOrder);

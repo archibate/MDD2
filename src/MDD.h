@@ -7,7 +7,8 @@
 #include "constants.h"
 #include "StockState.h"
 #include "StockCompute.h"
-#include "TickCache.h"
+#include "WantCache.h"
+#include "TickRing.h"
 
 
 namespace MDD
@@ -16,7 +17,8 @@ namespace MDD
 extern std::array<std::jthread, kChannelCount> g_computeThreads;
 extern std::unique_ptr<StockState[]> g_stockStates;
 extern std::unique_ptr<StockCompute[]> g_stockComputes;
-extern std::unique_ptr<TickCache[]> g_tickCaches;
+extern std::unique_ptr<WantCache[]> g_wantCaches;
+extern std::unique_ptr<TickRing[]> g_tickRings;
 extern std::vector<int32_t> g_stockCodes;
 extern std::vector<int32_t> g_prevLimitUpStockCodes;
 

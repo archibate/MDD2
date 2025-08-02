@@ -6,15 +6,12 @@
 #include <atomic>
 #include <vector>
 #include "MDS.h"
-#include "FastMutex.h"
 #include "timestamp.h"
 #include "constants.h"
-#include "RingBuffer.h"
 
 
-struct alignas(64) TickCache
+struct alignas(64) WantCache
 {
-    /* StoC */ alignas(64) RingBuffer<MDS::Tick, 0x10000> tickRing;
     /* CtoS */ alignas(64) std::array<std::atomic<int32_t>, 16> wantBuyTimestamp{};
     /* C */ alignas(64) int32_t wantBuyCurrentIndex{};
 
@@ -22,24 +19,24 @@ struct alignas(64) TickCache
 
     void stop() {}
 
-    [[gnu::always_inline]] void pushTick(MDS::Tick const &tick)
-    {
-        tickRing.writeOne(tick);
-    }
-
-    template <size_t BufSize>
-    [[gnu::always_inline]] size_t fetchTicks(MDS::Tick (&buf)[BufSize])
-    {
-        uint32_t n = tickRing.fetch();
-        if (n == 0) {
-            return 0;
-        }
-        if (n > BufSize) {
-            n = BufSize;
-        }
-        tickRing.read(buf, n);
-        return n;
-    }
+    // [[gnu::always_inline]] void pushTick(MDS::Tick const &tick)
+    // {
+    //     tickRing.writeOne(tick);
+    // }
+    //
+    // template <size_t BufSize>
+    // [[gnu::always_inline]] size_t fetchTicks(MDS::Tick (&buf)[BufSize])
+    // {
+    //     uint32_t n = tickRing.fetch();
+    //     if (n == 0) {
+    //         return 0;
+    //     }
+    //     if (n > BufSize) {
+    //         n = BufSize;
+    //     }
+    //     tickRing.read(buf, n);
+    //     return n;
+    // }
 
     [[gnu::always_inline]] void pushWantBuyTimestamp(int32_t timestamp, bool wantBuy)
     {

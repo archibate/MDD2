@@ -14,14 +14,11 @@ struct alignas(64) StockCompute
 {
     void start();
     void stop();
-    void onTimer();
-    void onPostTimer();
+    void clearApproach();
+    void onTick(MDS::Tick &tick);
+    bool checkApproach();
+    void onApproach();
     void onBusy();
-
-    [[gnu::always_inline]] bool isApproachingLimitUp() const
-    {
-        return approachingLimitUp;
-    }
 
     int64_t upSellOrderAmount() const;
     void dumpFactors(int32_t timestamp) const;
@@ -84,7 +81,6 @@ private:
     std::unique_ptr<FactorList[]> factorListCache;
 #endif
 
-    void onTick(MDS::Tick &tick);
     void onOrder(MDS::Tick &tick);
     void onCancel(MDS::Tick &tick);
     void onTrade(MDS::Tick &tick);

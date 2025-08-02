@@ -15,14 +15,14 @@
 namespace
 {
 
-COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, TickCache::Intent intent)
+COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, WantCache::Intent intent)
 {
-    auto &tickCache = MDD::g_tickCaches[stockIndex];
+    auto &wantCache = MDD::g_wantCaches[stockIndex];
     int32_t linearTimestamp = (timestampLinear(tickTimestamp) + 90) / 100 * 100;
-    int32_t minLinearTimestamp = tickCache.wantBuyTimestamp[0].load(std::memory_order_relaxed);
+    int32_t minLinearTimestamp = wantCache.wantBuyTimestamp[0].load(std::memory_order_relaxed);
     int32_t minDt = std::abs(minLinearTimestamp - linearTimestamp);
-    for (int32_t i = 1; i < tickCache.wantBuyTimestamp.size(); ++i) {
-        int32_t wantTimestamp = tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed);
+    for (int32_t i = 1; i < wantCache.wantBuyTimestamp.size(); ++i) {
+        int32_t wantTimestamp = wantCache.wantBuyTimestamp[i].load(std::memory_order_relaxed);
         int32_t dt = std::abs(wantTimestamp - linearTimestamp);
         if (dt < minDt) {
             minDt = dt;
@@ -65,7 +65,7 @@ void StockCompute::start()
     futureTimestamp = fState.nextTickTimestamp = 9'30'00'000;
 
 #if RECORD_FACTORS
-    factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<TickCache>().wantBuyTimestamp)>);
+    factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<WantCache>().wantBuyTimestamp)>);
 #endif
 }
 
@@ -78,9 +78,9 @@ COLD_ZONE void StockCompute::stop()
 COLD_ZONE void StockCompute::dumpFactors(int32_t timestamp) const
 {
     int32_t linearTimestamp = timestampLinear(timestamp);
-    auto &tickCache = MDD::g_tickCaches[stockIndex()];
-    for (int32_t i = 0; i < tickCache.wantBuyTimestamp.size(); ++i) {
-        int32_t wantTimestamp = tickCache.wantBuyTimestamp[i].load(std::memory_order_relaxed);
+    auto &wantCache = MDD::g_wantCaches[stockIndex()];
+    for (int32_t i = 0; i < wantCache.wantBuyTimestamp.size(); ++i) {
+        int32_t wantTimestamp = wantCache.wantBuyTimestamp[i].load(std::memory_order_relaxed);
         wantTimestamp += wantTimestamp & 1;
         if (linearTimestamp == wantTimestamp) {
 #if RECORD_FACTORS
@@ -110,10 +110,14 @@ int64_t StockCompute::upSellOrderAmount() const
 
 HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
 {
+    if (!alive) [[unlikely]] {
+        return;
+    }
+
 #if REPLAY
-    if (tick.stock == 0) [[unlikely]] {
+    if (tick.quantity == 0) [[unlikely]] {
         logLimitUp(stockIndex(), tick.timestamp / 10 * 10,
-                   static_cast<TickCache::Intent>(tick.timestamp % 10));
+                   static_cast<WantCache::Intent>(tick.timestamp % 10));
         stop();
         return;
     }
@@ -132,7 +136,7 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
 #elif NE && SH
     if (tick.tickMergeSse.tickType == 0) [[unlikely]] {
         logLimitUp(stockIndex(), tick.tickMergeSse.tickTime * 10,
-                   static_cast<TickCache::Intent>(tick.tickMergeSse.tickBSFlag));
+                   static_cast<WantCache::Intent>(tick.tickMergeSse.tickBSFlag));
         stop();
         return;
     }
@@ -154,7 +158,7 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
 #elif NE && SZ
     if (tick.messageType == 0) [[unlikely]] {
         logLimitUp(stockIndex(), tick.tradeSz.transactTime / 10 * 10,
-                   static_cast<TickCache::Intent>(tick.tradeSz.transactTime % 10));
+                   static_cast<WantCache::Intent>(tick.tradeSz.transactTime % 10));
         stop();
         return;
     }
@@ -165,30 +169,36 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
 #endif
 }
 
-HEAT_ZONE_ORDBOOK void StockCompute::onTimer()
+HEAT_ZONE_ORDBOOK void StockCompute::clearApproach()
 {
-    if (!alive) [[unlikely]] {
-        return;
-    }
     approachingLimitUp = false;
+}
 
-    thread_local MDS::Tick tickBuf[256];
-    auto &tickCache = MDD::g_tickCaches[stockIndex()];
-    size_t n;
+    // if (!alive) [[unlikely]] {
+    //     return;
+    // }
+    //
+    // thread_local MDS::Tick tickBuf[256];
+    // auto &wantCache = MDD::g_wantCaches[stockIndex()];
+    // size_t n;
+    //
+    // while ((n = wantCache.fetchTicks(tickBuf)) != 0) {
+    //     for (MDS::Tick *tick = tickBuf, *tickEnd = tickBuf + n; tick != tickEnd; ++tick) {
+    //         onTick(*tick);
+    //     }
+    // }
 
-    while ((n = tickCache.fetchTicks(tickBuf)) != 0) {
-        for (MDS::Tick *tick = tickBuf, *tickEnd = tickBuf + n; tick != tickEnd; ++tick) {
-            onTick(*tick);
-        }
-    }
-
+HEAT_ZONE_ORDBOOK bool StockCompute::checkApproach()
+{
     if (approachingLimitUp) {
         futureTimestamp = fState.nextTickTimestamp;
         firstCompute = true;
+        return true;
     }
+    return false;
 }
 
-HEAT_ZONE_COMPUTE void StockCompute::onPostTimer()
+HEAT_ZONE_COMPUTE void StockCompute::onApproach()
 {
     if (approachingLimitUp) {
         computeFutureWantBuy();
@@ -330,10 +340,10 @@ HEAT_ZONE_COMPUTE void StockCompute::computeFutureWantBuy()
     stepSnapshot();
 
     bool wantBuy = decideWantBuy();
-    auto &tickCache = MDD::g_tickCaches[stockIndex()];
-    tickCache.pushWantBuyTimestamp(futureTimestamp, wantBuy);
+    auto &wantCache = MDD::g_wantCaches[stockIndex()];
+    wantCache.pushWantBuyTimestamp(futureTimestamp, wantBuy);
 #if RECORD_FACTORS
-    factorListCache[(tickCache.wantBuyCurrentIndex - 1) & (tickCache.wantBuyTimestamp.size() - 1)] = factorList;
+    factorListCache[(wantCache.wantBuyCurrentIndex - 1) & (wantCache.wantBuyTimestamp.size() - 1)] = factorList;
 #endif
 
     restoreSnapshot();

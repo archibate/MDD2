@@ -3,7 +3,8 @@
 #include "MDD.h"
 #include "OES.h"
 #include "timestamp.h"
-#include "TickCache.h"
+#include "WantCache.h"
+#include "TickRing.h"
 #include "heatZone.h"
 #include <spdlog/spdlog.h>
 #include <atomic>
@@ -17,9 +18,16 @@ void StockState::start()
     alive = true;
 
     stockCode = MDD::g_stockCodes[stockIndex()];
-    tickCache = &MDD::g_tickCaches[stockIndex()];
+    wantCache = &MDD::g_wantCaches[stockIndex()];
+}
 
-    auto stat = MDS::getStatic(stockCode);
+void StockState::setChannelId(int32_t channelId)
+{
+    tickRing = &MDD::g_tickRings[channelId];
+}
+
+void StockState::setStatic(MDS::Stat const &stat)
+{
 #if REPLAY
     preClosePrice = stat.preClosePrice;
     upperLimitPrice = stat.upperLimitPrice;
@@ -81,16 +89,20 @@ void StockState::stop(int32_t timestamp)
         alive = false;
         MDS::Tick endSign{};
 #if REPLAY
-        endSign.stock = 0;
+        endSign.quantity = 0;
+        endSign.stock = stockCode;
         endSign.timestamp = timestamp;
 #elif NE && SH
         endSign.tickMergeSse.tickType = 0;
+        std::sprintf(endSign.tickMergeSse.securityID, "%06d", stockCode);
         endSign.tickMergeSse.tickTime = timestamp / 10;
         endSign.tickMergeSse.tickBSFlag = timestamp % 10;
 #elif NE && SZ
+        endSign.tradeSz.messageType = 0;
+        std::sprintf(endSign.tradeSz.securityID, "%06d", stockCode);
         endSign.tradeSz.transactTime = timestamp;
 #endif
-        MDD::g_tickCaches[stockIndex()].pushTick(endSign);
+        tickRing->pushTick(endSign);
     }
 }
 
@@ -104,11 +116,11 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     bool limitUp = tick.buyOrderNo != 0 && tick.sellOrderNo == 0 && tick.quantity > 0
         && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000 && tick.timestamp < 14'57'00'000;
     if (limitUp) {
-        auto intent = tickCache->checkWantBuyAtTimestamp(tick.timestamp);
+        auto intent = wantCache->checkWantBuyAtTimestamp(tick.timestamp);
 #if ALWAYS_BUY
-        intent = TickCache::WantBuy;
+        intent = WantCache::WantBuy;
 #endif
-        if (intent == TickCache::WantBuy) [[likely]] {
+        if (intent == WantCache::WantBuy) [[likely]] {
             OES::sendRequest(*reqOrder);
         }
 
@@ -122,11 +134,11 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         && tick.tickMergeSse.tickTime < 14'57'00'00;
     if (limitUp) {
         int32_t timestamp = tick.tickMergeSse.tickTime * 10;
-        auto intent = tickCache->checkWantBuyAtTimestamp(timestamp);
+        auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
 #if ALWAYS_BUY
-        intent = TickCache::WantBuy;
+        intent = WantCache::WantBuy;
 #endif
-        if (intent == TickCache::WantBuy) [[likely]] {
+        if (intent == WantCache::WantBuy) [[likely]] {
             OES::sendRequest(*reqOrder);
         }
 
@@ -138,7 +150,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
 #error not implemented
 #endif
 
-    tickCache->pushTick(tick);
+    tickRing->pushTick(tick);
 }
 
 HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
