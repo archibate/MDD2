@@ -52,9 +52,9 @@ void StockCompute::start()
     preClosePrice = stockState().preClosePrice;
 
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
-    openPrice = stockState().preClosePrice;
+    openPrice = preClosePrice;
 
-    fState.currSnapshot.lastPrice = stockState().preClosePrice;
+    fState.currSnapshot.lastPrice = preClosePrice;
     fState.currSnapshot.numTrades = 0;
     fState.currSnapshot.volume = 0;
     fState.currSnapshot.amount = 0;

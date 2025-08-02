@@ -38,6 +38,7 @@ struct alignas(64) TickRing
 struct alignas(64) TickRing
 {
     using RingType = spsc_ring_queue<MDS::Tick, 0x40000>;
+    // 256K * 64B = 16MB
 
     alignas(64) RingType::ring_reader reader;
     alignas(64) RingType::ring_writer writer;
