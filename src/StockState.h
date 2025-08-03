@@ -28,6 +28,9 @@ struct alignas(64) StockState
     uint64_t offsetTransactTime{};
     uint64_t upRemainQty100{};
 #endif
+#if REPLAY && SZ
+    uint64_t upRemainQty{};
+#endif
 
     WantCache *wantCache{};
     TickRing *tickRing{};

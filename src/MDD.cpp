@@ -7,6 +7,7 @@
 #include "DailyState.h"
 #include "FactorList.h"
 #include "dateTime.h"
+#include "securityId.h"
 #include "heatZone.h"
 #include <chrono>
 #include <fstream>
@@ -189,9 +190,9 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t
 #if REPLAY
             int32_t stock = tick.stock;
 #elif NE && SH
-            int32_t stock = std::strtoul(tick.tickMergeSse.securityID, nullptr, 10);
+            int32_t stock = securityId(tick.tickMergeSse.securityID);
 #elif NE && SZ
-            int32_t stock = std::strtoul(tick.securityID, nullptr, 10);
+            int32_t stock = securityId(tick.securityID);
 #endif
             int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
             if (id == -1) [[unlikely]] {
@@ -230,9 +231,9 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 #if REPLAY
     int32_t stock = tick.stock;
 #elif NE && SH
-    int32_t stock = std::strtoul(tick.tickMergeSse.securityID, nullptr, 10);
+    int32_t stock = securityId(tick.tickMergeSse.securityID);
 #elif NE && SZ
-    int32_t stock = std::strtoul(tick.securityID, nullptr, 10);
+    int32_t stock = securityId(tick.securityID);
 #endif
     int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {
@@ -246,7 +247,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 #if REPLAY
     int32_t stock = rspOrder.stockCode;
 #elif XC || NE
-    int32_t stock = std::strtoul(rspOrder.xeleRsp.SecuritiesID, nullptr, 10);
+    int32_t stock = securityId(rspOrder.xeleRsp.SecuritiesID);
 #endif
     int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {

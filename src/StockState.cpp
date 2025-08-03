@@ -57,8 +57,13 @@ void StockState::setStatic(MDS::Stat const &stat)
     }
 #endif
 
-    int32_t quantity = 100;
+    if (upperLimitPrice == 0) [[unlikely]] {
+        SPDLOG_WARN("invalid static: stock={} preClosePrice={} upperLimitPrice={}", stockCode, preClosePrice, upperLimitPrice);
+        alive = false;
+        return;
+    }
 
+    int32_t quantity = 100;
     SPDLOG_TRACE("initial static: stock={} preClose={} upperLimit={} reportQuantity={}",
                  stockCode, preClosePrice, upperLimitPrice, quantity);
 
@@ -117,12 +122,22 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     }
 
 #if REPLAY
+#if SH
     bool limitUp = tick.buyOrderNo != 0
         && tick.sellOrderNo == 0
         && tick.quantity > 0
         && tick.price == upperLimitPrice
         && tick.timestamp >= 9'30'00'000
         && tick.timestamp < 14'57'00'000;
+#endif
+#if SZ
+    bool limitUp = tick.buyOrderNo != 0
+        && tick.sellOrderNo == 0
+        && tick.quantity > upRemainQty
+        && tick.price == upperLimitPrice
+        && tick.timestamp >= 9'30'00'000
+        && tick.timestamp < 14'57'00'000;
+#endif
     if (limitUp) {
         auto intent = wantCache->checkWantBuyAtTimestamp(tick.timestamp);
 #if ALWAYS_BUY
@@ -134,6 +149,14 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
 
         stop(tick.timestamp + static_cast<int32_t>(intent));
         return;
+    }
+
+    if (tick.sellOrderNo != 0 && tick.price == upperLimitPrice) {
+        if (tick.buyOrderNo == 0) {
+            upRemainQty += tick.quantity;
+        } else {
+            upRemainQty -= tick.quantity;
+        }
     }
 
 #elif NE && SH

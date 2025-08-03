@@ -38,7 +38,7 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, WantCache::
     // todo: find the correct factor list time and dump:
     stockCompute.dumpFactors(timestampDelinear(minLinearTimestamp));
 
-    SPDLOG_INFO("limit up model status: stock={} tickTimestamp={} roundTimestamp={} minTimestamp={} minDt={} toleranceDt={} intent={}", stockState.stockCode, tickTimestamp, timestampDelinear(linearTimestamp), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, magic_enum::enum_name(intent));
+    SPDLOG_INFO("limit up model status: stock={} tickTime={} roundTime={} bestTime={} minDt={} toleranceDt={} intent={}", stockState.stockCode, tickTimestamp, timestampDelinear(linearTimestamp), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, magic_enum::enum_name(intent));
     SPDLOG_TRACE("limit up detected: stock={} timestamp={} intent={}", stockState.stockCode, tickTimestamp, magic_enum::enum_name(intent));
 }
 
@@ -54,6 +54,12 @@ void StockCompute::start()
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
     openPrice = preClosePrice;
 
+    if (upperLimitPrice == 0) [[unlikely]] {
+        SPDLOG_WARN("invalid static: stock={} preClosePrice={} upperLimitPrice={}", stockCode, preClosePrice, upperLimitPrice);
+        stop();
+        return;
+    }
+
     fState.currSnapshot.lastPrice = preClosePrice;
     fState.currSnapshot.numTrades = 0;
     fState.currSnapshot.volume = 0;
@@ -66,6 +72,7 @@ void StockCompute::start()
 
 #if RECORD_FACTORS
     factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<WantCache>().wantBuyTimestamp)>);
+    memset(factorListCache.get(), -1, sizeof(FactorList) * std::tuple_size_v<decltype(std::declval<WantCache>().wantBuyTimestamp)>);
 #endif
 }
 
@@ -536,7 +543,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeMomentum()
             factor.diffZScore = factor.openZScore - factor.highZScore;
 
         } else {
-            std::memset(&factor, 0, sizeof(factor));
+            std::memset(&factor, -1, sizeof(factor));
         }
     }
 }

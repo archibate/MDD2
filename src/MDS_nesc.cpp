@@ -4,6 +4,7 @@
 #include "MDD.h"
 #include "timestamp.h"
 #include "threadAffinity.h"
+#include "securityId.h"
 #include "heatZone.h"
 #include <nesc/NescMd.h>
 #include <spdlog/spdlog.h>
@@ -11,7 +12,6 @@
 #include <stdexcept>
 #include <fstream>
 #include <nlohmann/json.hpp>
-#include <cstdlib>
 
 namespace
 {
@@ -25,15 +25,6 @@ std::atomic_flag g_isStopped{false};
 
 void MDS::subscribe(int32_t const *stocks, int32_t n)
 {
-    std::vector<std::string> securityIdStrs;
-    std::vector<const char *> securityIds;
-    securityIdStrs.reserve(n);
-    securityIds.reserve(n);
-    for (int32_t i = 0; i < n; ++i) {
-        securityIdStrs.push_back(fmt::format("{:06d}", i));
-        securityIds.push_back(securityIdStrs.back().c_str());
-    }
-
     static const NescForesight::EMdMsgType messageTypes[] = {
 #if SZ
         NescForesight::eSzTrade,
@@ -45,18 +36,31 @@ void MDS::subscribe(int32_t const *stocks, int32_t n)
         NescForesight::eSzSnapShotLevel1,
         NescForesight::eShSnapShotLevel1,
     };
-    // if (g_nesc.SubscribeMarketData(
-    //     messageTypes, sizeof(messageTypes) / sizeof(messageTypes[0]),
-    //     NescForesight::MarketType(MARKET_ID),
-    //     securityIds.data(), securityIds.size()) != 0) {
-    //     SPDLOG_ERROR("mds nesc subscribe failed");
-    //     throw std::runtime_error("mds nesc subscribe failed");
-    // }
 
+#if SUBSCRIBE_PARTIAL
+    std::vector<std::string> securityIdStrs;
+    std::vector<const char *> securityIds;
+    securityIdStrs.reserve(n);
+    securityIds.reserve(n);
+    for (int32_t i = 0; i < n; ++i) {
+        securityIdStrs.push_back(fmt::format("{:06d}", i));
+        securityIds.push_back(securityIdStrs.back().c_str());
+    }
+
+    if (g_nesc.SubscribeMarketData(
+        messageTypes, sizeof(messageTypes) / sizeof(messageTypes[0]),
+        NescForesight::MarketType(MARKET_ID),
+        securityIds.data(), securityIds.size()) != 0) {
+        SPDLOG_ERROR("mds nesc subscribe failed");
+        throw std::runtime_error("mds nesc subscribe failed");
+    }
+
+#else
     if (g_nesc.SubscribeAll(messageTypes, sizeof(messageTypes) / sizeof(messageTypes[0])) != 0) {
         SPDLOG_ERROR("mds nesc subscribe failed");
         throw std::runtime_error("mds nesc subscribe failed");
     }
+#endif
 }
 
 MDS::Stat MDS::getStatic(int32_t stock)
@@ -65,7 +69,7 @@ MDS::Stat MDS::getStatic(int32_t stock)
         auto *stat = g_sseStatic.staticInfos;
         auto *statEnd = g_sseStatic.staticInfos + g_sseStatic.count;
         for (; stat < statEnd; ++stat) {
-            if (std::atoi(stat->securityID) == stock) {
+            if (securityId(stat->securityID) == stock) {
                 break;
             }
         }
@@ -82,7 +86,9 @@ MDS::Stat MDS::getStatic(int32_t stock)
         auto *stat = g_szStatic.staticInfos;
         auto *statEnd = g_szStatic.staticInfos + g_szStatic.count;
         for (; stat < statEnd; ++stat) {
-            break;
+            if (securityId(stat->securityID) == stock) {
+                break;
+            }
         }
         if (stat == statEnd) {
             SPDLOG_ERROR("not found in static info: stock={}", stock);
@@ -189,6 +195,38 @@ void MDS::start(const char *config)
             .m_backupMcastPort = 12001,
             .m_backupNicType = NescForesight::E_NIC_NORMAL,
         },
+        {
+            .m_interfaceName = "enp2s0f0",
+            .m_localIp = "10.102.139.102",
+            .m_mcastIp = "234.30.2.1",
+            .m_mcastPort = 50500,
+            .m_bindCpuId = kMDSBindCpu,
+            .m_nicType = NescForesight::E_NIC_NORMAL,
+            .handler = handleShSnapShotLevel1,
+
+            .m_backupIntName = "enp2s0f0",
+            .m_backupLocalIp = "10.102.139.102",
+            .m_backupMcastIp = "234.30.4.1",
+            .m_backSwitchTime = 15,
+            .m_backupMcastPort = 60500,
+            .m_backupNicType = NescForesight::E_NIC_NORMAL,
+        },
+        {
+            .m_interfaceName = "enp2s0f0",
+            .m_localIp = "10.102.139.102",
+            .m_mcastIp = "234.30.6.1",
+            .m_mcastPort = 51500,
+            .m_bindCpuId = kMDSBindCpu,
+            .m_nicType = NescForesight::E_NIC_NORMAL,
+            .handler = handleSzSnapShotLevel1,
+
+            .m_backupIntName = "enp2s0f0",
+            .m_backupLocalIp = "10.102.139.102",
+            .m_backupMcastIp = "234.30.8.1",
+            .m_backSwitchTime = 15,
+            .m_backupMcastPort = 61500,
+            .m_backupNicType = NescForesight::E_NIC_NORMAL,
+        },
     };
 #endif
 #if SZ
@@ -207,6 +245,38 @@ void MDS::start(const char *config)
             .m_backupMcastIp = "234.20.6.1",
             .m_backSwitchTime = 15,
             .m_backupMcastPort = 15000,
+            .m_backupNicType = NescForesight::E_NIC_NORMAL,
+        },
+        {
+            .m_interfaceName = "enp2s0f0",
+            .m_localIp = "10.107.52.102",
+            .m_mcastIp = "234.30.2.1",
+            .m_mcastPort = 50500,
+            .m_bindCpuId = kMDSBindCpu,
+            .m_nicType = NescForesight::E_NIC_NORMAL,
+            .handler = handleShSnapShotLevel1,
+
+            .m_backupIntName = "enp2s0f0",
+            .m_backupLocalIp = "10.107.52.102",
+            .m_backupMcastIp = "234.30.4.1",
+            .m_backSwitchTime = 15,
+            .m_backupMcastPort = 60500,
+            .m_backupNicType = NescForesight::E_NIC_NORMAL,
+        },
+        {
+            .m_interfaceName = "enp2s0f0",
+            .m_localIp = "10.107.52.102",
+            .m_mcastIp = "234.30.6.1",
+            .m_mcastPort = 51500,
+            .m_bindCpuId = kMDSBindCpu,
+            .m_nicType = NescForesight::E_NIC_NORMAL,
+            .handler = handleSzSnapShotLevel1,
+
+            .m_backupIntName = "enp2s0f0",
+            .m_backupLocalIp = "10.107.52.102",
+            .m_backupMcastIp = "234.30.8.1",
+            .m_backSwitchTime = 15,
+            .m_backupMcastPort = 61500,
             .m_backupNicType = NescForesight::E_NIC_NORMAL,
         },
     };
