@@ -7,7 +7,7 @@ targets = {
         '-DCMAKE_BUILD_TYPE=Release',
         '-DBUILD_SPEED=ON',
         '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=OFF',
+        '-DALWAYS_BUY=ON',
         '-DASYNC_LOGGER=OFF',
         '-DTARGET_SECURITY=NE',
         '-DTARGET_MARKET=SH',
@@ -17,10 +17,10 @@ targets = {
         '-DCMAKE_BUILD_TYPE=Release',
         '-DBUILD_SPEED=ON',
         '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=OFF',
+        '-DALWAYS_BUY=ON',
         '-DASYNC_LOGGER=OFF',
         '-DTARGET_SECURITY=NE',
-        '-DTARGET_MARKET=SH',
+        '-DTARGET_MARKET=SZ',
     ],
 }
 
@@ -147,7 +147,7 @@ for target in targets:
 for target in targets:
     market = target[-2:].lower()
     security = target[:2].lower()
-    subprocess.check_call([f'scripts/{security}-upload.sh', market, f'/data/release/MDD-{target}-{today}.tar.gz', f'/root/MDD-{market}-{today}.tar.gz'])
+    subprocess.check_call([f'scripts/{security}-upload.sh', market, f'/data/release/MDD-{target}-{today}.tar.gz', f'/root/MDD-{target}-{today}.tar.gz'])
     with subprocess.Popen([f'scripts/{security}-connect.sh', market], stdin=subprocess.PIPE) as p:
         p.communicate(f'''set +o history
 set -e
@@ -155,9 +155,9 @@ cd /root
 rm -rf {today}
 mkdir -p {today}
 cd {today}
-tar zxvf ../MDD-{market}-{today}.tar.gz
+tar zxvf ../MDD-{target}-{today}.tar.gz
 cd ..
-rm -f MDD-{market}-{today}.tar.gz
+rm -f MDD-{target}-{today}.tar.gz
 rm -f today
 ln -sf {today} today
 echo /root/today/bin/start > start.sh

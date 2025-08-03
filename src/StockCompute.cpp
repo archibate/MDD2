@@ -47,18 +47,18 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, WantCache::
 
 void StockCompute::start()
 {
+    if (!stockState().alive) [[unlikely]] {
+        SPDLOG_WARN("stop watching dead stock: stock={}", stockCode);
+        stop();
+        return;
+    }
+
     stockCode = stockState().stockCode;
     upperLimitPrice = stockState().upperLimitPrice;
     preClosePrice = stockState().preClosePrice;
 
     upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
     openPrice = preClosePrice;
-
-    if (upperLimitPrice == 0) [[unlikely]] {
-        SPDLOG_WARN("invalid static: stock={} preClosePrice={} upperLimitPrice={}", stockCode, preClosePrice, upperLimitPrice);
-        stop();
-        return;
-    }
 
     fState.currSnapshot.lastPrice = preClosePrice;
     fState.currSnapshot.numTrades = 0;
