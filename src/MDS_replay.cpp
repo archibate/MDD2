@@ -7,7 +7,6 @@
 #include "radixSort.h"
 #include <spdlog/spdlog.h>
 #include <stdexcept>
-#include <execution>
 #include <fstream>
 #include <absl/container/flat_hash_set.h>
 #include <thread>

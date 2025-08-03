@@ -9,7 +9,7 @@
 #include "generatedModels.h"
 #include <spdlog/spdlog.h>
 #include <cstring>
-#include <execution>
+#include <cstdint>
 #include <emmintrin.h>
 
 namespace
@@ -163,8 +163,14 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
         return;
     }
 
-    switch (tick.messageType) {
-#error not implemented
+    if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ) {
+        if (tick.tradeSz.execType == 0x1) {
+            onCancel(tick);
+        } else {
+            onTrade(tick);
+        }
+    } else if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ) [[likely]] {
+        onOrder(tick);
     }
 #endif
 }
@@ -229,7 +235,8 @@ HEAT_ZONE_ORDBOOK void StockCompute::onOrder(MDS::Tick &tick)
     }
 
 #elif NE && SH
-    if (tick.tickMergeSse.price >= upperLimitPriceApproach * 10) {
+    if (tick.tickMergeSse.tickBSFlag == '1'
+        && tick.tickMergeSse.price >= upperLimitPriceApproach * 10) {
         UpSell sell;
         sell.price = tick.tickMergeSse.price / 10;
         sell.quantity = tick.tickMergeSse.qty / 1000;
@@ -237,7 +244,13 @@ HEAT_ZONE_ORDBOOK void StockCompute::onOrder(MDS::Tick &tick)
     }
 
 #elif NE && SZ
-#error not implemented
+    if (tick.orderSz.side == '2' && tick.orderSz.orderType == '2'
+        && tick.orderSz.price >= upperLimitPriceApproach * 100) {
+        UpSell sell;
+        sell.price = tick.orderSz.price / 100;
+        sell.quantity = tick.orderSz.qty / 100;
+        upSellOrders.insert({tick.orderSz.applSeqNum, sell});
+    }
 #endif
 }
 
@@ -260,7 +273,12 @@ HEAT_ZONE_ORDBOOK void StockCompute::onCancel(MDS::Tick &tick)
     }
 
 #elif NE && SZ
-#error not implemented
+    if (tick.orderSz.price >= upperLimitPriceApproach * 100) {
+        UpSell sell;
+        sell.price = tick.orderSz.price / 10;
+        sell.quantity = tick.orderSz.qty / 1000;
+        upSellOrders.insert({tick.orderSz.applSeqNum, sell});
+    }
 #endif
 }
 
@@ -310,7 +328,30 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTrade(MDS::Tick &tick)
     addRealTrade(tick.tickMergeSse.tickTime * 10, price, quantity);
 
 #elif NE && SZ
-#error not implemented
+    int32_t quantity = tick.tradeSz.tradeQty / 100;
+    int32_t price = tick.tradeSz.tradePrice / 100;
+
+    auto it = upSellOrders.find(tick.tradeSz.offerapplSeqnum);
+    if (it != upSellOrders.end()) {
+        it->second.quantity -= quantity;
+        if (it->second.quantity <= 0) {
+            upSellOrders.erase(it);
+        }
+    }
+
+    int32_t timestamp = static_cast<uint32_t>(tick.tradeSz.transactTime % UINT64_C(1'00'00'00'000));
+    if (timestamp < 9'30'00'000) {
+        fState.currSnapshot.lastPrice = openPrice = price;
+        openVolume += quantity;
+        return;
+    }
+
+    if (price >= upperLimitPriceApproach) {
+        approachingLimitUp = true;
+    }
+    addRealTrade(timestamp, price, quantity);
+
+
 #endif
 }
 

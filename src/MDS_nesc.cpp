@@ -192,7 +192,7 @@ void MDS::start(const char *config)
     };
 #endif
 #if SZ
-    static const NescForesight::MdParam mdChannels[] = {
+    static const NescForesight::Md/data/backup/NESC_MD_API_V2.0.0/examples/ConfigFile.hParam mdChannels[] = {
         {
             .m_interfaceName = "enp1s0f0",
             .m_localIp = "127.0.0.1",

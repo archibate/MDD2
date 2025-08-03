@@ -2,12 +2,14 @@
 #include "config.h"
 #include "MDD.h"
 #include "OES.h"
+#include "dateTime.h"
 #include "timestamp.h"
 #include "WantCache.h"
 #include "TickRing.h"
 #include "heatZone.h"
 #include <spdlog/spdlog.h>
 #include <atomic>
+#include <cstdint>
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
@@ -33,23 +35,25 @@ void StockState::setStatic(MDS::Stat const &stat)
     upperLimitPrice = stat.upperLimitPrice;
 #elif NE
     switch (stat.marketType) {
-        case NescForesight::SSE:
+#if SH
+        case NescForesight::SSE: {
             preClosePrice = static_cast<int32_t>(std::round(stat.staticSseInfo.prevClosePx * 100));
             upperLimitPrice = static_cast<int32_t>(std::round(stat.staticSseInfo.upperLimitPrice * 100));
-#if SH
             upperLimitPrice1000 = static_cast<uint32_t>(upperLimitPrice) * 10;
+        } break;
 #endif
-            break;
-        case NescForesight::SZE:
+#if SZ
+        case NescForesight::SZE: {
             preClosePrice = static_cast<int32_t>(std::round(stat.staticSzInfo.prevClosePx * 100));
             upperLimitPrice = static_cast<int32_t>(std::round(stat.staticSzInfo.upperLimitPrice * 100));
-#if SZ
             upperLimitPrice10000 = static_cast<uint64_t>(upperLimitPrice) * 100;
+            offsetTransactTime = getToday() * UINT64_C(1'00'00'00'000);
+        } break;
 #endif
-            break;
-        default:
-            SPDLOG_ERROR("failed to get static: stock={}", stockCode);
+        default: {
+            SPDLOG_ERROR("failed to get static: stock={} market={}", stockCode, stat.marketType);
             return;
+        }
     }
 #endif
 
@@ -113,8 +117,12 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     }
 
 #if REPLAY
-    bool limitUp = tick.buyOrderNo != 0 && tick.sellOrderNo == 0 && tick.quantity > 0
-        && tick.price == upperLimitPrice && tick.timestamp >= 9'30'00'000 && tick.timestamp < 14'57'00'000;
+    bool limitUp = tick.buyOrderNo != 0
+        && tick.sellOrderNo == 0
+        && tick.quantity > 0
+        && tick.price == upperLimitPrice
+        && tick.timestamp >= 9'30'00'000
+        && tick.timestamp < 14'57'00'000;
     if (limitUp) {
         auto intent = wantCache->checkWantBuyAtTimestamp(tick.timestamp);
 #if ALWAYS_BUY
@@ -129,8 +137,10 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     }
 
 #elif NE && SH
-    bool limitUp = tick.tickMergeSse.tickType == 'A' && tick.tickMergeSse.tickBSFlag == '0'
-        && tick.tickMergeSse.price == upperLimitPrice1000 && tick.tickMergeSse.tickTime >= 9'30'00'00
+    bool limitUp = tick.tickMergeSse.tickType == 'A'
+        && tick.tickMergeSse.tickBSFlag == '0'
+        && tick.tickMergeSse.price == upperLimitPrice1000
+        && tick.tickMergeSse.tickTime >= 9'30'00'00
         && tick.tickMergeSse.tickTime < 14'57'00'00;
     if (limitUp) {
         int32_t timestamp = tick.tickMergeSse.tickTime * 10;
@@ -147,7 +157,31 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     }
 
 #elif NE && SZ
-#error not implemented
+    if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ
+        && tick.tradeSz.tradePrice == upperLimitPrice10000) {
+        upRemainQty100 -= tick.tradeSz.tradeQty;
+        if (upRemainQty100 < 0 && tick.tradeSz.execType == 0x2) {
+            int32_t timestamp = static_cast<uint32_t>(tick.tradeSz.transactTime - offsetTransactTime);
+            if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
+                auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
+#if ALWAYS_BUY
+                intent = WantCache::WantBuy;
+#endif
+                if (intent == WantCache::WantBuy) [[likely]] {
+                    OES::sendRequest(*reqOrder);
+                }
+
+                stop(timestamp + static_cast<int32_t>(intent));
+                return;
+            }
+        }
+    }
+    if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ
+        && tick.orderSz.side == '2'
+        && tick.orderSz.orderType == '2'
+        && tick.orderSz.price == upperLimitPrice10000) {
+        upRemainQty100 += tick.orderSz.qty;
+    }
 #endif
 
     tickRing->pushTick(tick);

@@ -25,6 +25,8 @@ struct alignas(64) StockState
 #endif
 #if NE && SZ
     uint64_t upperLimitPrice10000{};
+    uint64_t offsetTransactTime{};
+    uint64_t upRemainQty100{};
 #endif
 
     WantCache *wantCache{};
