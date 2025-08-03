@@ -13,7 +13,7 @@ namespace NescForesight {
     const int MSG_TYPE_WEIGHT_CSI     =      0x31;   //中证指数权重
     const int MSG_TYPE_ETF_IOPV_CSI   =      0x32;   //ETF 参考净值（IOPV）
 
-#pragma pack(push, 1)
+#pragma pack(1)
 
     /**
      * 中证指数行情信息
@@ -81,6 +81,6 @@ namespace NescForesight {
         double iopv;                    // 基金参考净值（IOPV）
     };
 
-#pragma pack(pop)
+#pragma pack(8)
 }
 #endif

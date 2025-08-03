@@ -4,24 +4,54 @@
 #include <map>
 #include <memory>
 #include <thread>
+
 #include "Const.h"
 #include "NescMdDataType.h"
 
 namespace NescForesight {
-
+  struct Receiver;
   class AuthApi;
   class MsgFilter;
-
   typedef void (*Handler)(const uint8_t *, int);
-  struct InitMdParam
-  {
-    Handler handler[16] = {nullptr} ;    //回调函数列表
-    char cpulist[16] = {0};           //cpu绑核列表
-    int switch_time = 15;             //主备切换时间单位秒 0表示不启用主备切换
-    int nic_type = 1;                 //网卡类别 1代表solarflare低延迟网卡  0代表普通网卡  建议保持默认值
+  void bindThreadToCore(std::thread* thread, int core);
+  enum MDType {
+      ALL,
+      L1Stock,
+      L1Index,
+      L1Bond,
+      L1Fund
   };
 
-  void bindThreadToCore(std::thread* thread, int core);
+  enum ENicType
+  {
+    E_NIC_NORMAL,          //普通网卡，通过操作系统协议栈接收
+    E_NIC_SOLARFLARE_EFVI, //solarflare网卡通过efvi接收，能降低延迟和丢包可能性
+  };
+
+  //接收线程传入结构体定义
+  typedef struct _MdParam
+  {
+    char m_interfaceName[64]; //接收网卡名
+    char m_localIp[32];       //接收网卡ip
+    char m_mcastIp[32];       //组播ip
+    uint16_t m_mcastPort;     //组播端口
+    int m_bindCpuId;          //接收线程绑定cpuid，-1代表不绑核
+    ENicType m_nicType;       //网卡类型
+
+    // 回调函数
+    Handler handler = nullptr;
+
+    /**
+       * 主备自动切换功能，仅支持盘中切换，在主组播上一定时间内收不到包自动切换到备用组播，
+       * 主组播有包后再自动切回来
+       **/
+    char m_backupIntName[64];       //备用接收网卡名
+    char m_backupLocalIp[32];       //备用接收网卡ip
+    char m_backupMcastIp[32];       //备用组播ip
+    uint16_t m_backSwitchTime = 15; //备切换时间,单位秒
+    uint16_t m_backupMcastPort = 0; //备用组播端口,配成0时不启用主备切换功能
+    ENicType m_backupNicType;       //备用网卡类型
+  } MdParam;
 
   class NescMdUDPClient {
   public:
@@ -41,26 +71,9 @@ namespace NescForesight {
        * @bug None
       */
       bool Login(const char *ip, uint16_t port, const char *username, const char *password, const char* backupIP = nullptr, uint16_t backupPort = 0);
-      
-      /*
-       * @brief 初始化
-       * @param param: 初始化参数
-       * @retval 0: 成功
-      */
-      int Init(InitMdParam* param);
-
-      /*
-       * @brief 开始接收行情
-       * @retval 0: 成功
-      */
+      int Init(MdParam **param, int channelNum);
       int Start();
-
-      /*
-       * @brief 停止接收行情,释放所有资源 --请勿轻易调用
-       * @retval 0: 成功
-      */
       int Stop();
-
       /*
        * @brief 获取上交所全市场静态信息
        * @param staticInfoField: 上交所全市场静态信息
@@ -97,10 +110,9 @@ namespace NescForesight {
        * @param marketType: 市场类型
        * @param securityIds: 标的列表
        * @param sCount: 标的列表数量，若不填,需要securityIds最后一个加入空字符或"END",否则会有报错风险；默认4000
-       * @param interfaceName: 行情网口
        * @retval 0: 成功
       */
-      int SubscribeMarketData(const EMdMsgType* messageTypes, int mCount, MarketType marketType, const char* securityIds[], int sCount=4000, const char* interfaceName="");
+      int SubscribeMarketData(const EMdMsgType* messageTypes, int mCount, MarketType marketType, const char* securityIds[], int sCount=4000);
 
       /**
        * @brief 取消订阅行情数据
@@ -116,10 +128,9 @@ namespace NescForesight {
        * @brief 订阅所有行情数据
        * @param messageTypes: 行情类型
        * @param count: 行情类型数量
-       * @param interfaceName: 行情网口
        * @retval 0: 成功
       */
-      int SubscribeAll(const EMdMsgType* messageTypes, int count, const char* interfaceName="");
+      int SubscribeAll(const EMdMsgType* messageTypes, int count);
       /**
        * @brief 取消订阅所有行情数据
        * @param messageTypes: 行情类型
@@ -127,22 +138,12 @@ namespace NescForesight {
        * @retval 0: 成功
       */
       int UnSubscribeAll(const EMdMsgType* messageTypes, int count);
-
-     
-      /**  新增辅助函数
-       * @brief 网卡接收不同行情的接收通道总数
-       * @retval int 通道总数
-      */
-      int GetQuoteRecvChannelNumber();
-
-      /** 新增辅助函数 类型绑核 优先级最高
-       * @brief 将特定类型接收线程绑核
-       * @retval bool 
-      */
-      bool bindThreadCpuCore(EMdMsgType messageType, int coreId);
   private:
+      
+      Receiver **receivers;
+      int numReceivers;
       AuthApi *authApi;
       MsgFilter *msgFilter;
-  };                 
+  };
 }
 #endif
