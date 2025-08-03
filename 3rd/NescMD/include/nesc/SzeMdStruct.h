@@ -31,14 +31,15 @@ namespace NescForesight {
   const int MSG_TYPE_AFTER_SNAP_L1_SZ     =           0x6A;   //L1深交盘后快照
   const int MSG_TYPE_BLOCKTRADE_L1_SZ     =           0x6B;   //L1深交盘后定价大宗交易
   const int MSG_TYPE_BOND_SNAPSHOT_L1_SZ  =           0x70;   //L1债券快照
+  const int MSG_TYPE_OPTION_L1_SZ         =           0x71;   //L1深交期权行情
 
   const int SNAPSHOT_LEVEL_SZ             =           10;
+  const int OPTION_LEVEL_SZ               =           5;
   const int BEST_ORDERS_LEVEL_SZ          =           50;
 
 
 
-  #pragma pack(push)
-  #pragma pack(1)
+  #pragma pack(push, 1)
 
   struct BidAskPriceQtySz {
     uint64_t price;    //申买、申卖价格，实际值除以1000000
@@ -621,6 +622,48 @@ namespace NescForesight {
     uint64_t	buyNumOrdersQueue[10];   // 买10档价位总委托笔数
     uint64_t	sellNumOrdersQueue[10];  // 卖10档价位总委托笔数
     uint64_t	resv5;                   // 保留字段
+  };
+
+  struct OptionSz
+  {
+    uint8_t  messageType;    //消息类型，快照为0x71
+    uint32_t sequence;       //udp输出包序号，从1开始
+    uint8_t  exchangeID;     //交易所id，上交所：1，深交所：2
+    char     securityID[9];  //证券代码
+    uint8_t  resv[2];        //保留字段
+    /*
+    * 产品所处的交易阶段代码
+    * 第0位：S=启动（开市前）,O=开盘集合竞价,T=连续竞价,B=休市,C=收盘集合竞价,E=已闭市,H=临时停牌,A=盘后交易,V=波动性中断
+    * 第1位：0=正常状态,1=全天停牌
+    */
+    char tradingPhaseCode[8];
+
+    uint8_t resv2[7];                          //保留字段
+    uint64_t timeStamp;                        //数据生成时间（切片时间），格式YYYYMMDDHHMMSSmmm，精确到毫秒。
+                                              //示例：20190411102939120表示2019年04月11日10点29分39秒120毫秒
+    uint64_t preClosePrice;                    //昨收价（来源消息头），实际值除以10000
+    uint64_t numTrades;                        //总成交笔数
+    uint64_t totalVolumeTrade;                 //总成交量，实际值除以100
+    uint64_t totalValueTrade;                  //总成交金额，实际值除以10000
+    uint64_t lastPrice;                        //最近价，实际值除以1000000
+    uint64_t openPrice;                        //开盘价，实际值除以1000000
+    uint64_t openInterest;                     //合约持仓量，实际值除以100
+    uint64_t highPrice;                        //最高价，实际值除以1000000
+    uint64_t lowPrice;                         //最低价，实际值除以1000000
+    uint64_t upperlmtPrice;                    //涨停价，实际值除以1000000
+    uint64_t lowerlmtPrice;                    //跌停价，实际值除以1000000
+    uint64_t bidAvgPrice;                      //买入委托数量加权平均价，实际值除以1000000
+    uint64_t bidTotalQty;                      //买入委托总数量，实际值除以100
+    uint64_t askAvgPrice;                      //卖出委托数量加权平均价，实际值除以1000000
+    uint64_t askTotalQty;                      //卖出委托总数量，实际值除以100
+    BidAskPriceQtySz bidInfo[OPTION_LEVEL_SZ];  //申买信息
+    BidAskPriceQtySz askInfo[OPTION_LEVEL_SZ];  //申卖信息
+    uint16_t channelNo;                        //频道代码
+    uint16_t mdstreamid;                       //行情类别
+    uint32_t resv3;                            //保留字段
+    uint64_t IOPV;                             //基金实时参考值，实际值除以1000000
+    uint64_t bidNumOfOrders[OPTION_LEVEL_SZ];   //买10档价位总委托笔数  
+    uint64_t askNumOfOrders[OPTION_LEVEL_SZ];   //卖10档价位总委托笔数
   };
 
   #pragma pack(pop)

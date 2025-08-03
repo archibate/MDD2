@@ -11,8 +11,6 @@ namespace NescForesight {
   const int MSG_TYPE_SNAPSHOT_SSE          =       0x01;   //上交快照
   const int MSG_TYPE_BEST_ORDERS_SSE       =       0x02;   //订单明细，最多揭示50笔
   const int MSG_TYPE_INDEX_SSE             =       0x03;   //指数行情
-  const int MSG_TYPE_TRADE_SSE             =       0x04;   //逐笔成交
-  const int MSG_TYPE_ORDER_SSE             =       0x05;   //逐笔委托
 
   const int MSG_TYPE_AFTER_SNAP_SSE        =       0x07;   //上交盘后快照
   const int MSG_TYPE_AFTER_TRADE_SSE       =       0x08;   //上交盘后逐笔成交
@@ -27,14 +25,14 @@ namespace NescForesight {
   const int MSG_TYPE_INDEX_L1_SSE          =       0x67;   //L1指数行情
   const int MSG_TYPE_AFTER_SNAP_L1_SSE     =       0x6B;   //上交盘后快照
   const int MSG_TYPE_BOND_SNAPSHOT_L1_SSE  =       0x70;   //L1上交债券快照
+  const int MSG_TYPE_OPTION_L1_SSE         =       0x71;   //L1上交期权行情
 
   const int SNAPSHOT_LEVEL_SSE             =       10;
   const int BEST_ORDERS_LEVEL_SSE          =       50;
 
 
 
-  #pragma pack(push)
-  #pragma pack(1)
+  #pragma pack(push, 1)
 
   struct BidAskPriceQtySse {
     uint32_t price;    //申买、申卖价格，实际值除以1000
@@ -457,6 +455,52 @@ namespace NescForesight {
     uint64_t buyNumOrdersQueue[10];  // 买10档价位总委托笔数
     uint64_t sellNumOrdersQueue[10]; // 卖10档价位总委托笔数
     uint64_t resv5;                  // 保留字段
+  };
+
+  struct OptionSse
+  {
+    uint8_t    messageType;               //消息类型，期权为0x71
+    uint32_t   sequence;                  //udp输出包序号，从1开始
+    uint8_t    exchangeID;                //交易所id，上交所：1，深交所：2
+    char       securityID[9];             //证券代码
+    uint64_t   mdDatetime;                //行情时间，格式YYMMDDHHMMSSsss（毫秒）
+    uint64_t   exchangeDatetime;          //交易所行情变更时间，格式YYMMDDHHMMSSsss（毫秒）
+    uint8_t    resv;                      //保留字段
+    uint64_t   tradeVolume;               //成交数量
+    uint64_t   totalValueTraded;          //成交金额，实际值除以100
+    uint64_t   totalLongPosition;         //持仓总量
+    uint64_t   preClosePrice;             //昨日收盘价，实际值除以100000
+    uint64_t   prevSetPrice;              //昨日结算价，实际值除以100000
+    uint64_t   tradePrice;                //最新价，实际值除以100000
+    uint64_t   openPrice;                 //今日开盘价，实际值除以100000
+    uint64_t   closePrice;                //今日收盘价，实际值除以100000
+    uint64_t   settlPrice;                //今日结算价，实际值除以100000
+    uint64_t   highPrice;                 //最高价，实际值除以100000
+    uint64_t   lowPrice;                  //最低价，实际值除以100000
+    uint64_t   auctionPrice;              //动态参考价，实际值除以100000
+    uint64_t   auctionQty;                //虚拟匹配数量
+    char       tradingPhaseCode[8];       //指数实时阶段及标志
+
+    uint64_t   bidPrice1;                 //申买价1，实际值除以100000
+    uint64_t   bidVolume1;                //申买数量1
+    uint64_t   bidPrice2;                 //申买价2，实际值除以100000
+    uint64_t   bidVolume2;                //申买数量2
+    uint64_t   bidPrice3;                 //申买价3，实际值除以100000
+    uint64_t   bidVolume3;                //申买数量3
+    uint64_t   bidPrice4;                 //申买价4，实际值除以100000
+    uint64_t   bidVolume4;                //申买数量4
+    uint64_t   bidPrice5;                 //申买价5，实际值除以100000
+    uint64_t   bidVolume5;                //申买数量5
+    uint64_t   askPrice1;                 //申卖价1，实际值除以100000
+    uint64_t   askVolume1;                //申卖数量1
+    uint64_t   askPrice2;                 //申卖价2，实际值除以100000
+    uint64_t   askVolume2;                //申卖数量2
+    uint64_t   askPrice3;                 //申卖价3，实际值除以100000
+    uint64_t   askVolume3;                //申卖数量3
+    uint64_t   askPrice4;                 //申卖价4，实际值除以100000
+    uint64_t   askVolume4;                //申卖数量4
+    uint64_t   askPrice5;                 //申卖价5，实际值除以100000
+    uint64_t   askVolume5;                //申卖数量5
   };
 
   #pragma pack(pop)
