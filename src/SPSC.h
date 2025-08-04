@@ -14,12 +14,12 @@ class alignas(64) spsc_ring_queue
     alignas(64) std::atomic<T *> write_ok_pos;
     alignas(64) std::atomic<T *> read_ok_pos;
     alignas(64) struct {
-        T data[N];
-        T data_end[0];
-    };
+        T begin[N];
+        T end[0];
+    } data;
 
 public:
-    spsc_ring_queue() noexcept : write_ok_pos(data), read_ok_pos(data_end - 1) {
+    spsc_ring_queue() noexcept : write_ok_pos(data.begin), read_ok_pos(data.end - 1) {
     }
 
     spsc_ring_queue(spsc_ring_queue &&) = delete;
@@ -76,13 +76,13 @@ public:
                 *p = *read_pos;
                 ++p;
                 ++read_pos;
-                if (read_pos == queue->data_end) {
-                    read_pos = queue->data;
+                if (read_pos == queue->data.end) {
+                    read_pos = queue->data.begin;
                 }
             }
             T *r_ok_pos = read_pos;
-            if (r_ok_pos == queue->data) {
-                r_ok_pos = queue->data_end;
+            if (r_ok_pos == queue->data.begin) {
+                r_ok_pos = queue->data.end;
             }
             --r_ok_pos;
             queue->read_ok_pos.store(r_ok_pos, std::memory_order_relaxed);
@@ -144,8 +144,8 @@ public:
                 *write_pos = *p;
                 ++p;
                 ++write_pos;
-                if (write_pos == queue->data_end) {
-                    write_pos = queue->data;
+                if (write_pos == queue->data.end) {
+                    write_pos = queue->data.begin;
                 }
             }
             queue->write_ok_pos.store(write_pos, std::memory_order_release);

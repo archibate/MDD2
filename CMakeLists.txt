@@ -59,6 +59,8 @@ if (TARGET_SECURITY MATCHES XC OR TARGET_SECURITY MATCHES NE)
 endif()
 add_subdirectory(3rd/header-only)
 target_link_libraries(${PROJECT_NAME} PRIVATE header-only)
+add_subdirectory(3rd/string9811)
+target_link_libraries(${PROJECT_NAME} PRIVATE string9811)
 
 if (BUILD_SPEED)
     set_target_properties(${PROJECT_NAME} PROPERTIES
