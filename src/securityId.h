@@ -17,7 +17,7 @@
     return i;
 }
 
-// [[gnu::always_inline]] uint32_t atou6q0(const char input[4]) {
+// [[gnu::always_inline]] inline uint32_t atou4(const char input[4]) {
 //     // Load 4 bytes into a 32-bit temporary
 //     uint32_t tmp;
 //     __builtin_memcpy(&tmp, input, 4);

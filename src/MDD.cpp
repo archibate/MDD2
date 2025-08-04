@@ -60,7 +60,7 @@ void parseDailyConfig(const char *config)
         std::ifstream(config) >> json;
         SPDLOG_DEBUG("config json: {}", json.dump());
 
-        if (json.contains("factor_file")) {
+        if (json.contains("date")) {
             date = json["date"];
         }
         if (json.contains("factor_file")) {

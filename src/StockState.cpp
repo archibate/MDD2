@@ -144,7 +144,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         intent = WantCache::WantBuy;
 #endif
         if (intent == WantCache::WantBuy) [[likely]] {
-            OES::sendRequest(*reqOrder);
+            OES::sendReqOrder(*reqOrder);
         }
 
         stop(tick.timestamp + static_cast<int32_t>(intent));
