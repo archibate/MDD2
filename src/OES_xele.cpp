@@ -480,7 +480,7 @@ void XeleTdSpi::onApiMsg(int ret, const char* strFormat, ...)
     if (ret) {
         SPDLOG_ERROR("(API) {}", strLog);
     } else {
-        SPDLOG_INFO("(API) {}", strLog);
+        SPDLOG_DEBUG("(API) {}", strLog);
     }
 };
 
@@ -491,6 +491,14 @@ void XeleTdSpi::onApiMsg(int ret, const char* strFormat, ...)
 /// 报单应答
 HEAT_ZONE_RSPORDER void XeleTdSpi::onRspInsertOrder(CXeleRspOrderInsertField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
+    OES::RspOrder rsp;
+    rsp.rspType = OES::RspOrder::XeleRspOrderInsert;
+    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.requestID = nRequestID;
+    rsp.errorID = 0;
+    rsp.xeleRspOrderInsert = pRspField;
+    MDD::handleRspOrder(rsp);
+
     // extern CStrategyTrade* g_pStrategy; g_pStrategy->perfTick(PerfTickRspInsertOrder);
     //
     // // SPDLOG_TRACE("onRspInsertOrder {}", nRequestID);
@@ -522,6 +530,14 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRspInsertOrder(CXeleRspOrderInsertField* pR
 /// 报单错误回报
 void XeleTdSpi::onErrRtnInsertOrder(CXeleRspOrderInsertField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
+    OES::RspOrder rsp;
+    rsp.rspType = OES::RspOrder::XeleRspOrderInsert;
+    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.requestID = nRequestID;
+    rsp.errorID = pRspField->ErrorId;
+    rsp.xeleRspOrderInsert = pRspField;
+    MDD::handleRspOrder(rsp);
+
     // Td_RtnOrder rtnOrder;
     // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
     // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
@@ -547,6 +563,14 @@ void XeleTdSpi::onErrRtnInsertOrder(CXeleRspOrderInsertField* pRspField, CXeleRs
 /// 撤单应答
 HEAT_ZONE_RSPORDER void XeleTdSpi::onRspCancelOrder(CXeleRspOrderActionField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
+    OES::RspOrder rsp;
+    rsp.rspType = OES::RspOrder::XeleRspOrderAction;
+    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.requestID = nRequestID;
+    rsp.errorID = 0;
+    rsp.xeleRspOrderAction = pRspField;
+    MDD::handleRspOrder(rsp);
+
     // Td_RtnOrder rtnOrder;
     // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
     // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
@@ -571,6 +595,14 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRspCancelOrder(CXeleRspOrderActionField* pR
 /// 撤单错误回报
 void XeleTdSpi::onErrRtnCancelOrder(CXeleRspOrderActionField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
+    OES::RspOrder rsp;
+    rsp.rspType = OES::RspOrder::XeleRspOrderAction;
+    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.requestID = nRequestID;
+    rsp.errorID = pRspField->ErrorId;
+    rsp.xeleRspOrderAction = pRspField;
+    MDD::handleRspOrder(rsp);
+
     // Td_RtnOrder rtnOrder;
     // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
     // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
@@ -592,6 +624,14 @@ void XeleTdSpi::onErrRtnCancelOrder(CXeleRspOrderActionField* pRspField, CXeleRs
 /// 报单回报
 HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnOrder(CXeleRtnOrderField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
+    OES::RspOrder rsp;
+    rsp.rspType = OES::RspOrder::XeleRtnOrder;
+    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.requestID = nRequestID;
+    rsp.errorID = 0;
+    rsp.xeleRtnOrder = pRspField;
+    MDD::handleRspOrder(rsp);
+
     // if (pRspField->OrderStatus == ODRSTAT_REPORTED) {
     //     extern CStrategyTrade* g_pStrategy; g_pStrategy->perfTick(PerfTickRtnOrder);
     // }
@@ -625,6 +665,14 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnOrder(CXeleRtnOrderField* pRspField, CXe
 /// 成交回报
 HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnTrade(CXeleRtnTradeField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
+    OES::RspOrder rsp;
+    rsp.rspType = OES::RspOrder::XeleRtnTrade;
+    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.requestID = nRequestID;
+    rsp.errorID = 0;
+    rsp.xeleRtnTrade = pRspField;
+    MDD::handleRspOrder(rsp);
+
     // Td_RtnOrder rtnOrder;
     // std::memset(&rtnOrder, 0, sizeof(Td_RtnOrder));
     // std::memcpy(rtnOrder.accountId, pRspField->AccountID, sizeof(TXeleUserIDType));
@@ -810,10 +858,17 @@ void OES::stop()
     g_tradeApi = nullptr;
 }
 
-HEAT_ZONE_REQORDER void OES::sendRequest(ReqOrder &reqOrder)
+HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
     int32_t requestID = ++g_requestID;
-    reqOrder.xeleReq.UserLocalID = g_maxUserLocalID + requestID;
-    g_tradeApi->reqInsertOrder(reqOrder.xeleReq, requestID);
+    reqOrder.xeleReqOrderInsert.UserLocalID += g_maxUserLocalID;
+    g_tradeApi->reqInsertOrder(reqOrder.xeleReqOrderInsert, requestID);
+}
+
+HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
+{
+    int32_t requestID = ++g_requestID;
+    reqCancel.xeleReqOrderAction.UserLocalID += g_maxUserLocalID;
+    g_tradeApi->reqCancelOrder(reqCancel.xeleReqOrderAction, requestID);
 }
 #endif

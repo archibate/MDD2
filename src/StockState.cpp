@@ -11,7 +11,6 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
-#include <cstdlib>
 #include <cstdio>
 
 
@@ -75,20 +74,21 @@ void StockState::setStatic(MDS::Stat const &stat)
     reqOrder->quantity = quantity;
     reqOrder->limitType = 'U';
 #elif XC || NE
-    std::sprintf(reqOrder->xeleReq.SecuritiesID, "%06d", stockCode);
-    reqOrder->xeleReq.Direction = XELE_ORDER_BUY;
+    std::sprintf(reqOrder->xeleReqOrderInsert.SecuritiesID, "%06d", stockCode);
+    reqOrder->xeleReqOrderInsert.Direction = XELE_ORDER_BUY;
 #if SZ
-    reqOrder->xeleReq.LimitPrice = stat.staticSzInfo.upperLimitPrice;
+    reqOrder->xeleReqOrderInsert.LimitPrice = stat.staticSzInfo.upperLimitPrice;
 #endif
 #if SH
-    reqOrder->xeleReq.LimitPrice = stat.staticSseInfo.upperLimitPrice;
+    reqOrder->xeleReqOrderInsert.LimitPrice = stat.staticSseInfo.upperLimitPrice;
 #endif
-    reqOrder->xeleReq.Volume = quantity;
-    reqOrder->xeleReq.OrderType = XELE_LIMIT_PRICE_TYPE;
-    reqOrder->xeleReq.TimeCondition = XELE_TIMEINFORCE_TYPE_GFD;
-    reqOrder->xeleReq.SecuritiesType = '0';
-    reqOrder->xeleReq.Operway = API_OPERWAY;
-    reqOrder->xeleReq.ExchangeFrontID = 0;
+    reqOrder->xeleReqOrderInsert.Volume = quantity;
+    reqOrder->xeleReqOrderInsert.OrderType = XELE_LIMIT_PRICE_TYPE;
+    reqOrder->xeleReqOrderInsert.TimeCondition = XELE_TIMEINFORCE_TYPE_GFD;
+    reqOrder->xeleReqOrderInsert.SecuritiesType = '0';
+    reqOrder->xeleReqOrderInsert.Operway = API_OPERWAY;
+    reqOrder->xeleReqOrderInsert.ExchangeFrontID = 0;
+    reqOrder->xeleReqOrderInsert.UserLocalID = stockCode;
 #endif
 }
 
@@ -172,7 +172,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         intent = WantCache::WantBuy;
 #endif
         if (intent == WantCache::WantBuy) [[likely]] {
-            OES::sendRequest(*reqOrder);
+            OES::sendReqOrder(*reqOrder);
         }
 
         stop(timestamp + static_cast<int32_t>(intent));
@@ -219,11 +219,18 @@ HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
     }
     SPDLOG_INFO("response order: messageType={} stock={} orderStatus={} orderSysId={} orderPrice={} orderQuantity={} orderDirection={}", rspOrder.messageType, rspOrder.stockCode, rspOrder.orderStatus, rspOrder.orderSysId, rspOrder.orderPrice, rspOrder.orderQuantity, rspOrder.orderDirection);
 #elif XC || NE
-    if (rspOrder.xeleRsp.ErrorId != 0) {
-        SPDLOG_ERROR("response order error: errorId={}", rspOrder.xeleRsp.ErrorId);
-        return;
+    if (rspOrder.rspType == OES::RspOrder::XeleRspOrderInsert) {
+        if (rspOrder.errorID != 0) {
+            SPDLOG_ERROR("response order error: (XeleRspOrderInsert) stock={} errorId={}", stockCode, rspOrder.errorID);
+        }
+        SPDLOG_INFO("response order: (XeleRspOrderInsert) stock={} securityId={} orderSysId={} orderPrice={} orderQuantity={} orderDirection={}", stockCode, rspOrder.xeleRspOrderInsert->SecuritiesID, rspOrder.xeleRspOrderInsert->OrderSysID, rspOrder.xeleRspOrderInsert->LimitPrice, rspOrder.xeleRspOrderInsert->Volume, rspOrder.xeleRspOrderInsert->Direction == '1' ? "BUY" : rspOrder.xeleRspOrderInsert->Direction == '2' ? "SELL" : "WARM", rspOrder.xeleRspOrderAction->ErrorId);
+
+    } else if (rspOrder.rspType == OES::RspOrder::XeleRspOrderAction) {
+        if (rspOrder.errorID != 0) {
+            SPDLOG_ERROR("response order error: (XeleRspOrderAction) stock={} errorId={}", stockCode, rspOrder.errorID);
+        }
+        SPDLOG_INFO("response order: (XeleRspOrderAction) stock={} orderSysId={} orderExchangeId={} errorId={}", stockCode, rspOrder.xeleRspOrderAction->OrderSysID, rspOrder.xeleRspOrderAction->OrderExchangeID, rspOrder.xeleRspOrderAction->ErrorId);
     }
-    SPDLOG_INFO("response order: stock={} orderSysId={} orderPrice={} orderQuantity={} orderDirection={}", std::atoi(rspOrder.xeleRsp.SecuritiesID), rspOrder.xeleRsp.OrderSysID, rspOrder.xeleRsp.LimitPrice, rspOrder.xeleRsp.Volume, rspOrder.xeleRsp.Direction == '1' ? "BUY" : rspOrder.xeleRsp.Direction == '2' ? "SELL" : "WARM");
 #endif
 }
 

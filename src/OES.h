@@ -12,6 +12,7 @@ namespace OES
 {
 
 #if REPLAY
+
 struct ReqOrder
 {
     int32_t stockCode;
@@ -38,20 +39,59 @@ struct RspOrder
 };
 
 #elif XC || NE
+
+///报单请求
 struct ReqOrder
 {
-    CXeleReqOrderInsertField xeleReq;
+    CXeleReqOrderInsertField xeleReqOrderInsert;
+};
+
+///批量报单请求
+struct ReqBatchOrder
+{
+    CXeleReqBatchOrderInsertField xeleReqBatchOrderInsert;
+};
+
+///撤单请求
+struct ReqCancel
+{
+    CXeleReqOrderActionField xeleReqOrderAction;
 };
 
 struct RspOrder
 {
-    CXeleRspOrderInsertField xeleRsp;
+    enum RspType
+    {
+        XeleRspOrderInsert,
+        XeleRspOrderAction,
+        XeleRtnOrder,
+        XeleRtnTrade,
+    };
+
+    RspType rspType;
+    TXeleOrderIDType userLocalID;
+    TXeleRequestIDType requestID;
+    TXeleErrorIdType errorID;
+
+    union
+    {
+        ///报单应答
+        CXeleRspOrderInsertField *xeleRspOrderInsert;
+        ///撤单应答
+        CXeleRspOrderActionField *xeleRspOrderAction;
+        ///报单回报
+        CXeleRtnOrderField *xeleRtnOrder;
+        ///成交回报
+        CXeleRtnTradeField *xeleRtnTrade;
+    };
 };
+
 #endif
 
 void start(const char *config);
 bool isStarted();
 void stop();
-void sendRequest(ReqOrder &reqOrder);
+void sendReqOrder(ReqOrder &reqOrder);
+void sendReqCancel(ReqCancel &reqCancel);
 
 }
