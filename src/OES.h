@@ -21,6 +21,12 @@ struct ReqOrder
     int32_t limitType;
 };
 
+struct ReqCancel
+{
+    int32_t stockCode;
+    int32_t orderSysId;
+};
+
 struct RspOrder
 {
     int32_t errorId;

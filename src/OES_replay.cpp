@@ -31,10 +31,10 @@ void OES::stop()
 {
 }
 
-HEAT_ZONE_REQORDER void OES::sendRequest(ReqOrder &reqOrder)
+HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
-    SPDLOG_CRITICAL("oes replay send request: stock={} price={} quantity={}",
-                    reqOrder.stockCode, reqOrder.price, reqOrder.quantity);
+    SPDLOG_INFO("oes replay request order: stock={} price={} quantity={}",
+                reqOrder.stockCode, reqOrder.price, reqOrder.quantity);
 
     OES::RspOrder rspOrder{};
     rspOrder.errorId = 0;
@@ -45,5 +45,11 @@ HEAT_ZONE_REQORDER void OES::sendRequest(ReqOrder &reqOrder)
     rspOrder.orderPrice = reqOrder.price;
     rspOrder.orderQuantity = reqOrder.quantity;
     MDD::handleRspOrder(rspOrder);
+}
+
+HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
+{
+    SPDLOG_INFO("oes replay request cancel: stock={} orderSysId={}",
+                reqCancel.stockCode, reqCancel.orderSysId);
 }
 #endif
