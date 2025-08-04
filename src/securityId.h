@@ -2,7 +2,7 @@
 
 
 #include <cstdint>
-// #include <immintrin.h>
+// #include <smmintrin.h>
 
 
 [[gnu::always_inline]] inline uint32_t atou6(const char *s)
@@ -17,34 +17,29 @@
     return i;
 }
 
-// [[gnu::always_inline]] inline uint32_t atou6q(const char *s)
-// {
-//     __m128i m = _mm_loadl_epi64((const __m128i *)s);
-//     m = _mm_sub_epi8(m, _mm_set1_epi8('0'));
-//     m = _mm_unpacklo_epi8(m, _mm_setzero_si128());
-//     m = _mm_mullo_epi16(m, _mm_set_epi16(0, 0, 1, 10, 100, 1000, 1, 10));
-//     m = _mm_shuffle_epi32(m, 0b00111001);
-//     m = _mm_hadd_epi16(m, m);
-//     m = _mm_hadd_epi16(m, m);
-//     m = _mm_unpacklo_epi16(m, _mm_setzero_si128());
-//     m = _mm_mullo_epi32(m, _mm_set_epi32(0, 0, 10000, 1));
-//     m = _mm_hadd_epi32(m, m);
-//     return _mm_cvtsi128_si32(m);
-// }
+// [[gnu::always_inline]] uint32_t atou6q0(const char input[4]) {
+//     // Load 4 bytes into a 32-bit temporary
+//     uint32_t tmp;
+//     __builtin_memcpy(&tmp, input, 4);
 //
+//     // Zero-extend bytes to 32-bit integers
+//     __m128i ascii = _mm_cvtepu8_epi32(_mm_cvtsi32_si128(tmp));
 //
-// [[gnu::always_inline]] inline uint32_t atou6q0(const char *s)
-// {
-//     __m128i m = _mm_loadl_epi64((const __m128i *)s);
-//     m = _mm_sub_epi8(m, _mm_set1_epi8('0'));
-//     m = _mm_unpacklo_epi8(m, _mm_setzero_si128());
-//     m = _mm_mullo_epi16(m, _mm_set_epi16(0, 0, 1, 10, 100, 1000, 0, 0));
-//     m = _mm_shuffle_epi32(m, 0b00001001);
-//     m = _mm_hadd_epi16(m, m);
-//     m = _mm_hadd_epi16(m, m);
-//     return _mm_cvtsi128_si32(m);
+//     __m128i digits = _mm_sub_epi32(ascii, _mm_set1_epi32('0'));
+//
+//     // Set multipliers: [1000, 100, 10, 1]
+//     __m128i multipliers = _mm_set_epi32(1, 10, 100, 1000);
+//
+//     // Multiply digits by multipliers
+//     __m128i products = _mm_mullo_epi32(digits, multipliers);
+//
+//     // Horizontal sum: shift and add elements
+//     __m128i sum_a = _mm_add_epi32(products, _mm_srli_si128(products, 8));
+//     __m128i sum_b = _mm_add_epi32(sum_a, _mm_srli_si128(sum_a, 4));
+//
+//     // Extract the result
+//     return _mm_cvtsi128_si32(sum_b);
 // }
-
 
 inline uint32_t securityId(const char *s)
 {

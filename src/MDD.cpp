@@ -60,7 +60,9 @@ void parseDailyConfig(const char *config)
         std::ifstream(config) >> json;
         SPDLOG_DEBUG("config json: {}", json.dump());
 
-        date = json["date"];
+        if (json.contains("factor_file")) {
+            date = json["date"];
+        }
         if (json.contains("factor_file")) {
             factorFile = json["factor_file"];
         }
@@ -69,10 +71,10 @@ void parseDailyConfig(const char *config)
         throw;
     }
 
-    if (date <= 0) {
-        SPDLOG_ERROR("invalid config date: {}", date);
-        throw std::runtime_error("invalid config date");
-    }
+    // if (date <= 0) {
+    //     SPDLOG_ERROR("invalid config date: {}", date);
+    //     throw std::runtime_error("invalid config date");
+    // }
 
     SPDLOG_INFO("daily start: market={} date={}", MARKET_NAME, date);
 #if !REPLAY
@@ -260,11 +262,13 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 void MDD::start(const char *config)
 {
     parseDailyConfig(config);
-    MDS::start(config);
-    SPDLOG_INFO("initializing {} stocks", MDD::g_stockCodes.size());
+    SPDLOG_INFO("found {} stocks", MDD::g_stockCodes.size());
 
     SPDLOG_INFO("initializing trade api");
     OES::start(config);
+
+    SPDLOG_INFO("initializing quote api");
+    MDS::start(config);
 
     while (!OES::isStarted()) {
         SPDLOG_DEBUG("wait for trade initial");

@@ -96,8 +96,8 @@ void MDS::start(const char *config)
 
     SPDLOG_INFO("mds replay date: {}", g_date);
     SPDLOG_INFO("mds replay time speed: {}", 1.0 / g_timeScale);
-    if (g_date <= 0) {
-        SPDLOG_ERROR("invalid config date: {}", g_date);
+    if (g_date <= 20000000) {
+        SPDLOG_ERROR("invalid date to replay: {}", g_date);
         throw std::runtime_error("invalid config date");
     }
 }
