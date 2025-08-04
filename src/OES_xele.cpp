@@ -805,7 +805,6 @@ bool OES::isStarted()
 
 void OES::stop()
 {
-    delete g_userSpi;
     g_userSpi = nullptr;
     g_tradeApi->release();
     g_tradeApi = nullptr;

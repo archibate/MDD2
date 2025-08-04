@@ -26,7 +26,7 @@ private:
     {
         std::fprintf(stderr, "RingBuffer overflow: %#x\n", n);
         std::fflush(stderr);
-        std::_Exit(1);
+        std::_Exit(EXIT_FAILURE);
     }
 
 public:

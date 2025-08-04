@@ -13,15 +13,15 @@ targets = {
         '-DTARGET_MARKET=SH',
         '-DASYNC_LOGGER=OFF',
     ],
-    # 'NESZ': [
-    #     '-DCMAKE_BUILD_TYPE=Release',
-    #     '-DBUILD_SPEED=ON',
-    #     '-DRECORD_FACTORS=ON',
-    #     '-DALWAYS_BUY=ON',
-    #     '-DASYNC_LOGGER=OFF',
-    #     '-DTARGET_SECURITY=NE',
-    #     '-DTARGET_MARKET=SZ',
-    # ],
+    'NESZ': [
+        '-DCMAKE_BUILD_TYPE=Release',
+        '-DBUILD_SPEED=ON',
+        '-DRECORD_FACTORS=ON',
+        '-DALWAYS_BUY=ON',
+        '-DASYNC_LOGGER=OFF',
+        '-DTARGET_SECURITY=NE',
+        '-DTARGET_MARKET=SZ',
+    ],
 }
 
 markets = [

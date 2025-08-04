@@ -337,12 +337,12 @@ void MDD::start(const char *config)
 
 void MDD::stop()
 {
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    SPDLOG_INFO("stopping oes");
-    OES::stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     SPDLOG_INFO("stopping mds");
     MDS::stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    SPDLOG_INFO("stopping oes");
+    OES::stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(60));
     SPDLOG_INFO("stopping {} compute channels", kChannelCount);
 
