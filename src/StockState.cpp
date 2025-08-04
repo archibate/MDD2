@@ -191,7 +191,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
                 intent = WantCache::WantBuy;
 #endif
                 if (intent == WantCache::WantBuy) [[likely]] {
-                    OES::sendRequest(*reqOrder);
+                    OES::sendReqOrder(*reqOrder);
                 }
 
                 stop(timestamp + static_cast<int32_t>(intent));
@@ -218,6 +218,7 @@ HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
         return;
     }
     SPDLOG_INFO("response order: messageType={} stock={} orderStatus={} orderSysId={} orderPrice={} orderQuantity={} orderDirection={}", rspOrder.messageType, rspOrder.stockCode, rspOrder.orderStatus, rspOrder.orderSysId, rspOrder.orderPrice, rspOrder.orderQuantity, rspOrder.orderDirection);
+
 #elif XC || NE
     if (rspOrder.rspType == OES::RspOrder::XeleRspOrderInsert) {
         if (rspOrder.errorID != 0) {
