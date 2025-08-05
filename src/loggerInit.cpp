@@ -36,6 +36,7 @@ struct LoggerInit
         static auto logger = std::make_shared<spdlog::logger>(
             "MDD", sinks.begin(), sinks.end());
 #endif
+        logger->set_pattern("%C%m%d %H%M%S.%f %^%L (%s:%#) %v%$");
         logger->set_level(spdlog::level::trace);
         logger->flush_on(spdlog::level::info);
         spdlog::set_default_logger(logger);

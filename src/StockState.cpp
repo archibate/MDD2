@@ -73,6 +73,7 @@ void StockState::setStatic(MDS::Stat const &stat)
     reqOrder->price = upperLimitPrice;
     reqOrder->quantity = quantity;
     reqOrder->limitType = 'U';
+    reqOrder->direction = 'B';
 #elif XC || NE
     std::sprintf(reqOrder->xeleReqOrderInsert.SecuritiesID, "%06d", stockCode);
     reqOrder->xeleReqOrderInsert.Direction = XELE_ORDER_BUY;
@@ -151,6 +152,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
         return;
     }
 
+#if SZ
     if (tick.sellOrderNo != 0 && tick.price == upperLimitPrice) {
         if (tick.buyOrderNo == 0) {
             upRemainQty += tick.quantity;
@@ -158,6 +160,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
             upRemainQty -= tick.quantity;
         }
     }
+#endif
 
 #elif NE && SH
     bool limitUp = tick.tickMergeSse.tickType == 'A'

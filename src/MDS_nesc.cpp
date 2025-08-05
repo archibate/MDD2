@@ -105,19 +105,19 @@ namespace
 {
 
 #if SH
-bool firstCongress = false;
-
-COLD_ZONE void onFirstCongress()
-{
-    firstCongress = true;
-    SPDLOG_CRITICAL("the first congress of CPC was held");
-}
+// bool firstCongress = false;
+//
+// COLD_ZONE void onFirstCongress()
+// {
+//     firstCongress = true;
+//     SPDLOG_CRITICAL("the first congress of CPC was held");
+// }
 
 HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
 {
-    if (!firstCongress) [[unlikely]] {
-        onFirstCongress();
-    }
+    // if (!firstCongress) [[unlikely]] {
+    //     onFirstCongress();
+    // }
 
     // assert(buf[0] == MSG_TYPE_TICK_MERGE_SSE);
     auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));

@@ -80,17 +80,21 @@ if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo")
     target_compile_options(${PROJECT_NAME} PRIVATE
         -ggdb3
         -fno-omit-frame-pointer
-        -finline-limit=50
+        -finline-limit=10
+        -fno-inline-functions-called-once
+        -fno-optimize-sibling-calls
     )
 endif()
 
 if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo" OR CMAKE_BUILD_TYPE MATCHES "Release")
-    if (TARGET_SECURITY MATCHES REPLAY)
-        target_compile_options(${PROJECT_NAME} PRIVATE -march=native -mavx512dq -mavx512f)
-    elseif (TARGET_SECURITY MATCHES NE)
-        target_compile_options(${PROJECT_NAME} PRIVATE -march=btver2 -mcx16 -msahf -mmovbe -maes -mpclmul -mpopcnt -mabm -mno-lwp -mfma -mno-fma4 -mno-xop -mbmi -mbmi2 -mno-tbm -mavx -mavx2 -msse4.2 -msse4.1 -mlzcnt -mno-rtm -mno-hle -mrdrnd -mf16c -mfsgsbase -mrdseed -mprfchw -madx -mfxsr -mxsave -mxsaveopt -mpku -mavx512dq -mavx512f)
-    elseif (TARGET_SECURITY MATCHES XC)
-        target_compile_options(${PROJECT_NAME} PRIVATE -march=core-avx2 -mcx16 -msahf -mmovbe -maes -mpclmul -mpopcnt -mabm -mno-lwp -mfma -mno-fma4 -mno-xop -mbmi -mbmi2 -mno-tbm -mavx -mavx2 -msse4.2 -msse4.1 -mlzcnt -mno-rtm -mno-hle -mrdrnd -mf16c -mfsgsbase -mrdseed -mprfchw -madx -mfxsr -mxsave -mxsaveopt -mpku -mtune=generic)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        if (TARGET_SECURITY MATCHES REPLAY)
+            target_compile_options(${PROJECT_NAME} PRIVATE -march=native -mavx512dq -mavx512f)
+        elseif (TARGET_SECURITY MATCHES NE)
+            target_compile_options(${PROJECT_NAME} PRIVATE -march=btver2 -mcx16 -msahf -mmovbe -maes -mpclmul -mpopcnt -mabm -mno-lwp -mfma -mno-fma4 -mno-xop -mbmi -mbmi2 -mno-tbm -mavx -mavx2 -msse4.2 -msse4.1 -mlzcnt -mno-rtm -mno-hle -mrdrnd -mf16c -mfsgsbase -mrdseed -mprfchw -madx -mfxsr -mxsave -mxsaveopt -mpku -mavx512dq -mavx512f)
+        elseif (TARGET_SECURITY MATCHES XC)
+            target_compile_options(${PROJECT_NAME} PRIVATE -march=core-avx2 -mcx16 -msahf -mmovbe -maes -mpclmul -mpopcnt -mabm -mno-lwp -mfma -mno-fma4 -mno-xop -mbmi -mbmi2 -mno-tbm -mavx -mavx2 -msse4.2 -msse4.1 -mlzcnt -mno-rtm -mno-hle -mrdrnd -mf16c -mfsgsbase -mrdseed -mprfchw -madx -mfxsr -mxsave -mxsaveopt -mpku -mtune=generic)
+        endif()
     endif()
 endif()
 

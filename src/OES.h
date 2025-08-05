@@ -18,7 +18,8 @@ struct ReqOrder
     int32_t stockCode;
     int32_t price;
     int32_t quantity;
-    int32_t limitType;
+    char limitType;
+    char direction;
 };
 
 struct ReqCancel

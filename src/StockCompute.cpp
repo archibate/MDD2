@@ -725,7 +725,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeKaiyuan()
     if (!transactions.empty()) {
         radixSort<8, 4, sizeof(float), offsetof(Transaction, meanAmount), sizeof(Transaction)>(transactions.data(), transactions.size());
 
-        auto m = transactions.size() - 1;
+        auto m = transactions.size();// - 1;
         auto it096 = transactions.begin() + static_cast<size_t>(std::ceil(0.096 * m));
         auto it096f = transactions.begin() + static_cast<size_t>(std::floor(0.096 * m));
         auto it10 = transactions.begin() + static_cast<size_t>(std::ceil(0.10 * m));
@@ -749,11 +749,11 @@ HEAT_ZONE_COMPUTE void StockCompute::computeKaiyuan()
             factorList.kaiyuan.trimmedQuantile = (0.5f * (A096 + A096f) - A0) / (A96 - A0);
         }
 
-        float sumT = 0;
-        float sumA = 0;
-        float sumTA = 0;
-        float sumT2 = 0;
-        float sumA2 = 0;
+        double sumT = 0;
+        double sumA = 0;
+        double sumTA = 0;
+        double sumT2 = 0;
+        double sumA2 = 0;
         for (auto it = transactions.begin(); it != it96; ++it) {
             sumT += it->meanAmount;
             sumA += it->sumAmount;
@@ -761,11 +761,11 @@ HEAT_ZONE_COMPUTE void StockCompute::computeKaiyuan()
             sumT2 += it->meanAmount * it->meanAmount;
             sumA2 += it->sumAmount * it->sumAmount;
         }
-        float size = it96 - transactions.begin();
-        float numerator = sumTA * size - sumT * sumA;
-        float denominatorX = sumT2 * size - sumT * sumT;
-        float denominatorY = sumA2 * size - sumA * sumA;
-        factorList.kaiyuan.trimmedCorrelation = numerator / std::sqrt(std::max(0.0f, denominatorX * denominatorY));
+        double size = it96 - transactions.begin();
+        double numerator = sumTA * size - sumT * sumA;
+        double denominatorX = sumT2 * size - sumT * sumT;
+        double denominatorY = sumA2 * size - sumA * sumA;
+        factorList.kaiyuan.trimmedCorrelation = numerator / std::sqrt(std::max(0.0, denominatorX * denominatorY));
 
         for (auto it = it96; it != transactions.end(); ++it) {
             sumT += it->meanAmount;
@@ -778,9 +778,9 @@ HEAT_ZONE_COMPUTE void StockCompute::computeKaiyuan()
         numerator = sumTA * size - sumT * sumA;
         denominatorX = sumT2 * size - sumT * sumT;
         denominatorY = sumA2 * size - sumA * sumA;
-        factorList.kaiyuan.correlation = numerator / std::sqrt(std::max(0.0f, denominatorX * denominatorY));
+        factorList.kaiyuan.correlation = numerator / std::sqrt(std::max(0.0, denominatorX * denominatorY));
 
-        float sr = 0;
+        double sr = 0;
         for (auto it = it90; it != transactions.end(); ++it) {
             sr += it->changeRate;
         }

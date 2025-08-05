@@ -49,5 +49,5 @@ def build():
 
 
 build()
-flamegraph()
-# callgrind()
+# flamegraph()
+callgrind()

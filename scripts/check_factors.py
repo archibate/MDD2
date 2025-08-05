@@ -71,9 +71,9 @@ diff[factors.isna() & (correct == 0)] = 0
 diff['timestamp'] = correct['timestamp']
 diff['time'] = ((linear_time(correct['timestamp']) * 1000) + 90) // 100 / 10 - linear_time(factors['timestamp']) # type: ignore
 diff = diff.sort_values('timestamp').reset_index()
-# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'TS' in c or 'QUA' in c or 'SR' in c]])
+print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'TS' in c or 'QUA' in c or 'SR' in c]])
 # print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_h' in c]])
-# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_o' in c]])
+print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_o' in c]])
 # print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'vwap' in c]])
 # print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'amaount' in c]])
 # print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'amount' in c]])
@@ -87,7 +87,7 @@ diff = diff.sort_values('timestamp').reset_index()
 del diff['ts_code']
 del diff['timestamp']
 # error = diff.abs().max()
-error = diff.abs().quantile(0.8)
+error = diff.abs().quantile(0.6)
 error = error.sort_values(ascending=False)
 
 print()

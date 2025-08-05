@@ -44,6 +44,7 @@ HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
     rspOrder.orderSysId = orderSysId.fetch_add(1, std::memory_order_relaxed);
     rspOrder.orderPrice = reqOrder.price;
     rspOrder.orderQuantity = reqOrder.quantity;
+    rspOrder.orderDirection = reqOrder.direction;
     MDD::handleRspOrder(rspOrder);
 }
 

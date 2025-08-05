@@ -35,7 +35,7 @@ void segvHandler(int sig, siginfo_t *info, void *ucontext) {
 int main(int argc, char **argv)
 {
     SPDLOG_CRITICAL("program started, compiled at {} {}", __DATE__, __TIME__);
-#define COMPILE_FLAG(x) SPDLOG_CRITICAL("compile flag: " #x "={}", x);
+#define COMPILE_FLAG(x) SPDLOG_INFO("compile flag: " #x "={}", x);
     COMPILE_FLAG(BUILD_SPEED)
     COMPILE_FLAG(RECORD_FACTORS)
     COMPILE_FLAG(ALWAYS_BUY)
@@ -44,7 +44,7 @@ int main(int argc, char **argv)
     COMPILE_FLAG(TARGET_MARKET)
 #undef COMPILE_FLAG
     for (int i = 0; i < argc; ++i) {
-        SPDLOG_CRITICAL("runtime argument: argv[{}]=`{}`", i, argv[i]);
+        SPDLOG_INFO("runtime argument: argv[{}]=`{}`", i, argv[i]);
     }
 
     SPDLOG_CRITICAL("now starting MDD v2 trading system");
