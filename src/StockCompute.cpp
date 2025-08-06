@@ -522,7 +522,7 @@ HEAT_ZONE_COMPUTE void StockCompute::computeMomentum()
             {
                 double sum = 0;
                 double sumSqr = 0;
-                double prevPrice = prevPrice = fState.snapshots[fState.snapshots.size() - kMomentumDurations[m] - 1].lastPrice;
+                double prevPrice = fState.snapshots[fState.snapshots.size() - kMomentumDurations[m] - 1].lastPrice;
                 for (int32_t t = fState.snapshots.size() - kMomentumDurations[m]; t < fState.snapshots.size(); ++t) {
                     double currPrice = fState.snapshots[t].lastPrice;
                     double changeRate = currPrice / prevPrice - 1.0;
