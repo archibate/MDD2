@@ -23,7 +23,7 @@ def flamegraph():
 def callgrind():
     os.chdir('build/perf-build')
     try:
-        subprocess.run('valgrind --tool=callgrind --callgrind-out-file=callgrind.out ./mdd_v2', shell=True)
+        subprocess.run('valgrind --tool=callgrind --callgrind-out-file=callgrind.out --dump-instr=yes --collect-jumps=yes ./mdd_v2', shell=True)
     except KeyboardInterrupt:
         time.sleep(1)
     subprocess.check_call('kcachegrind callgrind.out', shell=True)

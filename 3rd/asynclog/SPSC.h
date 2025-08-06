@@ -92,6 +92,20 @@ public:
         size_t read_n(T *buf, size_t n) noexcept {
             return read(buf, buf + n) - buf;
         }
+
+        void blocking_read(T *buf, T *buf_end) noexcept {
+            while (true) {
+                buf = read(buf, buf_end);
+                if (buf == buf_end) {
+                    break;
+                }
+                read_wait();
+            }
+        }
+
+        void blocking_read_n(T *buf, size_t n) noexcept {
+            return blocking_read(buf, buf + n) - buf;
+        }
     };
 
     class ring_writer
@@ -154,6 +168,20 @@ public:
 
         size_t write_n(const T *buf, size_t n) noexcept {
             return write(buf, buf + n) - buf;
+        }
+
+        void blocking_write(const T *buf, const T *buf_end) noexcept {
+            while (true) {
+                buf = write(buf, buf_end);
+                if (buf == buf_end) {
+                    break;
+                }
+                write_wait();
+            }
+        }
+
+        void blocking_write_n(T *buf, size_t n) noexcept {
+            return blocking_write(buf, buf + n) - buf;
         }
     };
 

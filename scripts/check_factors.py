@@ -54,7 +54,7 @@ factors = factors[correct.columns]
 # some SR incorrect
 # some filter_QUA incorrect
 # some TS incorrect
-# many momentum_o incorrect
+# some momentum_o incorrect
 
 # print(correct)
 # print(factors)

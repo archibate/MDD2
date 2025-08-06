@@ -24,7 +24,7 @@ struct argument_meta
 struct static_log_meta
 {
     string_slice preString;
-    argument_meta *argMetas;
-    argument_meta *endArgMetas;
+    const argument_meta *argMetas;
+    const argument_meta *endArgMetas;
     size_t argTotalSize;
 };
