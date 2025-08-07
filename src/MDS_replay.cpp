@@ -138,7 +138,8 @@ void readReplayTicks(std::vector<MDS::Tick> &tickBuf)
 void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
 {
     if (MDS::g_timeScale > 0) {
-        int64_t lastTimestamp = timestampAbsLinear(9'30'00'000);
+        // int64_t lastTimestamp = timestampAbsLinear(9'30'00'000);
+        int64_t lastTimestamp = timestampAbsLinear(9'24'00'000);
         int64_t nextSleepTime = steadyNow();
         int64_t timeScale = static_cast<int64_t>(1'000'000 * MDS::g_timeScale);
         bool openCalled = false;
@@ -148,25 +149,25 @@ void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
         for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
             MDS::Tick &tick = tickBuf[i];
 
-            if (!openCalled && tick.timestamp >= 9'30'00'000) [[unlikely]] {
-                openCalled = true;
-                std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                SPDLOG_CRITICAL("mds replay: open call auction finished");
-                std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                nextSleepTime = steadyNow();
-            }
-            if (openCalled && tick.timestamp < 9'30'00'000) [[unlikely]] {
-                throw;
-            }
+            // if (!openCalled && tick.timestamp >= 9'30'00'000) [[unlikely]] {
+            //     openCalled = true;
+            //     std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            //     SPDLOG_CRITICAL("mds replay: open call auction finished");
+            //     std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            //     nextSleepTime = steadyNow();
+            // }
+            // if (openCalled && tick.timestamp < 9'30'00'000) [[unlikely]] {
+            //     throw;
+            // }
 
             if (tick.timestamp > lastTimestamp) {
-                if (openCalled) {
+                // if (openCalled) {
                     int64_t thisTimestamp = timestampAbsLinear(tick.timestamp);
                     int64_t dt = thisTimestamp - lastTimestamp;
                     lastTimestamp = thisTimestamp;
                     nextSleepTime += dt * timeScale;
                     blockingSleepUntil(nextSleepTime);
-                }
+                // }
             }
 
             if (g_subscribedStocks.contains(tick.stock)) {

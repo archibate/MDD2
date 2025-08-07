@@ -48,7 +48,7 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, WantCache::
 void StockCompute::start()
 {
     if (!stockState().alive) [[unlikely]] {
-        SPDLOG_WARN("stop watching dead stock: stock={}", stockCode);
+        SPDLOG_WARN("stop watching dead stock: stock={}", stockState().stockCode);
         stop();
         return;
     }
