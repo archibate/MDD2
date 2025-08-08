@@ -111,6 +111,14 @@ void StockState::stop(int32_t timestamp)
         endSign.tradeSz.messageType = 0;
         std::sprintf(endSign.tradeSz.securityID, "%06d", stockCode);
         endSign.tradeSz.transactTime = timestamp;
+#elif OST && SH
+        endSign.tick.m_message_type = 0;
+        std::sprintf(endSign.tick.m_symbol_id, "%06d", stockCode);
+        endSign.tick.m_tick_time = timestamp;
+#elif OST && SZ
+        endSign.head.m_message_type = 0;
+        std::sprintf(endSign.head.m_symbol, "%06d", stockCode);
+        endSign.head.m_quote_update_time = timestamp;
 #endif
         tickRing->pushTick(endSign);
     }
@@ -183,30 +191,81 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     }
 
 #elif NE && SZ
-    if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ
-        && tick.tradeSz.tradePrice == upperLimitPrice10000) {
-        upRemainQty100 -= tick.tradeSz.tradeQty;
-        if (upRemainQty100 < 0 && tick.tradeSz.execType == 0x2) {
-            int32_t timestamp = static_cast<uint32_t>(tick.tradeSz.transactTime - offsetTransactTime);
-            if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
-                auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
+    if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ) {
+        if (tick.tradeSz.tradePrice == upperLimitPrice10000) {
+            upRemainQty100 -= tick.tradeSz.tradeQty;
+            if (upRemainQty100 < 0 && tick.tradeSz.execType == 0x2) {
+                int32_t timestamp = static_cast<uint32_t>(
+                    tick.tradeSz.transactTime - offsetTransactTime);
+                if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
+                    auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
 #if ALWAYS_BUY
-                intent = WantCache::WantBuy;
+                    intent = WantCache::WantBuy;
 #endif
-                if (intent == WantCache::WantBuy) [[likely]] {
-                    OES::sendReqOrder(*reqOrder);
-                }
+                    if (intent == WantCache::WantBuy) [[likely]] {
+                        OES::sendReqOrder(*reqOrder);
+                    }
 
-                stop(timestamp + static_cast<int32_t>(intent));
-                return;
+                    stop(timestamp + static_cast<int32_t>(intent));
+                    return;
+                }
             }
         }
+    } else if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ) [[unlikely]] {
+        if (tick.orderSz.side == '2'
+            && tick.orderSz.orderType == '2'
+            && tick.orderSz.price == upperLimitPrice10000) {
+            upRemainQty100 += tick.orderSz.qty;
+        }
     }
-    if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ
-        && tick.orderSz.side == '2'
-        && tick.orderSz.orderType == '2'
-        && tick.orderSz.price == upperLimitPrice10000) {
-        upRemainQty100 += tick.orderSz.qty;
+
+#elif OST && SH
+    bool limitUp = tick.tick.m_tick_type == 'A'
+        && tick.tick.m_side_flag == '0'
+        && tick.tick.m_order_price == upperLimitPrice1000
+        && tick.tick.m_tick_time >= 9'30'00'00
+        && tick.tick.m_tick_time < 14'57'00'00;
+    if (limitUp) {
+        int32_t timestamp = tick.tick.m_tick_time * 10;
+        auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
+#if ALWAYS_BUY
+        intent = WantCache::WantBuy;
+#endif
+        if (intent == WantCache::WantBuy) [[likely]] {
+            OES::sendReqOrder(*reqOrder);
+        }
+
+        stop(timestamp + static_cast<int32_t>(intent));
+        return;
+    }
+
+#elif OST && SZ
+    if (tick.head.m_message_type == sze_msg_type_trade) {
+        if (tick.exe.m_exe_px == upperLimitPrice10000) {
+            upRemainQty100 -= tick.exe.m_exe_qty;
+            if (upRemainQty100 < 0 && tick.exe.m_exe_type == 0x2) {
+                int32_t timestamp = static_cast<uint32_t>(
+                    tick.head.m_quote_update_time - offsetTransactTime);
+                if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
+                    auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
+#if ALWAYS_BUY
+                    intent = WantCache::WantBuy;
+#endif
+                    if (intent == WantCache::WantBuy) [[likely]] {
+                        OES::sendReqOrder(*reqOrder);
+                    }
+
+                    stop(timestamp + static_cast<int32_t>(intent));
+                    return;
+                }
+            }
+        }
+    } else if (tick.head.m_message_type == sze_msg_type_order) [[likely]] {
+        if (tick.order.m_side == '2'
+            && tick.order.m_order_type == '2'
+            && tick.order.m_px == upperLimitPrice10000) {
+            upRemainQty100 += tick.order.m_qty;
+        }
     }
 #endif
 
@@ -247,6 +306,9 @@ HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
         }
         SPDLOG_INFO("(XeleRtnTrade) stock={} orderSysId={} orderExchangeId={} orderPrice={} orderQuantity={} transactTime={} origTime={} tradePrice={} tradeQuantity={} leavesQuantity={} orderStatus={} exchangeFrontId={}", stockCode, rspOrder.xeleRtnTrade->OrderSysID, rspOrder.xeleRtnTrade->OrderExchangeID, rspOrder.xeleRtnTrade->LimitPrice, rspOrder.xeleRtnTrade->Volume, rspOrder.xeleRtnTrade->Direction == '1' ? "BUY" : "SELL", rspOrder.xeleRtnTrade->TransactTime, rspOrder.xeleRtnTrade->OrigTime, rspOrder.xeleRtnTrade->TradePrice, rspOrder.xeleRtnTrade->TradeVolume, rspOrder.xeleRtnTrade->LeavesVolume, rspOrder.xeleRtnTrade->OrderStatus, rspOrder.xeleRtnTrade->ExchangeFrontID);
     }
+
+#elif OST
+    (void)rspOrder.stockCode;
 #endif
 }
 

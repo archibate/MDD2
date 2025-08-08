@@ -20,10 +20,10 @@ struct alignas(64) StockState
     int32_t preClosePrice{};
     bool alive{};
 
-#if NE && SH
+#if (NE || OST) && SH
     uint32_t upperLimitPrice1000{};
 #endif
-#if NE && SZ
+#if (NE || OST) && SZ
     uint64_t upperLimitPrice10000{};
     uint64_t offsetTransactTime{};
     uint64_t upRemainQty100{};

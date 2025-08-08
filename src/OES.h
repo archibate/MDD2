@@ -1,6 +1,7 @@
 #pragma once
 
 
+#include <absl/types/internal/variant.h>
 #include <cstdint>
 #include "config.h"
 #if XC || NE
@@ -91,6 +92,23 @@ struct RspOrder
         ///成交回报
         CXeleRtnTradeField *xeleRtnTrade;
     };
+};
+
+#else OST
+
+struct ReqOrder
+{
+    int32_t stockCode;
+};
+
+struct ReqCancel
+{
+    int32_t stockCode;
+};
+
+struct RspOrder
+{
+    int32_t stockCode;
 };
 
 #endif

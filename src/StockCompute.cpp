@@ -179,6 +179,46 @@ HEAT_ZONE_ORDBOOK void StockCompute::onTick(MDS::Tick &tick)
     } else if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ) [[likely]] {
         onOrder(tick);
     }
+
+#elif OST && SH
+    if (tick.tick.m_tick_type == 0) [[unlikely]] {
+        logLimitUp(stockIndex(), tick.tick.m_tick_time * 10,
+                   static_cast<WantCache::Intent>(tick.tick.m_side_flag));
+        stop();
+        return;
+    }
+
+    switch (tick.tick.m_tick_type) {
+    case 'A':
+        onOrder(tick);
+        break;
+    case 'D':
+        onCancel(tick);
+        break;
+    case 'T':
+        onTrade(tick);
+        break;
+    default:
+        break;
+    }
+
+#elif OST && SZ
+    if (tick.head.m_message_type == 0) [[unlikely]] {
+        logLimitUp(stockIndex(), tick.head.m_quote_update_time / 10 * 10,
+                   static_cast<WantCache::Intent>(tick.head.m_quote_update_time % 10));
+        stop();
+        return;
+    }
+
+    if (tick.head.m_message_type == sze_msg_type_trade) {
+        if (tick.exe.m_exe_type == 0x1) {
+            onCancel(tick);
+        } else {
+            onTrade(tick);
+        }
+    } else if (tick.head.m_message_type == sze_msg_type_order) [[likely]] {
+        onOrder(tick);
+    }
 #endif
 }
 
@@ -282,8 +322,8 @@ HEAT_ZONE_ORDBOOK void StockCompute::onCancel(MDS::Tick &tick)
 #elif NE && SZ
     if (tick.orderSz.price >= upperLimitPriceApproach * 100) {
         UpSell sell;
-        sell.price = tick.orderSz.price / 10;
-        sell.quantity = tick.orderSz.qty / 1000;
+        sell.price = tick.orderSz.price / 100;
+        sell.quantity = tick.orderSz.qty / 100;
         upSellOrders.insert({tick.orderSz.applSeqNum, sell});
     }
 #endif

@@ -9,6 +9,9 @@
 #include <nesc/Const.h>
 #include <nesc/SseMdStruct.h>
 #include <nesc/SzeMdStruct.h>
+#elif OST
+#include "ostmd/sse_hpf_quote.h"
+#include "ostmd/sze_hpf_quote.h"
 #endif
 
 
@@ -50,6 +53,7 @@ struct TickMergeSse
     uint64_t sellOrderNo;    //卖方订单号
     uint32_t price;          //价格，实际值除以1000
     uint64_t qty;            //数量，实际值除以1000
+    char     padding[3];        //填充至64字节
     // uint64_t tradeMoney;     //TickType=T成交时，代表成交金额，实际值除以100000；
     // //TickType=A新增委托时，代表已成交委托数量，实际值除以1000，其他无意义
     // uint32_t msgSeqID;       //消息序号（仅定位调试使用）
@@ -99,17 +103,21 @@ struct OrderSz
 }
 
 
-struct Stat {
+struct Stat
+{
     NescForesight::MarketType marketType;
-    union {
+    union
+    {
         NescForesight::StaticSseInfo staticSseInfo;
         NescForesight::StaticSzInfo staticSzInfo;
     };
 };
 
 #if SH
-struct alignas(64) Tick {
-    union {
+struct Tick
+{
+    union
+    {
         NescCompat::TickMergeSse tickMergeSse;
         uint8_t messageType;
     };
@@ -117,11 +125,14 @@ struct alignas(64) Tick {
 #endif
 
 #if SZ
-struct alignas(64) Tick {
-    union {
+struct Tick
+{
+    union
+    {
         NescCompat::TradeSz tradeSz;
         NescCompat::OrderSz orderSz;
-        struct {
+        struct
+        {
             uint8_t messageType;
             uint32_t sequence;
             uint8_t exchangeID;
@@ -130,6 +141,97 @@ struct alignas(64) Tick {
     };
 };
 #endif
+
+static_assert(sizeof(Tick) == 64);
+
+#elif OST
+
+#pragma pack(push)
+#pragma pack(1)
+
+struct sse_hpf_tick_64 {
+    uint32_t                        m_tick_index;
+    uint32_t                        m_channel_id;
+    char                            m_symbol_id[9];
+    uint8_t                         m_secu_type;
+    uint8_t                         m_sub_secu_type;
+    uint32_t                        m_tick_time;
+    char                            m_tick_type;              // 类型， A新增订单， D删除订单， S产品状态订单， T成交
+    uint64_t                        m_buy_order_no;           // 买方订单号，对产品状态订单无意义
+    uint64_t                        m_sell_order_no;          // 卖方订单号，对产品状态订单无意义
+    uint32_t                        m_order_price;            // 价格，对产品状态订单无意义
+    uint64_t                        m_qty;                    // 数量（手），对产品状态订单无意义
+    uint64_t                        m_trade_money;            // 成交金额（元），仅适用于成交消息
+    char                            m_side_flag;
+    uint8_t                         m_instrument_status;      // 标的状态，仅适用于产品状态订单
+    char                            m_reserved[2];
+};
+
+struct sze_hpf_pkt_head_64
+{
+    // uint32_t                             m_sequence;
+    // uint16_t                             m_tick1;
+    // uint16_t                             m_tick2;
+    uint8_t                              m_message_type;
+    uint8_t                              m_security_type;
+    uint8_t                              m_sub_security_type;
+    char                                 m_symbol[9];
+    uint8_t                              m_exchange_id;
+    uint64_t                             m_quote_update_time;
+    uint16_t                             m_channel_num;
+    int64_t                              m_sequence_num;
+    int32_t                              m_md_stream_id;
+};
+
+struct sze_hpf_order_pkt_64
+{
+    sze_hpf_pkt_head_64                 m_header;
+    uint32_t                            m_px;
+    uint64_t                            m_qty;
+    char                                m_side;
+    char                                m_order_type;
+    char                                m_reserved[7];
+};
+
+struct sze_hpf_exe_pkt_64
+{
+    sze_hpf_pkt_head_64                 m_header;
+    int64_t                             m_bid_app_seq_num;
+    int64_t                             m_ask_app_seq_num;
+    uint32_t                            m_exe_px;
+    uint64_t                            m_exe_qty;
+    char                                m_exe_type;
+};
+
+#pragma pack(pop)
+
+struct Stat;
+
+#if SZ
+struct Tick
+{
+    union
+    {
+        sze_hpf_pkt_head_64 head;
+        sze_hpf_order_pkt_64 order;
+        sze_hpf_exe_pkt_64 exe;
+    };
+};
+#endif
+
+#if SH
+struct Tick
+{
+    sse_hpf_tick_64 tick;
+};
+#endif
+
+static_assert(sizeof(Tick) == 64);
+
+void handleOstQuote(sse_hpf_tick &q);
+void handleOstQuote(sze_hpf_pkt_head &q);
+void handleOstQuote(sse_hpf_lev2 &q);
+void handleOstQuote(sze_hpf_lev2_pkt &q);
 
 #endif
 
