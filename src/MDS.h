@@ -12,6 +12,7 @@
 #elif OST
 #include "ostmd/sse_hpf_quote.h"
 #include "ostmd/sze_hpf_quote.h"
+#include <UTApiStruct.h>
 #endif
 
 
@@ -205,7 +206,10 @@ struct sze_hpf_exe_pkt_64
 
 #pragma pack(pop)
 
-struct Stat;
+struct Stat
+{
+    CUTDepthMarketDataField depthMarketData;
+};
 
 #if SZ
 struct Tick

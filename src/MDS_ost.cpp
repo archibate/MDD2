@@ -2,6 +2,7 @@
 #if OST
 #include "MDS.h"
 #include "MDD.h"
+#include "OES.h"
 #include "heatZone.h"
 #include "ostmd/ostmd.h"
 #include <atomic>
@@ -76,6 +77,16 @@ bool MDS::isFinished()
 bool MDS::isStarted()
 {
     return true;
+}
+
+MDS::Stat MDS::getStatic(int32_t stock)
+{
+    auto p = OES::getDepthMarketData(stock);
+    if (!p) {
+        SPDLOG_ERROR("not found in static info: stock={}", stock);
+        return {};
+    }
+    return {*p};
 }
 
 #endif

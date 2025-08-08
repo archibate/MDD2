@@ -1,0 +1,9 @@
+{
+    "date": 20250804,
+    "factor_file": "/data/daily_csv/mdd2_factors_sh_20250804.bin",
+    "username": "18930727",
+    "password": "220401",
+    "ost_trade_front_ip": "tcp://127.0.0.1:8888",
+    "ostmd_config_file": "ostmd.ini",
+    "comment": "ost config"
+}

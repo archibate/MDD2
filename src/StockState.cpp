@@ -32,6 +32,7 @@ void StockState::setStatic(MDS::Stat const &stat)
 #if REPLAY
     preClosePrice = stat.preClosePrice;
     upperLimitPrice = stat.upperLimitPrice;
+
 #elif NE
     switch (stat.marketType) {
 #if SH
@@ -54,6 +55,19 @@ void StockState::setStatic(MDS::Stat const &stat)
             return;
         }
     }
+
+#elif OST
+    int32_t prevClose = static_cast<int32_t>(std::round(stat.depthMarketData.PreClosePrice * 100));
+    int32_t upperLimitPrice = static_cast<int32_t>(std::round(stat.depthMarketData.UpperLimitPrice * 100));
+    int32_t lowerLimitPrice = static_cast<int32_t>(std::round(stat.depthMarketData.LowerLimitPrice * 100));
+
+#if SH
+    upperLimitPrice1000 = static_cast<uint64_t>(upperLimitPrice) * 10;
+#endif
+#if SZ
+    upperLimitPrice10000 = static_cast<uint64_t>(upperLimitPrice) * 100;
+    offsetTransactTime = stat.depthMarketData.TradingDay * UINT64_C(1'00'00'00'000);
+#endif
 #endif
 
     if (upperLimitPrice == 0) [[unlikely]] {
@@ -68,12 +82,14 @@ void StockState::setStatic(MDS::Stat const &stat)
 
     reqOrder = std::make_unique<OES::ReqOrder>();
     std::memset(reqOrder.get(), 0, sizeof(OES::ReqOrder));
+
 #if REPLAY
     reqOrder->stockCode = stockCode;
     reqOrder->price = upperLimitPrice;
     reqOrder->quantity = quantity;
     reqOrder->limitType = 'U';
     reqOrder->direction = 'B';
+
 #elif XC || NE
     std::sprintf(reqOrder->xeleReqOrderInsert.SecuritiesID, "%06d", stockCode);
     reqOrder->xeleReqOrderInsert.Direction = XELE_ORDER_BUY;
@@ -90,6 +106,9 @@ void StockState::setStatic(MDS::Stat const &stat)
     reqOrder->xeleReqOrderInsert.Operway = API_OPERWAY;
     reqOrder->xeleReqOrderInsert.ExchangeFrontID = 0;
     reqOrder->xeleReqOrderInsert.UserLocalID = stockCode;
+
+#elif OST
+
 #endif
 }
 

@@ -74,13 +74,15 @@ void OstStart(const char *configFile)
 
     static ChannelInfo channels[] = {
 #if SH
-        {"TICK", std::make_shared<UdpQuoteClass<sse_hpf_tick>>},
+        {"SHJQ_TICK_MERGE", std::make_shared<UdpQuoteClass<sse_hpf_tick>>},
+        {"SHJQ_SSE_SNAPSHOT", std::make_shared<UdpQuoteClass<sse_hpf_lev2>>},
+        {"SHJQ_SZE_SNAPSHOT", std::make_shared<UdpQuoteClass<sze_hpf_lev2_pkt>>},
 #endif
 #if SZ
-        {"TICK", std::make_shared<UdpQuoteClass<sze_hpf_pkt_head>>},
+        {"NFZX_ORDER_EXE", std::make_shared<UdpQuoteClass<sze_hpf_pkt_head>>},
+        {"NFZX_SSE_SNAPSHOT", std::make_shared<UdpQuoteClass<sse_hpf_lev2>>},
+        {"NFZX_SZE_SNAPSHOT", std::make_shared<UdpQuoteClass<sze_hpf_lev2_pkt>>},
 #endif
-        {"SSE_SNAPSHOT", std::make_shared<UdpQuoteClass<sse_hpf_lev2>>},
-        {"SZE_SNAPSHOT", std::make_shared<UdpQuoteClass<sze_hpf_lev2_pkt>>},
     };
 
     for (auto const &ch: channels) {
@@ -110,3 +112,4 @@ void OstStop()
     SPDLOG_DEBUG("ostmd stopped");
     udpQuotes.clear();
 }
+

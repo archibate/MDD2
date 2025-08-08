@@ -6,6 +6,8 @@
 #include "config.h"
 #if XC || NE
 #include <xele/XeleSecuritiesUserApiStruct.h>
+#elif OST
+#include "UTApi.h"
 #endif
 
 
@@ -98,18 +100,42 @@ struct RspOrder
 
 struct ReqOrder
 {
-    int32_t stockCode;
+    CUTInputOrderField inputOrder;
 };
 
 struct ReqCancel
 {
-    int32_t stockCode;
+    CUTInputOrderActionField inputOrderAction;
 };
 
 struct RspOrder
 {
-    int32_t stockCode;
+    enum RspType
+    {
+        OstRspOrderInsert,
+        OstRspOrderAction,
+        OstRtnOrder,
+        OstRtnTrade,
+    };
+
+    RspType rspType;
+    int32_t requestID;
+    int32_t errorID;
+
+    union
+    {
+        ///报单应答
+        CUTInputOrderField *ostRspOrderInsert;
+        ///撤单应答
+        CUTInputOrderActionField *ostRspOrderAction;
+        ///报单回报
+        CUTOrderField *ostRtnOrder;
+        ///成交回报
+        CUTTradeField *ostRtnTrade;
+    };
 };
+
+CUTDepthMarketDataField *getDepthMarketData(int32_t stock);
 
 #endif
 
