@@ -26,7 +26,10 @@ std::vector<CUTDepthMarketDataField> g_marketStatics;
 
 class OstUserSpi : public CUTSpi
 {
+    CUTApi *m_api;
 public:
+    explicit OstUserSpi(CUTApi *api) : m_api(api) {}
+
     void OnFrontConnected() override
     {
         SPDLOG_INFO("front connected");
@@ -172,7 +175,7 @@ void OES::start(const char *config)
     api = CUTApi::CreateApi("", kOESRecvCpu);
 
     SPDLOG_DEBUG("ost trade: RegisterSpi");
-	spi = new OstUserSpi;
+	spi = new OstUserSpi(api);
 	api->RegisterSpi(spi);
 
     SPDLOG_DEBUG("ost trade: ReqLogin");

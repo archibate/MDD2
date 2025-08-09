@@ -7,7 +7,7 @@
 #if XC || NE
 #include <xele/XeleSecuritiesUserApiStruct.h>
 #elif OST
-#include "UTApi.h"
+#include <UTApi.h>
 #endif
 
 
@@ -95,6 +95,8 @@ struct RspOrder
         CXeleRtnTradeField *xeleRtnTrade;
     };
 };
+
+const char *strErrorId(TXeleErrorIdType errorId);
 
 #else OST
 

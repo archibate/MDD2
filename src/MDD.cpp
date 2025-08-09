@@ -79,8 +79,8 @@ void parseDailyConfig(const char *config)
     SPDLOG_INFO("daily start: market={} date={}", MARKET_NAME, date);
 #if !REPLAY
     if (int32_t today = getToday(); date != today) {
-        SPDLOG_ERROR("config file date not today: fileDate={} todayDate={}", date, today);
-        throw std::runtime_error("config file date not today");
+        SPDLOG_WARN("config file date not today: fileDate={} todayDate={}", date, today);
+        // throw std::runtime_error("config file date not today");
     }
 #endif
 
@@ -239,7 +239,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 #elif XC || NE
     int32_t stock = rspOrder.userLocalID % 1000000;
 #elif OST
-    int32_t stock = rspOrder.stockCode;
+    int32_t stock = securityId(rspOrder.userLocalID);
 #endif
     int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {

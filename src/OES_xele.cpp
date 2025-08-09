@@ -871,4 +871,9 @@ HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
     reqCancel.xeleReqOrderAction.UserLocalID += g_maxUserLocalID;
     g_tradeApi->reqCancelOrder(reqCancel.xeleReqOrderAction, requestID);
 }
+
+const char *OES::strErrorId(TXeleErrorIdType errorId)
+{
+    return g_tradeApi->getErrMsg(errorId, MARKET_ID);
+}
 #endif
