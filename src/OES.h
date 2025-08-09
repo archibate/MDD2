@@ -103,6 +103,7 @@ const char *strErrorId(TXeleErrorIdType errorId);
 struct ReqOrder
 {
     CUTInputOrderField inputOrder;
+    uint32_t userLocalID;
 };
 
 struct ReqCancel

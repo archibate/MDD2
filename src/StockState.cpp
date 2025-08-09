@@ -123,6 +123,7 @@ void StockState::setStatic(MDS::Stat const &stat)
     // reqCancel->inputOrderAction.OrderRef = ???;
     reqCancel->inputOrderAction.OrderActionRef = -1;
 
+    reqOrder->userLocalID = stockCode;
     OES::getInvestorID(reqOrder->inputOrder.InvestorID);
 #if SH
     reqOrder->inputOrder.ExchangeID = UT_EXG_SSE;

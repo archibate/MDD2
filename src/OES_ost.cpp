@@ -19,9 +19,7 @@ namespace
 
 std::string g_username;
 std::string g_password;
-std::atomic<uint32_t> g_requestID{1};
 
-CUTApi *api;
 std::vector<CUTDepthMarketDataField> g_marketStatics;
 
 class OstUserSpi : public CUTSpi
@@ -31,6 +29,7 @@ public:
     TUTFrontIDType m_frontID{};
     TUTSessionIDType m_sessionID{};
     std::atomic_bool m_loginOK{false};
+    std::atomic<uint32_t> m_requestID{1};
     std::vector<uint32_t> m_orderRefLut;
 
     uint32_t orderRefLookup(TUTOrderRefType orderRef) const {
@@ -82,7 +81,7 @@ public:
         depthQuery.ExchangeID = UT_EXG_SZSE;
         depthQuery.ExchangeID = UT_EXG_SSE;
         memset(&depthQuery, 0, sizeof(CUTQryDepthMarketDataField));
-        int err = m_api->ReqQryDepthMarketData(&depthQuery, g_requestID.fetch_add(1, std::memory_order_relaxed));
+        int err = m_api->ReqQryDepthMarketData(&depthQuery, m_requestID.fetch_add(1, std::memory_order_relaxed));
         if (err != 0) {
             SPDLOG_ERROR("query depth market data error: {}", err);
             return;
@@ -179,7 +178,7 @@ public:
     }
 };
 
-OstUserSpi *spi;
+OstUserSpi *g_spi;
 
 }
 
@@ -202,11 +201,11 @@ void OES::start(const char *config)
     SPDLOG_INFO("ost trade api version {}", CUTApi::GetApiVersion());
     SPDLOG_DEBUG("ost trade: CreateApi");
     SPDLOG_DEBUG("ost trade bound to cpu: {}", kOESRecvCpu);
-    api = CUTApi::CreateApi("", kOESRecvCpu);
+    CUTApi *api = CUTApi::CreateApi("", kOESRecvCpu);
 
     SPDLOG_DEBUG("ost trade: RegisterSpi");
-	spi = new OstUserSpi(api);
-	api->RegisterSpi(spi);
+	g_spi = new OstUserSpi(api);
+	api->RegisterSpi(g_spi);
 
     SPDLOG_DEBUG("ost trade: ReqLogin");
     CUTReqLoginField login;
@@ -214,7 +213,7 @@ void OES::start(const char *config)
 	strncpy(login.UserID, g_username.c_str(), sizeof(login.UserID));
 	strncpy(login.Password, g_password.c_str(), sizeof(login.Password));
 	strncpy(login.UserProductInfo, "MDD-OST", sizeof(login.UserProductInfo));
-    int err = api->ReqLogin(&login, g_requestID.fetch_add(1, std::memory_order_relaxed));
+    int err = api->ReqLogin(&login, g_spi->m_requestID.fetch_add(1, std::memory_order_relaxed));
     if (err != 0) {
         SPDLOG_ERROR("ost trade login error: {}", err);
         throw std::runtime_error("ost trade login error");
@@ -230,27 +229,30 @@ void OES::start(const char *config)
 
 bool OES::isStarted()
 {
-    return spi->m_loginOK.load();
+    return g_spi->m_loginOK.load();
 }
 
 void OES::stop()
 {
-    api->Release();
+    g_spi->m_api->Release();
+    g_spi->m_api = nullptr;
+    delete g_spi;
+    g_spi = nullptr;
 }
 
 HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
-    int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
+    int32_t requestID = g_spi->m_requestID.fetch_add(1, std::memory_order_relaxed);
     reqOrder.inputOrder.OrderRef = requestID;
-    api->ReqOrderInsert(&reqOrder.inputOrder, requestID);
-    spi->setOrderRef(requestID, securityId(reqOrder.inputOrder.InstrumentID));
+    g_spi->m_api->ReqOrderInsert(&reqOrder.inputOrder, requestID);
+    g_spi->setOrderRef(requestID, reqOrder.userLocalID);
 }
 
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
-    int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
+    int32_t requestID = g_spi->m_requestID.fetch_add(1, std::memory_order_relaxed);
     reqCancel.inputOrderAction.OrderActionRef = requestID;
-    api->ReqOrderAction(&reqCancel.inputOrderAction, requestID);
+    g_spi->m_api->ReqOrderAction(&reqCancel.inputOrderAction, requestID);
 }
 
 CUTDepthMarketDataField *OES::getDepthMarketData(int32_t stock)
@@ -265,8 +267,8 @@ CUTDepthMarketDataField *OES::getDepthMarketData(int32_t stock)
 
 void OES::getFrontID(TUTFrontIDType &frontID, TUTSessionIDType &sessionID)
 {
-    frontID = spi->m_frontID;
-    sessionID = spi->m_sessionID;
+    frontID = g_spi->m_frontID;
+    sessionID = g_spi->m_sessionID;
 }
 
 void OES::getInvestorID(TUTInvestorIDType investorID)
