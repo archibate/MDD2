@@ -125,7 +125,7 @@ struct RspOrder
     int32_t requestID;
     int32_t errorID;
     const char *errorMsg;
-    TUTOrderLocalIDType userLocalID;
+    uint32_t userLocalID;
 
     union
     {
@@ -143,6 +143,8 @@ struct RspOrder
 };
 
 CUTDepthMarketDataField *getDepthMarketData(int32_t stock);
+void getInvestorID(TUTInvestorIDType investorID);
+void getFrontID(TUTFrontIDType &frontID, TUTSessionIDType &sessionID);
 
 #endif
 

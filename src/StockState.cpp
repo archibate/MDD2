@@ -83,8 +83,11 @@ void StockState::setStatic(MDS::Stat const &stat)
 
     reqOrder = std::make_unique<OES::ReqOrder>();
     std::memset(reqOrder.get(), 0, sizeof(OES::ReqOrder));
+    reqCancel = std::make_unique<OES::ReqCancel>();
+    std::memset(reqCancel.get(), 0, sizeof(OES::ReqCancel));
 
 #if REPLAY
+
     reqOrder->stockCode = stockCode;
     reqOrder->price = upperLimitPrice;
     reqOrder->quantity = quantity;
@@ -92,6 +95,11 @@ void StockState::setStatic(MDS::Stat const &stat)
     reqOrder->direction = 'B';
 
 #elif XC || NE
+    reqCancel->xeleReqOrderAction.OwnerType = XELE_OWNER_PERSONAL_TYPE;
+    reqCancel->xeleReqOrderAction.Operway = API_OPERWAY;
+    reqCancel->xeleReqOrderAction.UserLocalID = stockCode;
+    // reqCancel->xeleReqOrderAction.OrigSysID = ???;
+
     std::sprintf(reqOrder->xeleReqOrderInsert.SecuritiesID, "%06d", stockCode);
     reqOrder->xeleReqOrderInsert.Direction = XELE_ORDER_BUY;
 #if SZ
@@ -105,14 +113,30 @@ void StockState::setStatic(MDS::Stat const &stat)
     reqOrder->xeleReqOrderInsert.TimeCondition = XELE_TIMEINFORCE_TYPE_GFD;
     reqOrder->xeleReqOrderInsert.SecuritiesType = '0';
     reqOrder->xeleReqOrderInsert.Operway = API_OPERWAY;
-    reqOrder->xeleReqOrderInsert.ExchangeFrontID = 0;
+    reqOrder->xeleReqOrderInsert.ExchangeFrontID = 0; // SPLIT_ORDER
     reqOrder->xeleReqOrderInsert.UserLocalID = stockCode;
 
 #elif OST
 
+    OES::getFrontID(reqCancel->inputOrderAction.FrontID, reqCancel->inputOrderAction.SessionID);
+    reqCancel->inputOrderAction.ActionFlag = UT_AF_Delete;
+    // reqCancel->inputOrderAction.OrderRef = ???;
+    reqCancel->inputOrderAction.OrderActionRef = -1;
+
+    OES::getInvestorID(reqOrder->inputOrder.InvestorID);
+#if SH
+    reqOrder->inputOrder.ExchangeID = UT_EXG_SSE;
+#endif
+#if SZ
+    reqOrder->inputOrder.ExchangeID = UT_EXG_SZSE;
+#endif
     std::sprintf(reqOrder->inputOrder.InstrumentID, "%06d", stockCode);
-    reqOrder->inputOrder.OrderRef = 0;
+    reqOrder->inputOrder.OrderRef = -1;
+#if BEST_ORDER
+    reqOrder->inputOrder.OrderPriceType = UT_OPT_BestPriceThisSide;
+#else
     reqOrder->inputOrder.OrderPriceType = UT_OPT_LimitPrice;
+#endif
     reqOrder->inputOrder.HedgeFlag = UT_HF_Speculation;
     reqOrder->inputOrder.Direction = UT_D_Buy;
     reqOrder->inputOrder.OffsetFlag = UT_OF_Open;
@@ -124,6 +148,11 @@ void StockState::setStatic(MDS::Stat const &stat)
     reqOrder->inputOrder.ContingentCondition = UT_CC_Immediately;
     reqOrder->inputOrder.StopPrice = 0;
     reqOrder->inputOrder.IsAutoSuspend = 0;
+    //股票,基金,债券买:HedgeFlag = UT_HF_Speculation, Direction = UT_D_Buy, OffsetFlag = UT_OF_Open
+    //股票,基金,债券卖:HedgeFlag = UT_HF_Speculation, Direction = UT_D_Sell, OffsetFlag = UT_OF_Close
+    //债券逆回购:HedgeFlag = UT_HF_Speculation, Direction = UT_D_Sell, OffsetFlag = UT_OF_Open
+    //ETF申购:HedgeFlag = UT_HF_Redemption, Direction = UT_D_Buy, OffsetFlag = UT_OF_Open
+    //ETF赎回:HedgeFlag = UT_HF_Redemption, Direction = UT_D_Sell, OffsetFlag = UT_OF_Close
 
 #endif
 }

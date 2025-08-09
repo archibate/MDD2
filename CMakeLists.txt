@@ -8,6 +8,8 @@ option(BUILD_SPEED "Enable quick unity build" OFF)
 option(RECORD_FACTORS "Record factor to CSV files" ON)
 option(ALWAYS_BUY "Always purchase regardless model" OFF)
 option(ASYNC_LOGGER "Enable spdlog async logger" OFF)
+option(BEST_ORDER "Enable best-order-this-side report" OFF)
+option(SPLIT_ORDER "Enable split order report" OFF)
 set(TARGET_SECURITY REPLAY CACHE STRING "Choices: REPLAY NE XC OST")
 set(TARGET_MARKET SH CACHE STRING "Choices: SH SZ")
 

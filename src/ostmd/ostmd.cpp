@@ -60,7 +60,7 @@ std::vector<std::shared_ptr<udp_quote_base>> udpQuotes;
 
 }
 
-void OstStart(const char *configFile)
+void OstStart(const char *configFile, int ticksBindCpu)
 {
     SPDLOG_DEBUG("ostmd loading config file [{}]", configFile);
     ConfigFileReader config;
@@ -88,6 +88,11 @@ void OstStart(const char *configFile)
     for (auto const &ch: channels) {
         sock_udp_param udp_param;
         config.GetSockUdpParam(udp_param, ch.name);
+        if (ticksBindCpu != -1) {
+            udp_param.m_cpu_id = ticksBindCpu;
+            ticksBindCpu = -1;
+        }
+
         if (!udp_param.m_open) {
             continue;
         }

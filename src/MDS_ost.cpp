@@ -3,6 +3,7 @@
 #include "MDS.h"
 #include "MDD.h"
 #include "OES.h"
+#include "constants.h"
 #include "heatZone.h"
 #include "ostmd/ostmd.h"
 #include <atomic>
@@ -60,7 +61,8 @@ void MDS::start(const char *config)
 void MDS::startReceive()
 {
     SPDLOG_INFO("ostmd start receiving");
-    OstStart(g_ostmdConfigFile.c_str());
+    SPDLOG_DEBUG("ostmd receive cpu: {}", kMDSBindCpu);
+    OstStart(g_ostmdConfigFile.c_str(), kMDSBindCpu);
 }
 
 void MDS::subscribe(int32_t const *stocks, int32_t n)

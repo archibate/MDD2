@@ -6,6 +6,7 @@
 #include "securityId.h"
 #include "heatZone.h"
 #include <atomic>
+#include <cstring>
 #include <stdexcept>
 #include <fstream>
 #include <vector>
@@ -21,13 +22,37 @@ std::string g_password;
 std::atomic<uint32_t> g_requestID{1};
 
 CUTApi *api;
-std::atomic_bool g_loginOK = false;
 std::vector<CUTDepthMarketDataField> g_marketStatics;
 
 class OstUserSpi : public CUTSpi
 {
-    CUTApi *m_api;
 public:
+    CUTApi *m_api;
+    TUTFrontIDType m_frontID{};
+    TUTSessionIDType m_sessionID{};
+    std::atomic_bool m_loginOK{false};
+    std::vector<uint32_t> m_orderRefLut;
+
+    uint32_t orderRefLookup(TUTOrderRefType orderRef) const {
+        if (orderRef >= m_orderRefLut.size() || orderRef < 0) [[unlikely]] {
+            return (uint32_t)-1;
+        }
+        return m_orderRefLut[orderRef];
+    }
+
+    void setOrderRef(TUTOrderRefType orderRef, uint32_t userLocalID) {
+        if (orderRef < 0) [[unlikely]] {
+            return;
+        }
+        if (orderRef >= m_orderRefLut.size()) {
+            if (orderRef >= m_orderRefLut.max_size()) [[unlikely]] {
+                return;
+            }
+            m_orderRefLut.resize(orderRef + 1, -1);
+        }
+        m_orderRefLut[orderRef] = userLocalID;
+    }
+
     explicit OstUserSpi(CUTApi *api) : m_api(api) {}
 
     void OnFrontConnected() override
@@ -48,13 +73,16 @@ public:
         }
 
         SPDLOG_INFO("login returned: date={} timestamp={} frontId={} sessionId={} multiAddress={}", pRspLogin->TradingDay, pRspLogin->LoginTime, pRspLogin->FrontID, pRspLogin->SessionID, pRspLogin->MultiAddress);
-        g_loginOK.store(true, std::memory_order_relaxed);
+        m_loginOK.store(true);
+
+        m_frontID = pRspLogin->FrontID;
+        m_sessionID = pRspLogin->SessionID;
 
         CUTQryDepthMarketDataField depthQuery;
         depthQuery.ExchangeID = UT_EXG_SZSE;
         depthQuery.ExchangeID = UT_EXG_SSE;
         memset(&depthQuery, 0, sizeof(CUTQryDepthMarketDataField));
-        int err = api->ReqQryDepthMarketData(&depthQuery, g_requestID.fetch_add(1, std::memory_order_relaxed));
+        int err = m_api->ReqQryDepthMarketData(&depthQuery, g_requestID.fetch_add(1, std::memory_order_relaxed));
         if (err != 0) {
             SPDLOG_ERROR("query depth market data error: {}", err);
             return;
@@ -90,6 +118,7 @@ public:
         rsp.rspType = OES::RspOrder::OstRspOrderInsert;
         rsp.errorID = pRspInfo->ErrorID;
         rsp.errorMsg = pRspInfo->ErrorMsg;
+        rsp.userLocalID = orderRefLookup(pInputOrder->OrderRef);
         rsp.ostRspOrderInsert = pInputOrder;
 
         MDD::handleRspOrder(rsp);
@@ -106,7 +135,7 @@ public:
         rsp.requestID = nRequestID;
         rsp.errorID = pRspInfo->ErrorID;
         rsp.errorMsg = pRspInfo->ErrorMsg;
-        memcpy(rsp.userLocalID, pInputOrderAction->OrderLocalID, sizeof(rsp.userLocalID));
+        rsp.userLocalID = orderRefLookup(pInputOrderAction->OrderRef);
         rsp.ostRspOrderAction = pInputOrderAction;
 
         MDD::handleRspOrder(rsp);
@@ -119,7 +148,7 @@ public:
         rsp.requestID = 0;
         rsp.errorID = pOrderAction->ExchangeErrorID;
         rsp.errorMsg = "(ExchangeError)";
-        memcpy(rsp.userLocalID, pOrderAction->OrderLocalID, sizeof(rsp.userLocalID));
+        rsp.userLocalID = orderRefLookup(pOrderAction->OrderRef);
         rsp.ostErrRtnOrderAction = pOrderAction;
 
         MDD::handleRspOrder(rsp);
@@ -131,7 +160,7 @@ public:
         rsp.rspType = OES::RspOrder::OstRtnOrder;
         rsp.errorID = 0;
         rsp.errorMsg = "(success)";
-        memcpy(rsp.userLocalID, pOrder->OrderLocalID, sizeof(rsp.userLocalID));
+        rsp.userLocalID = orderRefLookup(pOrder->OrderRef);
         rsp.ostRtnOrder = pOrder;
 
         MDD::handleRspOrder(rsp);
@@ -143,7 +172,7 @@ public:
         rsp.rspType = OES::RspOrder::OstRtnTrade;
         rsp.errorID = 0;
         rsp.errorMsg = "(success)";
-        memcpy(rsp.userLocalID, pTrade->OrderLocalID, sizeof(rsp.userLocalID));
+        rsp.userLocalID = orderRefLookup(pTrade->OrderRef);
         rsp.ostRtnTrade = pTrade;
 
         MDD::handleRspOrder(rsp);
@@ -172,6 +201,7 @@ void OES::start(const char *config)
 
     SPDLOG_INFO("ost trade api version {}", CUTApi::GetApiVersion());
     SPDLOG_DEBUG("ost trade: CreateApi");
+    SPDLOG_DEBUG("ost trade bound to cpu: {}", kOESRecvCpu);
     api = CUTApi::CreateApi("", kOESRecvCpu);
 
     SPDLOG_DEBUG("ost trade: RegisterSpi");
@@ -200,7 +230,7 @@ void OES::start(const char *config)
 
 bool OES::isStarted()
 {
-    return true;
+    return spi->m_loginOK.load();
 }
 
 void OES::stop()
@@ -210,12 +240,17 @@ void OES::stop()
 
 HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
-    api->ReqOrderInsert(&reqOrder.inputOrder, g_requestID.fetch_add(1, std::memory_order_relaxed));
+    int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
+    reqOrder.inputOrder.OrderRef = requestID;
+    api->ReqOrderInsert(&reqOrder.inputOrder, requestID);
+    spi->setOrderRef(requestID, securityId(reqOrder.inputOrder.InstrumentID));
 }
 
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
-    api->ReqOrderAction(&reqCancel.inputOrderAction, g_requestID.fetch_add(1, std::memory_order_relaxed));
+    int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
+    reqCancel.inputOrderAction.OrderActionRef = requestID;
+    api->ReqOrderAction(&reqCancel.inputOrderAction, requestID);
 }
 
 CUTDepthMarketDataField *OES::getDepthMarketData(int32_t stock)
@@ -226,5 +261,16 @@ CUTDepthMarketDataField *OES::getDepthMarketData(int32_t stock)
         }
     }
     return nullptr;
+}
+
+void OES::getFrontID(TUTFrontIDType &frontID, TUTSessionIDType &sessionID)
+{
+    frontID = spi->m_frontID;
+    sessionID = spi->m_sessionID;
+}
+
+void OES::getInvestorID(TUTInvestorIDType investorID)
+{
+    std::strncpy(investorID, g_username.c_str(), sizeof(investorID));
 }
 #endif

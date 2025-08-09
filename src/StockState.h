@@ -36,6 +36,7 @@ struct alignas(64) StockState
     TickRing *tickRing{};
 
     std::unique_ptr<OES::ReqOrder> reqOrder{};
+    std::unique_ptr<OES::ReqCancel> reqCancel{};
 
     void start();
     void setChannelId(int32_t channelId);
