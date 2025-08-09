@@ -115,12 +115,15 @@ struct RspOrder
         OstRspOrderInsert,
         OstRspOrderAction,
         OstRtnOrder,
+        OstErrRtnOrderAction,
         OstRtnTrade,
     };
 
     RspType rspType;
     int32_t requestID;
     int32_t errorID;
+    const char *errorMsg;
+    TUTOrderLocalIDType userLocalID;
 
     union
     {
@@ -130,6 +133,8 @@ struct RspOrder
         CUTInputOrderActionField *ostRspOrderAction;
         ///报单回报
         CUTOrderField *ostRtnOrder;
+        ///报单错误回报
+        CUTOrderActionField *ostErrRtnOrderAction;
         ///成交回报
         CUTTradeField *ostRtnTrade;
     };

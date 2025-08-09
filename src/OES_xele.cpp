@@ -117,7 +117,7 @@ private:
 
 XeleTdSpi *g_userSpi;
 XeleSecuritiesTraderApi *g_tradeApi;
-int32_t g_requestID;
+std::atomic<uint32_t> g_requestID{1};
 TXeleOrderIDType g_maxUserLocalID;
 
 std::string g_username;
@@ -332,8 +332,8 @@ int callReqLogin()
     param.solarfareTradeEthName = "enp1s0f1";
     param.openEncryption = 0;
     param.CaptureSignal = 0;
-    return g_tradeApi->reqLoginEx((const ConfigParam *)&param, ++g_requestID);
-    // return g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(), g_xeleTradeNode, '0' + MARKET_ID, ++g_requestID);
+    return g_tradeApi->reqLoginEx((const ConfigParam *)&param, g_requestID.fetch_add(1, std::memory_order_relaxed));
+    // return g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(), g_xeleTradeNode, '0' + MARKET_ID, g_requestID.fetch_add(1, std::memory_order_relaxed));
 }
 
 
@@ -445,7 +445,7 @@ void XeleTdSpi::onFrontTradeDisconnected(int nReason)
     /// 可以在回调函数中处理，也可以进行实时的异常检测另起线程处理
     ///*********************************///
     /// 先发送登出请求，取消用户注册权限
-    g_tradeApi->reqLogout(g_username.c_str(), g_requestID++);
+    g_tradeApi->reqLogout(g_username.c_str(), g_requestID.fetch_add(1, std::memory_order_relaxed));
     LOGf(DEBUG, "reqLogout\n");
     sleep(2);
     /// 此处等待所有连接都断开后，再进行下一步处理
@@ -495,7 +495,7 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRspInsertOrder(CXeleRspOrderInsertField* pR
     rsp.rspType = OES::RspOrder::XeleRspOrderInsert;
     rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
     rsp.requestID = nRequestID;
-    rsp.errorID = 0;
+    rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderInsert = pRspField;
     MDD::handleRspOrder(rsp);
 
@@ -567,7 +567,7 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRspCancelOrder(CXeleRspOrderActionField* pR
     rsp.rspType = OES::RspOrder::XeleRspOrderAction;
     rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
     rsp.requestID = nRequestID;
-    rsp.errorID = 0;
+    rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderAction = pRspField;
     MDD::handleRspOrder(rsp);
 
@@ -860,14 +860,14 @@ void OES::stop()
 
 HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
-    int32_t requestID = ++g_requestID;
+    int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
     reqOrder.xeleReqOrderInsert.UserLocalID += g_maxUserLocalID;
     g_tradeApi->reqInsertOrder(reqOrder.xeleReqOrderInsert, requestID);
 }
 
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
-    int32_t requestID = ++g_requestID;
+    int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
     reqCancel.xeleReqOrderAction.UserLocalID += g_maxUserLocalID;
     g_tradeApi->reqCancelOrder(reqCancel.xeleReqOrderAction, requestID);
 }
