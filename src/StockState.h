@@ -40,7 +40,7 @@ struct alignas(64) StockState
 
     void start();
     void setChannelId(int32_t channelId);
-    void setStatic(MDS::Stat const &stat);
+    void onStatic(MDS::Stat const &stat);
     void stop(int32_t timestamp = 0);
     void onTick(MDS::Tick &tick);
     void onRspOrder(OES::RspOrder &rspOrder);

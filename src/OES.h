@@ -98,7 +98,7 @@ struct RspOrder
 
 const char *strErrorId(TXeleErrorIdType errorId);
 
-#else OST
+#elif OST
 
 struct ReqOrder
 {

@@ -21,19 +21,7 @@ std::atomic_bool g_isFinished{false};
 std::atomic_bool g_isStarted{false};
 int32_t g_date;
 
-}
-
-namespace MDS
-{
-double g_timeScale = 1.0 / 10.0;
-}
-
-void MDS::subscribe(int32_t const *stocks, int32_t n)
-{
-    g_subscribedStocks.insert(stocks, stocks + n);
-}
-
-MDS::Stat MDS::getStatic(int32_t stock)
+MDS::Stat getStatic(int32_t stock)
 {
     std::string line;
     std::ifstream csv((REPLAY_DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-metadata.csv").c_str());
@@ -72,10 +60,22 @@ MDS::Stat MDS::getStatic(int32_t stock)
         stat.lowerLimitPrice = std::round(100 * std::stod(token));
         std::getline(iss, token, ',');
         stat.floatMV = std::stod(token) * 10000.0;
-        break;
+        return stat;
     }
 
-    return stat;
+    return {};
+}
+
+}
+
+namespace MDS
+{
+double g_timeScale = 1.0 / 10.0;
+}
+
+void MDS::subscribe(int32_t const *stocks, int32_t n)
+{
+    g_subscribedStocks.insert(stocks, stocks + n);
 }
 
 void MDS::start(const char *config)
@@ -189,9 +189,18 @@ void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
 
 void MDS::startReceive()
 {
-    g_replayThread = std::jthread([] (std::stop_token stop) {
-        std::vector<Tick> tickBuf;
+    SPDLOG_INFO("start publishing statics");
+    for (int32_t stock: g_subscribedStocks) {
+        auto stat = getStatic(stock);
+        if (stat.stock == 0) {
+            SPDLOG_WARN("stock static not found for stock={}", stock);
+        }
+        MDD::handleStatic(stat);
+    }
 
+    g_replayThread = std::jthread([] (std::stop_token stop) {
+        SPDLOG_INFO("start loading L2 ticks");
+        std::vector<Tick> tickBuf;
         readReplayTicks(tickBuf);
         setThisThreadAffinity(kMDSBindCpu);
         SPDLOG_INFO("start publishing {} ticks", tickBuf.size());

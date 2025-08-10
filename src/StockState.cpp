@@ -17,8 +17,6 @@
 
 void StockState::start()
 {
-    alive = true;
-
     stockCode = MDD::g_stockCodes[stockIndex()];
     wantCache = &MDD::g_wantCaches[stockIndex()];
 }
@@ -28,7 +26,7 @@ void StockState::setChannelId(int32_t channelId)
     tickRing = &MDD::g_tickRings[channelId];
 }
 
-void StockState::setStatic(MDS::Stat const &stat)
+void StockState::onStatic(MDS::Stat const &stat)
 {
 #if REPLAY
     preClosePrice = stat.preClosePrice;
@@ -72,8 +70,7 @@ void StockState::setStatic(MDS::Stat const &stat)
 #endif
 
     if (upperLimitPrice == 0) [[unlikely]] {
-        SPDLOG_WARN("invalid static: stock={} preClosePrice={} upperLimitPrice={}", stockCode, preClosePrice, upperLimitPrice);
-        alive = false;
+        SPDLOG_WARN("invalid static price: stock={} preClosePrice={} upperLimitPrice={}", stockCode, preClosePrice, upperLimitPrice);
         return;
     }
 
@@ -156,6 +153,8 @@ void StockState::setStatic(MDS::Stat const &stat)
     //ETF赎回:HedgeFlag = UT_HF_Redemption, Direction = UT_D_Sell, OffsetFlag = UT_OF_Close
 
 #endif
+
+    alive = true;
 }
 
 void StockState::stop(int32_t timestamp)

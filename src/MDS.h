@@ -240,7 +240,6 @@ void handleOstQuote(sze_hpf_lev2_pkt &q);
 #endif
 
 void subscribe(int32_t const *stocks, int32_t n);
-MDS::Stat getStatic(int32_t stock);
 void start(const char *config);
 void startReceive();
 void stop();

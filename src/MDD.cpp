@@ -249,6 +249,16 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
     // todo: forward to StockState
 }
 
+void MDD::handleStatic(MDS::Stat &stat)
+{
+    int32_t stock = statStockCode(stat);
+    int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
+    if (id == -1) [[unlikely]] {
+        return;
+    }
+    MDD::g_stockStates[id].onStatic(stat);
+}
+
 void MDD::start(const char *config)
 {
     parseDailyConfig(config);
@@ -297,9 +307,8 @@ void MDD::start(const char *config)
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     SPDLOG_INFO("mds receive started");
 
-    SPDLOG_INFO("setting up {} stock statics", MDD::g_stockCodes.size());
+    SPDLOG_INFO("setting up {} stock computes", MDD::g_stockCodes.size());
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_stockStates[i].setStatic(MDS::getStatic(g_stockStates[i].stockCode));
         g_stockComputes[i].start();
     }
 
