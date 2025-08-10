@@ -22,13 +22,6 @@ std::unique_ptr<TickRing[]> MDD::g_tickRings;
 std::vector<int32_t> MDD::g_stockCodes;
 std::vector<int32_t> MDD::g_prevLimitUpStockCodes;
 
-#if REPLAY
-namespace MDS
-{
-extern double g_timeScale;
-}
-#endif
-
 namespace
 {
 
@@ -163,31 +156,33 @@ void parseDailyConfig(const char *config)
     }
 }
 
-HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t stopId, int64_t nextSleepTime, int64_t sleepInterval, std::stop_token stop)
+HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t stopId, std::stop_token stop)
 {
+    thread_local MDS::Tick tickBuf[1024];
     std::vector<int32_t> approachStockIds;
     std::vector<int64_t> remainSellAmounts;
     approachStockIds.reserve(8);
     remainSellAmounts.reserve(8);
 
-    while (!stop.stop_requested()) [[likely]] {
-#if BUSY_COMPUTE
-        for (int32_t id = startId; steadyNow() < nextSleepTime && !stop.stop_requested(); id = id == stopId ? startId : id + 1) {
-            MDD::g_stockComputes[id].onBusy();
-        }
-#else
-        blockingSleepUntil(nextSleepTime);
+    int64_t sleepInterval = 98'521'100;
+#if REPLAY
+    sleepInterval = static_cast<int64_t>(sleepInterval * MDS::g_timeScale);
 #endif
-        nextSleepTime += sleepInterval;
+    int64_t nextSleepTime = steadyNow() + 200'000 + channel * 1'000'000;
+
+    while (!stop.stop_requested()) [[likely]] {
 
         approachStockIds.clear();
         for (int32_t id = startId; id != stopId; ++id) {
             MDD::g_stockComputes[id].clearApproach();
         }
 
-        thread_local MDS::Tick tickBuf[1024];
-        size_t n;
-        while ((n = MDD::g_tickRings[channel].fetchTicks(tickBuf, sizeof tickBuf / sizeof tickBuf[0])) > 0) {
+        while (true) {
+            if (stop.stop_requested()) [[unlikely]] {
+                return;
+            }
+
+            size_t n = MDD::g_tickRings[channel].fetchSomeTicks(tickBuf, sizeof tickBuf / sizeof tickBuf[0]);
             for (size_t i = 0; i < n; ++i) {
                 auto &tick = tickBuf[i];
                 int32_t stock = tickStockCode(tick);
@@ -197,7 +192,22 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t
                 }
                 MDD::g_stockComputes[id].onTick(tick);
             }
+            int64_t now = steadyNow();
+            if (now > nextSleepTime - 10'000) {
+                break;
+            }
+            if (n == 0) {
+                _mm_pause();
+                if (now > nextSleepTime - 10'000) {
+                    break;
+                }
+                if (now > nextSleepTime - 20'000) {
+                    blockingSleepUntil(now + 5'000);
+                }
+            }
         }
+        blockingSleepUntil(nextSleepTime);
+        nextSleepTime += sleepInterval;
 
         for (int32_t id = startId; id != stopId; ++id) {
             if (MDD::g_stockComputes[id].checkApproach()) {
@@ -324,13 +334,7 @@ void MDD::start(const char *config)
 
         g_computeThreads[c] = std::jthread([c, startId, stopId, startTime] (std::stop_token stop) {
             setThisThreadAffinity(kChannelCpus[c]);
-
-            int64_t sleepInterval = 98'521'100;
-#if REPLAY
-            sleepInterval *= MDS::g_timeScale;
-#endif
-            int64_t nextSleepTime = startTime + sleepInterval * c / kChannelCount + sleepInterval;
-            computeThreadMain(c, startId, stopId, nextSleepTime, sleepInterval, stop);
+            computeThreadMain(c, startId, stopId, stop);
         });
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(120));

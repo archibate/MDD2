@@ -247,4 +247,8 @@ void requestStop();
 bool isFinished();
 bool isStarted();
 
+#if REPLAY
+extern double g_timeScale;
+#endif
+
 }

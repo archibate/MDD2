@@ -7,6 +7,7 @@
 constexpr int32_t kOESSendCpu = 13;
 constexpr int32_t kOESRecvCpu = 14;
 constexpr int32_t kMDSBindCpu = 15;
+constexpr int32_t kMDSTimerCpu = -1;
 
 constexpr int32_t kChannelCount = 12;
 constexpr std::array<int32_t, kChannelCount> kChannelCpus = {

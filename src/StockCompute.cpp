@@ -10,7 +10,6 @@
 #include <spdlog/spdlog.h>
 #include <cstring>
 #include <cstdint>
-#include <emmintrin.h>
 
 namespace
 {
@@ -56,8 +55,8 @@ void StockCompute::start()
     upperLimitPrice = stockState().upperLimitPrice;
     preClosePrice = stockState().preClosePrice;
 
-    // upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
-    upperLimitPriceApproach = upperLimitPrice - 5;
+    upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
+    // upperLimitPriceApproach = upperLimitPrice - 5;
     openPrice = preClosePrice;
 
     fState.currSnapshot.lastPrice = preClosePrice;
@@ -264,13 +263,6 @@ HEAT_ZONE_COMPUTE void StockCompute::onApproach()
             futureTimestamp = timestampAdvance100ms(futureTimestamp);
         }
     }
-}
-
-HEAT_ZONE_BUSY void StockCompute::onBusy()
-{
-    bool wantBuy = computeModel();
-    asm volatile ("" :: "r" (wantBuy));
-    _mm_pause();
 }
 
 HEAT_ZONE_ORDBOOK void StockCompute::onOrder(MDS::Tick &tick)

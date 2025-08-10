@@ -36,7 +36,7 @@ struct alignas(64) TickRing
         }
     }
 
-    size_t fetchTicks(MDS::Tick *buf, size_t size)
+    size_t fetchSomeTicks(MDS::Tick *buf, size_t size)
     {
         return ring.read_some(buf, buf + size) - buf;
     }
