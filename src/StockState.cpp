@@ -70,7 +70,8 @@ void StockState::onStatic(MDS::Stat const &stat)
 #endif
 
     if (upperLimitPrice == 0) [[unlikely]] {
-        SPDLOG_WARN("invalid static price: stock={} preClosePrice={} upperLimitPrice={}", stockCode, preClosePrice, upperLimitPrice);
+        SPDLOG_WARN("invalid static price: stock={} preClosePrice={} upperLimitPrice={}",
+                    stockCode, preClosePrice, upperLimitPrice);
         return;
     }
 

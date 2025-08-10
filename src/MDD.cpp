@@ -186,15 +186,17 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t
         }
 
         thread_local MDS::Tick tickBuf[1024];
-        size_t n = MDD::g_tickRings[channel].fetchTicks(tickBuf, sizeof tickBuf / sizeof tickBuf[0]);
-        for (size_t i = 0; i < n; ++i) {
-            auto &tick = tickBuf[i];
-            int32_t stock = tickStockCode(tick);
-            int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
-            if (id == -1) [[unlikely]] {
-                continue;
+        size_t n;
+        while ((n = MDD::g_tickRings[channel].fetchTicks(tickBuf, sizeof tickBuf / sizeof tickBuf[0])) > 0) {
+            for (size_t i = 0; i < n; ++i) {
+                auto &tick = tickBuf[i];
+                int32_t stock = tickStockCode(tick);
+                int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
+                if (id == -1) [[unlikely]] {
+                    continue;
+                }
+                MDD::g_stockComputes[id].onTick(tick);
             }
-            MDD::g_stockComputes[id].onTick(tick);
         }
 
         for (int32_t id = startId; id != stopId; ++id) {

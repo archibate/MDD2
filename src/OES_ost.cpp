@@ -3,7 +3,6 @@
 #include "OES.h"
 #include "MDD.h"
 #include "constants.h"
-#include "securityId.h"
 #include "heatZone.h"
 #include <atomic>
 #include <cstring>
@@ -97,7 +96,6 @@ public:
 
         if (pDepthMarketData->ExchangeID == UT_EXG_SSE || pDepthMarketData->ExchangeID == UT_EXG_SZSE)
         {
-            int32_t stock = securityId(pDepthMarketData->InstrumentID);
             g_marketStatics.push_back(*pDepthMarketData);
         }
     }
@@ -263,14 +261,10 @@ HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
     g_spi->m_api->ReqOrderAction(&reqCancel.inputOrderAction, requestID);
 }
 
-CUTDepthMarketDataField *OES::getDepthMarketData(int32_t stock)
+CUTDepthMarketDataField *OES::getDepthMarketData(size_t &size)
 {
-    for (auto &data: g_marketStatics) {
-        if (securityId(data.InstrumentID) == stock) {
-            return &data;
-        }
-    }
-    return nullptr;
+    size = g_marketStatics.size();
+    return g_marketStatics.data();
 }
 
 void OES::getFrontID(TUTFrontIDType &frontID, TUTSessionIDType &sessionID)
@@ -281,6 +275,6 @@ void OES::getFrontID(TUTFrontIDType &frontID, TUTSessionIDType &sessionID)
 
 void OES::getInvestorID(TUTInvestorIDType investorID)
 {
-    std::strncpy(investorID, g_username.c_str(), sizeof(investorID));
+    std::strncpy(investorID, g_username.c_str(), sizeof(TUTInvestorIDType));
 }
 #endif

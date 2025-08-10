@@ -30,10 +30,8 @@ inline int32_t statStockCode(MDS::Stat &stat)
     int32_t stock = securityId(stat.staticSseInfo.securityID);
 #elif NE && SZ
     int32_t stock = securityId(stat.staticSzInfo.securityID);
-#elif OST && SH
-    int32_t stock = securityId(stat.m_symbol);
-#elif OST && SZ
-    int32_t stock = securityId(stat.m_symbol);
+#elif OST
+    int32_t stock = securityId(stat.depthMarketData.InstrumentID);
 #endif
     return stock;
 }

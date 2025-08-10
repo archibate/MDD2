@@ -143,7 +143,7 @@ struct RspOrder
     };
 };
 
-CUTDepthMarketDataField *getDepthMarketData(int32_t stock);
+CUTDepthMarketDataField *getDepthMarketData(size_t &size);
 void getInvestorID(TUTInvestorIDType investorID);
 void getFrontID(TUTFrontIDType &frontID, TUTSessionIDType &sessionID);
 

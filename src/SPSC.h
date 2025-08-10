@@ -143,6 +143,41 @@ struct alignas(64) spsc_ring
         return input_first;
     }
 
+    bool write_one(T const &value)
+    {
+        T *write_pos_local = m_write_pos_local;
+        T *read_pos_cached = m_read_pos_cached;
+        T *next_write_pos = write_pos_local;
+        ++next_write_pos;
+        if (next_write_pos == m_ring_buffer + N) {
+            next_write_pos = m_ring_buffer;
+        }
+        if (next_write_pos == read_pos_cached) {
+            read_pos_cached = m_read_pos.load(std::memory_order_acquire);
+            if (next_write_pos == read_pos_cached) {
+                m_write_pos.store(write_pos_local, std::memory_order_release);
+#if __cpp_lib_atomic_wait
+                if constexpr (AtomicWait) {
+                    m_write_pos.notify_one();
+                }
+#endif
+                m_read_pos_cached = read_pos_cached;
+                return false;
+            }
+        }
+        *write_pos_local = value;
+        write_pos_local = next_write_pos;
+        m_write_pos.store(write_pos_local, std::memory_order_release);
+#if __cpp_lib_atomic_wait
+        if constexpr (AtomicWait) {
+            m_write_pos.notify_one();
+        }
+#endif
+        m_write_pos_local = write_pos_local;
+        m_read_pos_cached = read_pos_cached;
+        return true;
+    }
+
     template <class OutputIt, class OutputIte>
     OutputIt read_some(OutputIt output_first, OutputIte output_last)
     {

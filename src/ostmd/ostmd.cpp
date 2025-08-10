@@ -42,12 +42,15 @@ public:
         const char *end = data + len - sizeof(sze_hpf_order_pkt) + 1;
         while (true) {
             auto quote = (sze_hpf_pkt_head *)data;
-            if (quote->m_message_type == sze_msg_type_order) {
-                data += sizeof(sze_hpf_order_pkt);
-            } else {
-                [[assume(quote->m_message_type == sze_msg_type_exe)]];
-                data += sizeof(sze_hpf_exe_pkt);
-            }
+            static_assert(sizeof(sze_hpf_exe_pkt) - sizeof(sze_hpf_order_pkt) == 8);
+            static_assert(sze_msg_type_trade - sze_msg_type_order == 1);
+            data += 1 << (quote->m_message_type - (sze_msg_type_order - 3));
+            // if (quote->m_message_type == sze_msg_type_order) {
+            //     data += sizeof(sze_hpf_order_pkt);
+            // } else {
+            //     assert(quote->m_message_type == sze_msg_type_trade);
+            //     data += sizeof(sze_hpf_exe_pkt);
+            // }
             if (data >= end) {
                 break;
             }

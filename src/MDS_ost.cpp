@@ -60,6 +60,13 @@ void MDS::start(const char *config)
 
 void MDS::startReceive()
 {
+    size_t count;
+    CUTDepthMarketDataField *statics = OES::getDepthMarketData(count);
+    for (size_t i = 0; i < count; ++i) {
+        MDS::Stat stat{statics[i]};
+        MDD::handleStatic(stat);
+    }
+
     SPDLOG_INFO("ostmd start receiving");
     SPDLOG_DEBUG("ostmd receive cpu: {}", kMDSBindCpu);
     OstStart(g_ostmdConfigFile.c_str(), kMDSBindCpu);
@@ -87,16 +94,6 @@ bool MDS::isFinished()
 bool MDS::isStarted()
 {
     return true;
-}
-
-MDS::Stat MDS::getStatic(int32_t stock)
-{
-    auto p = OES::getDepthMarketData(stock);
-    if (!p) {
-        SPDLOG_ERROR("not found in static info: stock={}", stock);
-        return {};
-    }
-    return {*p};
 }
 
 #endif
