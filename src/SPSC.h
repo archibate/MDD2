@@ -1,167 +1,170 @@
 #pragma once
 
-
-#include <cstdint>
-#include <cstddef>
 #include <atomic>
+#include <cstddef>
 
 
-template <class T, size_t N>
-class alignas(64) spsc_ring_queue
+template <class T, size_t N, bool AtomicWait = false>
+struct alignas(64) spsc_ring
 {
-    static_assert(std::atomic<T *>::is_always_lock_free);
+    static_assert(std::atomic<T *>::is_always_lock_free, "atomic pointer not lock-free");
 
-    alignas(64) std::atomic<T *> write_ok_pos;
-    alignas(64) std::atomic<T *> read_ok_pos;
+    alignas(64) T m_ring_buffer[N];
+    alignas(64) std::atomic<T *> m_write_pos;
+    alignas(64) std::atomic<T *> m_read_pos;
+
     alignas(64) struct {
-        T begin[N];
-        T end[0];
-    } data;
-
-public:
-    spsc_ring_queue() noexcept : write_ok_pos(data.begin), read_ok_pos(data.end - 1) {
-    }
-
-    spsc_ring_queue(spsc_ring_queue &&) = delete;
-    spsc_ring_queue &operator=(spsc_ring_queue &&) = delete;
-    ~spsc_ring_queue() = default;
-
-    class ring_reader
-    {
-        spsc_ring_queue *queue;
-        T *read_pos;
-        T *read_end_pos;
-
-    public:
-        ring_reader() = default;
-
-        explicit ring_reader(spsc_ring_queue *queue_) noexcept : queue(queue_) {
-            read_end_pos = queue->write_ok_pos.load(std::memory_order_acquire);
-            read_pos = read_end_pos;
-        }
-
-        bool read_wait() noexcept {
-            read_end_pos = queue->write_ok_pos.load(std::memory_order_relaxed);
-            if (read_pos != read_end_pos) {
-                return true;
-            }
-#if __cpp_lib_atomic_wait
-            queue->write_ok_pos.wait(read_pos, std::memory_order_relaxed);
-#endif
-            return read_pos != read_end_pos;
-        }
-
-        size_t read_remain() noexcept {
-            if (read_pos == read_end_pos) {
-                read_end_pos = queue->write_ok_pos.load(std::memory_order_acquire);
-            }
-            ptrdiff_t diff = read_end_pos - read_pos;
-            if (diff < 0) {
-                diff += N;
-            }
-            return static_cast<size_t>(diff);
-        }
-
-        T *read(T *buf, T *buf_end) noexcept {
-            T *p = buf;
-            while (p != buf_end) {
-                if (read_pos == read_end_pos) {
-                    read_end_pos = queue->write_ok_pos.load(std::memory_order_acquire);
-                    if (read_pos == read_end_pos) {
-                        break;
-                    } else {
-                        continue;
-                    }
-                }
-                *p = *read_pos;
-                ++p;
-                ++read_pos;
-                if (read_pos == queue->data.end) {
-                    read_pos = queue->data.begin;
-                }
-            }
-            T *r_ok_pos = read_pos;
-            if (r_ok_pos == queue->data.begin) {
-                r_ok_pos = queue->data.end;
-            }
-            --r_ok_pos;
-            queue->read_ok_pos.store(r_ok_pos, std::memory_order_relaxed);
-            return p;
-        }
-
-        size_t read_n(T *buf, size_t n) noexcept {
-            return read(buf, buf + n) - buf;
-        }
+        T *m_write_pos_cached;
+        T *m_read_pos_local;
     };
 
-    class ring_writer
-    {
-        spsc_ring_queue *queue;
-        T *write_pos;
-        T *write_end_pos;
-
-    public:
-        ring_writer() = default;
-
-        explicit ring_writer(spsc_ring_queue *queue_) noexcept : queue(queue_) {
-            write_end_pos = queue->read_ok_pos.load(std::memory_order_acquire);
-            write_pos = write_end_pos;
-        }
-
-        bool write_wait() noexcept {
-            write_end_pos = queue->read_ok_pos.load(std::memory_order_relaxed);
-            if (write_pos != write_end_pos) {
-                return true;
-            }
-#if __cpp_lib_atomic_wait
-            queue->read_ok_pos.wait(write_pos, std::memory_order_relaxed);
-#endif
-            return write_pos != write_end_pos;
-        }
-
-        size_t write_remain() noexcept {
-            if (write_pos == write_end_pos) {
-                write_end_pos = queue->read_ok_pos.load(std::memory_order_acquire);
-            }
-            ptrdiff_t diff = write_end_pos - write_pos;
-            if (diff < 0) {
-                diff += N;
-            }
-            return static_cast<size_t>(diff);
-        }
-
-        const T *write(const T *buf, const T *buf_end) noexcept {
-            const T *p = buf;
-            while (p != buf_end) {
-                if (write_pos == write_end_pos) {
-                    write_end_pos = queue->read_ok_pos.load(std::memory_order_relaxed);
-                    if (write_pos == write_end_pos) {
-                        break;
-                    } else {
-                        continue;
-                    }
-                }
-                *write_pos = *p;
-                ++p;
-                ++write_pos;
-                if (write_pos == queue->data.end) {
-                    write_pos = queue->data.begin;
-                }
-            }
-            queue->write_ok_pos.store(write_pos, std::memory_order_release);
-            return p;
-        }
-
-        size_t write_n(const T *buf, size_t n) noexcept {
-            return write(buf, buf + n) - buf;
-        }
+    alignas(64) struct {
+        T *m_read_pos_cached;
+        T *m_write_pos_local;
     };
 
-    ring_reader reader() noexcept {
-        return ring_reader(this);
+    spsc_ring()
+        : m_write_pos{m_ring_buffer}
+        , m_read_pos{m_ring_buffer}
+        , m_write_pos_cached{m_ring_buffer}
+        , m_read_pos_local{m_ring_buffer}
+        , m_read_pos_cached{m_ring_buffer}
+        , m_write_pos_local{m_ring_buffer}
+    {}
+
+    void write(const T *input_first, const T *input_last)
+    {
+        T *write_pos_local = this->m_write_pos_local;
+        T *read_pos_cached = this->m_read_pos_cached;
+        while (input_first != input_last) {
+            T *next_write_pos = write_pos_local;
+            ++next_write_pos;
+            if (next_write_pos == m_ring_buffer + N) {
+                next_write_pos = m_ring_buffer;
+            }
+            if (next_write_pos == read_pos_cached) {
+                while (true) {
+                    read_pos_cached = this->m_read_pos.load(std::memory_order_acquire);
+                    if (next_write_pos != read_pos_cached) {
+                        break;
+                    }
+                    this->m_write_pos.store(write_pos_local, std::memory_order_release);
+#if __cpp_lib_atomic_wait
+                    if constexpr (AtomicWait) {
+                        this->m_write_pos.notify_one();
+                        this->m_read_pos.wait(read_pos_cached, std::memory_order_acquire);
+                    }
+#endif
+                }
+            }
+            *write_pos_local = *input_first;
+            ++input_first;
+            write_pos_local = next_write_pos;
+        }
+        this->m_write_pos.store(write_pos_local, std::memory_order_release);
+#if __cpp_lib_atomic_wait
+        if constexpr (AtomicWait) {
+            this->m_write_pos.notify_one();
+        }
+#endif
+        this->m_write_pos_local = write_pos_local;
+        this->m_read_pos_cached = read_pos_cached;
     }
 
-    ring_writer writer() noexcept {
-        return ring_writer(this);
+    void read(T *output_first, T *output_last)
+    {
+        T *read_pos_local = this->m_read_pos_local;
+        T *write_pos_cached = this->m_write_pos_cached;
+        while (output_first != output_last) {
+            if (read_pos_local == write_pos_cached) {
+                while (true) {
+                    write_pos_cached = this->m_write_pos.load(std::memory_order_acquire);
+                    if (read_pos_local != write_pos_cached) {
+                        break;
+                    }
+                    this->m_read_pos.store(read_pos_local, std::memory_order_release);
+#if __cpp_lib_atomic_wait
+                    if constexpr (AtomicWait) {
+                        this->m_read_pos.notify_one();
+                        this->m_write_pos.wait(write_pos_cached, std::memory_order_acquire);
+                    }
+#endif
+                }
+            }
+            *output_first = *read_pos_local;
+            ++output_first;
+            ++read_pos_local;
+            if (read_pos_local == m_ring_buffer + N) {
+                read_pos_local = m_ring_buffer;
+            }
+        }
+        this->m_read_pos.store(read_pos_local, std::memory_order_release);
+#if __cpp_lib_atomic_wait
+        if constexpr (AtomicWait) {
+            this->m_read_pos.notify_one();
+        }
+#endif
+        this->m_read_pos_local = read_pos_local;
+        this->m_write_pos_cached = write_pos_cached;
+    }
+
+    const T *write_some(const T *input_first, const T *input_last)
+    {
+        T *write_pos_local = this->m_write_pos_local;
+        T *read_pos_cached = this->m_read_pos_cached;
+        while (input_first != input_last) {
+            T *next_write_pos = write_pos_local;
+            ++next_write_pos;
+            if (next_write_pos == m_ring_buffer + N) {
+                next_write_pos = m_ring_buffer;
+            }
+            if (next_write_pos == read_pos_cached) {
+                read_pos_cached = this->m_read_pos.load(std::memory_order_acquire);
+                if (next_write_pos != read_pos_cached) {
+                    break;
+                }
+            }
+            *write_pos_local = *input_first;
+            ++input_first;
+            write_pos_local = next_write_pos;
+        }
+        this->m_write_pos.store(write_pos_local, std::memory_order_release);
+#if __cpp_lib_atomic_wait
+        if constexpr (AtomicWait) {
+            this->m_write_pos.notify_one();
+        }
+#endif
+        this->m_write_pos_local = write_pos_local;
+        this->m_read_pos_cached = read_pos_cached;
+        return input_first;
+    }
+
+    T *read_some(T *output_first, T *output_last)
+    {
+        T *read_pos_local = this->m_read_pos_local;
+        T *write_pos_cached = this->m_write_pos_cached;
+        while (output_first != output_last) {
+            if (read_pos_local == write_pos_cached) {
+                write_pos_cached = this->m_write_pos.load(std::memory_order_acquire);
+                if (read_pos_local != write_pos_cached) {
+                    break;
+                }
+            }
+            *output_first = *read_pos_local;
+            ++output_first;
+            ++read_pos_local;
+            if (read_pos_local == m_ring_buffer + N) {
+                read_pos_local = m_ring_buffer;
+            }
+        }
+        this->m_read_pos.store(read_pos_local, std::memory_order_release);
+#if __cpp_lib_atomic_wait
+        if constexpr (AtomicWait) {
+            this->m_read_pos.notify_one();
+        }
+#endif
+        this->m_read_pos_local = read_pos_local;
+        this->m_write_pos_cached = write_pos_cached;
+        return output_first;
     }
 };

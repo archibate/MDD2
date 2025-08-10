@@ -37,29 +37,33 @@ struct alignas(64) TickRing
 
 struct alignas(64) TickRing
 {
-    using RingType = spsc_ring_queue<MDS::Tick, 0x40000>;
-    // 256K * 64B = 16MB
+    // using RingType = spsc_ring_queue<MDS::Tick, 0x40000>;
+    // // 256K * 64B = 16MB
+    //
+    // alignas(64) RingType::ring_reader reader;
+    // alignas(64) RingType::ring_writer writer;
+    // alignas(64) RingType ring;
 
-    alignas(64) RingType::ring_reader reader;
-    alignas(64) RingType::ring_writer writer;
-    alignas(64) RingType ring;
+    spsc_ring<MDS::Tick, 0x40000> ring;
 
     void start()
     {
-        reader = ring.reader();
-        writer = ring.writer();
+        // reader = ring.reader();
+        // writer = ring.writer();
     }
 
     void stop() {}
 
     void pushTick(MDS::Tick const &tick)
     {
-        writer.write(&tick, &tick + 1);
+        // writer.write(&tick, &tick + 1);
+        ring.write(&tick, &tick + 1);
     }
 
     size_t fetchTicks(MDS::Tick *buf, size_t size)
     {
-        return reader.read_n(buf, size);
+        // return reader.read_n(buf, size);
+        return ring.read_some(buf, buf + size) - buf;
     }
 };
 
