@@ -153,6 +153,7 @@ void start(const char *config);
 bool isStarted();
 void stop();
 void sendReqOrder(ReqOrder &reqOrder);
+// void sendBatchReqOrder(ReqOrder reqOrder[]);
 void sendReqCancel(ReqCancel &reqCancel);
 
 }

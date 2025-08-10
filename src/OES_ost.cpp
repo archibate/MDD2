@@ -248,6 +248,14 @@ HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
     g_spi->setOrderRef(requestID, reqOrder.userLocalID);
 }
 
+// HEAT_ZONE_REQORDER void OES::sendBatchReqOrder(ReqOrder &reqOrder)
+// {
+//     int32_t requestID = g_spi->m_requestID.fetch_add(1, std::memory_order_relaxed);
+//     reqOrder.inputOrder.OrderRef = requestID;
+//     g_spi->m_api->ReqOrderInsert(&reqOrder.inputOrder, requestID);
+//     g_spi->setOrderRef(requestID, reqOrder.userLocalID);
+// }
+
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
     int32_t requestID = g_spi->m_requestID.fetch_add(1, std::memory_order_relaxed);

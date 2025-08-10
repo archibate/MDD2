@@ -113,7 +113,7 @@ void StockState::setStatic(MDS::Stat const &stat)
     reqOrder->xeleReqOrderInsert.TimeCondition = XELE_TIMEINFORCE_TYPE_GFD;
     reqOrder->xeleReqOrderInsert.SecuritiesType = '0';
     reqOrder->xeleReqOrderInsert.Operway = API_OPERWAY;
-    reqOrder->xeleReqOrderInsert.ExchangeFrontID = 0; // SPLIT_ORDER
+    reqOrder->xeleReqOrderInsert.ExchangeFrontID = 0;
     reqOrder->xeleReqOrderInsert.UserLocalID = stockCode;
 
 #elif OST
