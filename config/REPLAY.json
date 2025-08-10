@@ -1,6 +1,5 @@
 {
     "date": 20250102,
-    "factor_file": "/data/daily_csv/mdd2_factors_sz_20250102.bin",
     "time_scale": 16.0,
     "comment": "replay config"
 }

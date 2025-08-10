@@ -27,13 +27,13 @@ inline int32_t statStockCode(MDS::Stat &stat)
 #if REPLAY
     int32_t stock = stat.stock;
 #elif NE && SH
-    int32_t stock = securityId(tick.tickMergeSse.securityID);
+    int32_t stock = securityId(stat.staticSseInfo.securityID);
 #elif NE && SZ
-    int32_t stock = securityId(tick.securityID);
+    int32_t stock = securityId(stat.staticSzInfo.securityID);
 #elif OST && SH
-    int32_t stock = securityId(tick.tick.m_symbol_id);
+    int32_t stock = securityId(stat.m_symbol);
 #elif OST && SZ
-    int32_t stock = securityId(tick.head.m_symbol);
+    int32_t stock = securityId(stat.m_symbol);
 #endif
     return stock;
 }

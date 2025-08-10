@@ -267,6 +267,8 @@ void MDD::start(const char *config)
     SPDLOG_INFO("initializing trade api");
     OES::start(config);
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+
     SPDLOG_INFO("initializing quote api");
     MDS::start(config);
 

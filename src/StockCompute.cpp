@@ -48,8 +48,7 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, WantCache::
 void StockCompute::start()
 {
     if (!stockState().alive) [[unlikely]] {
-        SPDLOG_WARN("stop watching dead stock: stock={}", stockState().stockCode);
-        stop();
+        SPDLOG_WARN("not watching dead stock: stock={}", stockState().stockCode);
         return;
     }
 
@@ -57,7 +56,8 @@ void StockCompute::start()
     upperLimitPrice = stockState().upperLimitPrice;
     preClosePrice = stockState().preClosePrice;
 
-    upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
+    // upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
+    upperLimitPriceApproach = upperLimitPrice - 5;
     openPrice = preClosePrice;
 
     fState.currSnapshot.lastPrice = preClosePrice;
@@ -74,6 +74,8 @@ void StockCompute::start()
     factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<WantCache>().wantBuyTimestamp)>);
     memset(factorListCache.get(), -1, sizeof(FactorList) * std::tuple_size_v<decltype(std::declval<WantCache>().wantBuyTimestamp)>);
 #endif
+
+    alive = true;
 }
 
 COLD_ZONE void StockCompute::stop()

@@ -17,8 +17,6 @@ namespace
 {
 
 NescForesight::NescMdUDPClient g_nesc;
-NescForesight::SseStaticInfoField g_sseStatic;
-NescForesight::SzStaticInfoField g_szStatic;
 std::atomic_flag g_isStopped{false};
 
 }
@@ -61,44 +59,6 @@ void MDS::subscribe(int32_t const *stocks, int32_t n)
         throw std::runtime_error("mds nesc subscribe failed");
     }
 #endif
-}
-
-MDS::Stat MDS::getStatic(int32_t stock)
-{
-    if (stock >= 600000) {
-        auto *stat = g_sseStatic.staticInfos;
-        auto *statEnd = g_sseStatic.staticInfos + g_sseStatic.count;
-        for (; stat < statEnd; ++stat) {
-            if (securityId(stat->securityID) == stock) {
-                break;
-            }
-        }
-        if (stat == statEnd) {
-            SPDLOG_ERROR("not found in static info: stock={}", stock);
-            return {};
-        }
-        // if (stat->productStatus[0] == 'N' || stat->productStatus[3] != 'D' || stat->productStatus[6] != 'F' || stat->productStatus[9] != 'N') {
-        //     SPDLOG_WARN("stock has bad product status: stock={} status={:.21s}", stock, stat->productStatus);
-        // }
-        return {.marketType = NescForesight::SSE, .staticSseInfo = *stat};
-
-    } else {
-        auto *stat = g_szStatic.staticInfos;
-        auto *statEnd = g_szStatic.staticInfos + g_szStatic.count;
-        for (; stat < statEnd; ++stat) {
-            if (securityId(stat->securityID) == stock) {
-                break;
-            }
-        }
-        if (stat == statEnd) {
-            SPDLOG_ERROR("not found in static info: stock={}", stock);
-            return {};
-        }
-        // if (stat->securityStatus[0] || stat->securityStatus[3] || stat->securityStatus[4] || stat->securityStatus[5] || stat->securityStatus[9] || stat->securityStatus[16] || stat->securityStatus[17]) {
-        //     SPDLOG_WARN("stock has bad product status: stock={} status={:.20s}", stock, reinterpret_cast<const char *>(stat->securityStatus));
-        // }
-        return {.marketType = NescForesight::SZE, .staticSzInfo = *stat};
-    }
 }
 
 namespace
@@ -294,22 +254,42 @@ void MDS::start(const char *config)
 
 void MDS::startReceive()
 {
-    if (g_nesc.Start() != 0) {
-        SPDLOG_ERROR("mds nesc start failed");
-        throw std::runtime_error("mds nesc start failed");
-    }
+    NescForesight::SseStaticInfoField g_sseStatic;
+    NescForesight::SzStaticInfoField g_szStatic;
 
     SPDLOG_INFO("querying SH static info, please wait");
     if (g_nesc.QuerySseStaticInfo(g_sseStatic) != 0) {
         SPDLOG_ERROR("nesc QuerySseStaticInfo failed");
         throw std::runtime_error("nesc QuerySseStaticInfo failed");
     }
+    SPDLOG_DEBUG("publishing {} SH static info", g_sseStatic.count);
+    for (int i = 0; i < g_sseStatic.count; ++i) {
+        MDS::Stat stat = {
+            .marketType = NescForesight::SSE,
+            .staticSseInfo = g_sseStatic.staticInfos[i],
+        };
+        MDD::handleStatic(stat);
+    }
+
     SPDLOG_INFO("querying SZ static info, please wait");
     if (g_nesc.QuerySzStaticInfo(g_szStatic) != 0) {
         SPDLOG_ERROR("nesc QuerySzStaticInfo failed");
         throw std::runtime_error("nesc QuerySzStaticInfo failed");
     }
+    SPDLOG_DEBUG("publishing {} SZ static info", g_szStatic.count);
+    for (int i = 0; i < g_szStatic.count; ++i) {
+        MDS::Stat stat = {
+            .marketType = NescForesight::SZE,
+            .staticSzInfo = g_szStatic.staticInfos[i],
+        };
+        MDD::handleStatic(stat);
+    }
     SPDLOG_INFO("querying static info done");
+
+    if (g_nesc.Start() != 0) {
+        SPDLOG_ERROR("mds nesc start failed");
+        throw std::runtime_error("mds nesc start failed");
+    }
 }
 
 void MDS::stop()

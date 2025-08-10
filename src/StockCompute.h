@@ -54,7 +54,7 @@ private:
     int32_t upperLimitPrice{};
     int32_t preClosePrice{};
     int32_t upperLimitPriceApproach{};
-    bool alive{true};
+    bool alive{};
     bool approachingLimitUp{};
 
     FState fState;
