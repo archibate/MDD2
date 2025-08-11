@@ -2,6 +2,7 @@
 
 
 #include <cstdint>
+// #include <cstdlib>
 // #include <smmintrin.h>
 
 
@@ -43,5 +44,6 @@
 
 inline uint32_t securityId(const char *s)
 {
+    // return std::strtoul(s, nullptr, 10);
     return atou6(s);
 }

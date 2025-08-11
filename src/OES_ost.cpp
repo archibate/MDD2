@@ -4,6 +4,7 @@
 #include "MDD.h"
 #include "constants.h"
 #include "heatZone.h"
+#include "OrderRefLut.h"
 #include <atomic>
 #include <cstring>
 #include <stdexcept>
@@ -29,27 +30,7 @@ public:
     TUTSessionIDType m_sessionID{};
     std::atomic_bool m_loginOK{false};
     std::atomic<uint32_t> m_requestID{1};
-    std::vector<uint32_t> m_orderRefLut;
-
-    uint32_t orderRefLookup(TUTOrderRefType orderRef) const {
-        if (orderRef >= m_orderRefLut.size() || orderRef < 0) [[unlikely]] {
-            return (uint32_t)-1;
-        }
-        return m_orderRefLut[orderRef];
-    }
-
-    void setOrderRef(TUTOrderRefType orderRef, uint32_t userLocalID) {
-        if (orderRef < 0) [[unlikely]] {
-            return;
-        }
-        if (orderRef >= m_orderRefLut.size()) {
-            if (orderRef >= m_orderRefLut.max_size()) [[unlikely]] {
-                return;
-            }
-            m_orderRefLut.resize(orderRef + 1, -1);
-        }
-        m_orderRefLut[orderRef] = userLocalID;
-    }
+    OrderRefLut orderRefLut;
 
     explicit OstUserSpi(CUTApi *api) : m_api(api) {}
 
@@ -115,7 +96,7 @@ public:
         rsp.rspType = OES::RspOrder::OstRspOrderInsert;
         rsp.errorID = pRspInfo->ErrorID;
         rsp.errorMsg = pRspInfo->ErrorMsg;
-        rsp.userLocalID = orderRefLookup(pInputOrder->OrderRef);
+        rsp.userLocalID = orderRefLut.orderRefLookup(pInputOrder->OrderRef);
         rsp.ostRspOrderInsert = pInputOrder;
 
         MDD::handleRspOrder(rsp);
@@ -132,7 +113,7 @@ public:
         rsp.requestID = nRequestID;
         rsp.errorID = pRspInfo->ErrorID;
         rsp.errorMsg = pRspInfo->ErrorMsg;
-        rsp.userLocalID = orderRefLookup(pInputOrderAction->OrderRef);
+        rsp.userLocalID = orderRefLut.orderRefLookup(pInputOrderAction->OrderRef);
         rsp.ostRspOrderAction = pInputOrderAction;
 
         MDD::handleRspOrder(rsp);
@@ -145,7 +126,7 @@ public:
         rsp.requestID = 0;
         rsp.errorID = pOrderAction->ExchangeErrorID;
         rsp.errorMsg = "(ExchangeError)";
-        rsp.userLocalID = orderRefLookup(pOrderAction->OrderRef);
+        rsp.userLocalID = orderRefLut.orderRefLookup(pOrderAction->OrderRef);
         rsp.ostErrRtnOrderAction = pOrderAction;
 
         MDD::handleRspOrder(rsp);
@@ -157,7 +138,7 @@ public:
         rsp.rspType = OES::RspOrder::OstRtnOrder;
         rsp.errorID = 0;
         rsp.errorMsg = "(success)";
-        rsp.userLocalID = orderRefLookup(pOrder->OrderRef);
+        rsp.userLocalID = orderRefLut.orderRefLookup(pOrder->OrderRef);
         rsp.ostRtnOrder = pOrder;
 
         MDD::handleRspOrder(rsp);
@@ -169,7 +150,7 @@ public:
         rsp.rspType = OES::RspOrder::OstRtnTrade;
         rsp.errorID = 0;
         rsp.errorMsg = "(success)";
-        rsp.userLocalID = orderRefLookup(pTrade->OrderRef);
+        rsp.userLocalID = orderRefLut.orderRefLookup(pTrade->OrderRef);
         rsp.ostRtnTrade = pTrade;
 
         MDD::handleRspOrder(rsp);
@@ -243,7 +224,7 @@ HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
     int32_t requestID = g_spi->m_requestID.fetch_add(1, std::memory_order_relaxed);
     reqOrder.inputOrder.OrderRef = requestID;
     g_spi->m_api->ReqOrderInsert(&reqOrder.inputOrder, requestID);
-    g_spi->setOrderRef(requestID, reqOrder.userLocalID);
+    g_spi->orderRefLut.setOrderRef(requestID, reqOrder.userLocalID);
 }
 
 // HEAT_ZONE_REQORDER void OES::sendBatchReqOrder(ReqOrder &reqOrder)
@@ -251,7 +232,7 @@ HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 //     int32_t requestID = g_spi->m_requestID.fetch_add(1, std::memory_order_relaxed);
 //     reqOrder.inputOrder.OrderRef = requestID;
 //     g_spi->m_api->ReqOrderInsert(&reqOrder.inputOrder, requestID);
-//     g_spi->setOrderRef(requestID, reqOrder.userLocalID);
+//     g_spi->orderRefLut.setOrderRef(requestID, reqOrder.userLocalID);
 // }
 
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)

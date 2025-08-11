@@ -24,6 +24,7 @@ using Stat = L2::Stat;
 using Tick = L2::Tick;
 #elif NE
 
+#if COMPAT_TICK
 namespace NescCompat
 {
 #pragma pack(push)
@@ -102,6 +103,9 @@ struct OrderSz
 
 #pragma pack(pop)
 }
+#else
+namespace NescCompat = NescForesight;
+#endif
 
 
 struct Stat
@@ -134,16 +138,21 @@ struct Tick
         NescCompat::OrderSz orderSz;
         struct
         {
+#pragma pack(push)
+#pragma pack(1)
             uint8_t messageType;
             uint32_t sequence;
             uint8_t exchangeID;
             char securityID[9];
+#pragma pack(pop)
         };
     };
 };
 #endif
 
+#if COMPAT_TICK
 static_assert(sizeof(Tick) == 64);
+#endif
 
 #elif OST
 
@@ -230,7 +239,9 @@ struct Tick
 };
 #endif
 
+#if COMPAT_TICK
 static_assert(sizeof(Tick) == 64);
+#endif
 
 void handleOstQuote(sse_hpf_tick &q);
 void handleOstQuote(sze_hpf_pkt_head &q);

@@ -25,7 +25,21 @@ std::vector<int32_t> MDD::g_prevLimitUpStockCodes;
 namespace
 {
 
-std::array<int16_t, 0x7FFF> g_stockIdLut;
+std::array<int16_t, 0x8000> g_stockIdLut;
+
+[[gnu::always_inline]] uint16_t linearizeStockId(int32_t stock)
+{
+    uint32_t u = static_cast<uint32_t>(stock);
+#if SH
+    u -= UINT32_C(600000);
+#endif
+    if (u & ~UINT32_C(0x1FFF)) {
+        u = UINT32_C(0x1FFF);
+    }
+    // SH 600xxx 601xxx 603xxx 605xxx
+    // SZ 000xxx 001xxx 002xxx 003xxx
+    return static_cast<uint16_t>(u);
+}
 
 void initStockArrays()
 {
@@ -33,7 +47,7 @@ void initStockArrays()
         g_stockIdLut[s] = -1;
     }
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_stockIdLut[static_cast<int16_t>(MDD::g_stockCodes[i] & 0x7FFF)] = i;
+        g_stockIdLut[linearizeStockId(MDD::g_stockCodes[i])] = i;
     }
 
     MDD::g_tickRings = std::make_unique<TickRing[]>(kChannelCount);
@@ -187,7 +201,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t
             for (size_t i = 0; i < n; ++i) {
                 auto &tick = tickBuf[i];
                 int32_t stock = tickStockCode(tick);
-                int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
+                int32_t id = g_stockIdLut[linearizeStockId(stock)];
                 if (id == -1) [[unlikely]] {
                     continue;
                 }
@@ -238,7 +252,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t
 HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 {
     int32_t stock = tickStockCode(tick);
-    int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
+    int32_t id = g_stockIdLut[linearizeStockId(stock)];
     if (id == -1) [[unlikely]] {
         return;
     }
@@ -254,19 +268,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 #elif OST
     int32_t stock = rspOrder.userLocalID;
 #endif
-
-#if SH
-    if (!(stock >= 600000 && stock <= 609999)) {
-        return;
-    }
-#endif
-#if SZ
-    if (!(stock >= 0 && stock <= 9999)) {
-        return;
-    }
-#endif
-
-    int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
+    int32_t id = g_stockIdLut[linearizeStockId(stock)];
     if (id == -1) [[unlikely]] {
         return;
     }
@@ -277,19 +279,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 void MDD::handleStatic(MDS::Stat &stat)
 {
     int32_t stock = statStockCode(stat);
-
-#if SH
-    if (!(stock >= 600000 && stock <= 609999)) {
-        return;
-    }
-#endif
-#if SZ
-    if (!(stock >= 0 && stock <= 9999)) {
-        return;
-    }
-#endif
-
-    int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
+    int32_t id = g_stockIdLut[linearizeStockId(stock)];
     if (id == -1) [[unlikely]] {
         return;
     }
@@ -301,6 +291,7 @@ void MDD::start(const char *config)
     parseDailyConfig(config);
     SPDLOG_INFO("found {} stocks", MDD::g_stockCodes.size());
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
     SPDLOG_INFO("initializing trade api");
     OES::start(config);
 
@@ -351,13 +342,12 @@ void MDD::start(const char *config)
         g_stockComputes[i].start();
     }
 
-    SPDLOG_INFO("starting {} compute channels", kChannelCount);
-    int64_t startTime = steadyNow() + 20'000'000;
+    SPDLOG_DEBUG("starting {} compute channels", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
         int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
         int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
 
-        g_computeThreads[c] = std::jthread([c, startId, stopId, startTime] (std::stop_token stop) {
+        g_computeThreads[c] = std::jthread([c, startId, stopId] (std::stop_token stop) {
             setThisThreadAffinity(kChannelCpus[c]);
             computeThreadMain(c, startId, stopId, stop);
         });

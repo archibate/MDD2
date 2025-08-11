@@ -54,13 +54,14 @@ struct RspOrder
 struct ReqOrder
 {
     CXeleReqOrderInsertField xeleReqOrderInsert;
+    uint32_t userLocalID;
 };
 
 ///批量报单请求
-struct ReqBatchOrder
-{
-    CXeleReqBatchOrderInsertField xeleReqBatchOrderInsert;
-};
+// struct ReqBatchOrder
+// {
+//     CXeleReqBatchOrderInsertField xeleReqBatchOrderInsert;
+// };
 
 ///撤单请求
 struct ReqCancel
@@ -79,9 +80,9 @@ struct RspOrder
     };
 
     RspType rspType;
-    TXeleOrderIDType userLocalID;
     TXeleRequestIDType requestID;
     TXeleErrorIdType errorID;
+    uint32_t userLocalID;
 
     union
     {

@@ -3,6 +3,8 @@
 #include "OES.h"
 #include "MDD.h"
 #include "heatZone.h"
+#include "strXele.h"
+#include "OrderRefLut.h"
 #include <string9811.h>
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
@@ -119,6 +121,7 @@ XeleTdSpi *g_userSpi;
 XeleSecuritiesTraderApi *g_tradeApi;
 std::atomic<uint32_t> g_requestID{1};
 TXeleOrderIDType g_maxUserLocalID;
+OrderRefLut g_orderRefLut;
 
 std::string g_username;
 std::string g_password;
@@ -329,7 +332,15 @@ int callReqLogin()
     param.AutoReLogin = 0;
     param.LoopRepeatConnect = 0;
     param.RecvSendDetach = 1;
+#if NE
     param.solarfareTradeEthName = "enp1s0f1";
+#endif
+#if XC && SH
+    param.solarfareTradeEthName = "enp1s0f0";
+#endif
+#if XC && SZ
+    param.solarfareTradeEthName = "enp1s0f1";
+#endif
     param.openEncryption = 0;
     param.CaptureSignal = 0;
     return g_tradeApi->reqLoginEx((const ConfigParam *)&param, g_requestID.fetch_add(1, std::memory_order_relaxed));
@@ -493,7 +504,7 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRspInsertOrder(CXeleRspOrderInsertField* pR
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRspOrderInsert;
-    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
     rsp.requestID = nRequestID;
     rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderInsert = pRspField;
@@ -532,7 +543,7 @@ void XeleTdSpi::onErrRtnInsertOrder(CXeleRspOrderInsertField* pRspField, CXeleRs
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRspOrderInsert;
-    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
     rsp.requestID = nRequestID;
     rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderInsert = pRspField;
@@ -565,7 +576,7 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRspCancelOrder(CXeleRspOrderActionField* pR
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRspOrderAction;
-    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
     rsp.requestID = nRequestID;
     rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderAction = pRspField;
@@ -597,7 +608,7 @@ void XeleTdSpi::onErrRtnCancelOrder(CXeleRspOrderActionField* pRspField, CXeleRs
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRspOrderAction;
-    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
     rsp.requestID = nRequestID;
     rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderAction = pRspField;
@@ -626,7 +637,7 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnOrder(CXeleRtnOrderField* pRspField, CXe
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRtnOrder;
-    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
     rsp.requestID = nRequestID;
     rsp.errorID = 0;
     rsp.xeleRtnOrder = pRspField;
@@ -667,7 +678,7 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnTrade(CXeleRtnTradeField* pRspField, CXe
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRtnTrade;
-    rsp.userLocalID = pRspField->UserLocalID - g_maxUserLocalID;
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
     rsp.requestID = nRequestID;
     rsp.errorID = 0;
     rsp.xeleRtnTrade = pRspField;
@@ -861,19 +872,21 @@ void OES::stop()
 HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
     int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
-    reqOrder.xeleReqOrderInsert.UserLocalID += g_maxUserLocalID;
+    reqOrder.xeleReqOrderInsert.UserLocalID = g_maxUserLocalID + requestID;
     g_tradeApi->reqInsertOrder(reqOrder.xeleReqOrderInsert, requestID);
+    g_orderRefLut.setOrderRef(requestID, reqOrder.userLocalID);
 }
 
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
     int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
-    reqCancel.xeleReqOrderAction.UserLocalID += g_maxUserLocalID;
+    reqCancel.xeleReqOrderAction.UserLocalID = g_maxUserLocalID + requestID;
     g_tradeApi->reqCancelOrder(reqCancel.xeleReqOrderAction, requestID);
 }
 
 const char *OES::strErrorId(TXeleErrorIdType errorId)
 {
-    return g_tradeApi->getErrMsg(errorId, MARKET_ID);
+    return strXeleError(errorId);
+    // return g_tradeApi->getErrMsg(errorId, MARKET_ID);
 }
 #endif

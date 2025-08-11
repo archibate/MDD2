@@ -28,7 +28,7 @@ struct alignas(64) TickRing
 
     COLD_ZONE void onOverflow()
     {
-        SPDLOG_ERROR("ring queue overflow");
+        SPDLOG_WARN("ring queue overflow");
     }
 
     void pushTick(MDS::Tick const &tick)
