@@ -10,6 +10,8 @@
 #include <stdexcept>
 #include <fstream>
 #include <vector>
+#include <chrono>
+#include <thread>
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
 
@@ -21,6 +23,7 @@ std::string g_username;
 std::string g_password;
 
 std::vector<CUTDepthMarketDataField> g_marketStatics;
+std::atomic_int g_staticOK{0};
 
 class OstUserSpi : public CUTSpi
 {
@@ -51,19 +54,26 @@ public:
             return;
         }
 
-        SPDLOG_INFO("login returned: date={} timestamp={} frontId={} sessionId={} multiAddress={}", pRspLogin->TradingDay, pRspLogin->LoginTime, pRspLogin->FrontID, pRspLogin->SessionID, pRspLogin->MultiAddress);
+        SPDLOG_INFO("login returned: date={} timestamp={} frontId={} sessionId={} multiAddress={}",
+                    pRspLogin->TradingDay, pRspLogin->LoginTime, pRspLogin->FrontID, pRspLogin->SessionID, pRspLogin->MultiAddress);
         m_loginOK.store(true);
 
         m_frontID = pRspLogin->FrontID;
         m_sessionID = pRspLogin->SessionID;
 
         CUTQryDepthMarketDataField depthQuery;
-        depthQuery.ExchangeID = UT_EXG_SZSE;
-        depthQuery.ExchangeID = UT_EXG_SSE;
+        SPDLOG_DEBUG("querying SSE and SZSE depth market data");
         memset(&depthQuery, 0, sizeof(CUTQryDepthMarketDataField));
+        depthQuery.ExchangeID = UT_EXG_SSE;
         int err = m_api->ReqQryDepthMarketData(&depthQuery, m_requestID.fetch_add(1, std::memory_order_relaxed));
         if (err != 0) {
-            SPDLOG_ERROR("query depth market data error: {}", err);
+            SPDLOG_ERROR("query SSE depth market data error: {}", err);
+            return;
+        }
+        depthQuery.ExchangeID = UT_EXG_SZSE;
+        err = m_api->ReqQryDepthMarketData(&depthQuery, m_requestID.fetch_add(1, std::memory_order_relaxed));
+        if (err != 0) {
+            SPDLOG_ERROR("query SZSE depth market data error: {}", err);
             return;
         }
     }
@@ -78,6 +88,9 @@ public:
         if (pDepthMarketData->ExchangeID == UT_EXG_SSE || pDepthMarketData->ExchangeID == UT_EXG_SZSE)
         {
             g_marketStatics.push_back(*pDepthMarketData);
+            if (bIsLast) {
+                g_staticOK.fetch_add(1);
+            }
         }
     }
 
@@ -244,6 +257,10 @@ HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 
 CUTDepthMarketDataField *OES::getDepthMarketData(size_t &size)
 {
+    while (g_staticOK.load() < 2) {
+        SPDLOG_DEBUG("waiting for market statics ready");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
     size = g_marketStatics.size();
     return g_marketStatics.data();
 }

@@ -22,7 +22,7 @@ struct alignas(64) spsc_ring
 
     spsc_ring(spsc_ring &&) = delete;
 
-    spsc_ring()
+    spsc_ring() noexcept
         : m_write_pos{m_ring_buffer}
         , m_read_pos{m_ring_buffer}
         , m_write_pos_cached{m_ring_buffer}
@@ -33,6 +33,7 @@ struct alignas(64) spsc_ring
 
     template <class InputIt, class InputIte>
     InputIt write(InputIt input_first, InputIte input_last)
+        noexcept(noexcept(*m_write_pos_local = *input_first) && noexcept(++input_first != input_last))
     {
         T *write_pos_local = m_write_pos_local;
         T *read_pos_cached = m_read_pos_cached;
@@ -74,6 +75,7 @@ struct alignas(64) spsc_ring
 
     template <class OutputIt, class OutputIte>
     OutputIt read(OutputIt output_first, OutputIte output_last)
+        noexcept(noexcept(*output_first = *m_read_pos_local) && noexcept(++output_first != output_last))
     {
         T *read_pos_local = m_read_pos_local;
         T *write_pos_cached = m_write_pos_cached;
@@ -113,6 +115,7 @@ struct alignas(64) spsc_ring
 
     template <class InputIt, class InputIte>
     InputIt write_some(InputIt input_first, InputIte input_last)
+        noexcept(noexcept(*m_write_pos_local = *input_first) && noexcept(++input_first != input_last))
     {
         T *write_pos_local = m_write_pos_local;
         T *read_pos_cached = m_read_pos_cached;
@@ -143,7 +146,7 @@ struct alignas(64) spsc_ring
         return input_first;
     }
 
-    bool write_one(T const &value)
+    bool write_one(T const &value) noexcept(noexcept(*m_write_pos_local = value))
     {
         T *write_pos_local = m_write_pos_local;
         T *read_pos_cached = m_read_pos_cached;
@@ -180,6 +183,7 @@ struct alignas(64) spsc_ring
 
     template <class OutputIt, class OutputIte>
     OutputIt read_some(OutputIt output_first, OutputIte output_last)
+        noexcept(noexcept(*output_first = *m_read_pos_local) && noexcept(++output_first != output_last))
     {
         T *read_pos_local = m_read_pos_local;
         T *write_pos_cached = m_write_pos_cached;

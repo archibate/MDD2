@@ -164,23 +164,26 @@ void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
                 // if (openCalled) {
                     int64_t thisTimestamp = timestampAbsLinear(tick.timestamp);
                     int64_t dt = thisTimestamp - lastTimestamp;
+                    if (dt >= 1'000'000) {
+                        dt -= (dt - 1'000'000) / 10;
+                    }
                     lastTimestamp = thisTimestamp;
                     nextSleepTime += dt * timeScale;
                     blockingSleepUntil(nextSleepTime);
                 // }
             }
 
-            if (g_subscribedStocks.contains(tick.stock)) {
+            // if (g_subscribedStocks.contains(tick.stock)) {
                 MDD::handleTick(tick);
-            }
+            // }
         }
 
     } else {
         for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
             MDS::Tick &tick = tickBuf[i];
-            if (g_subscribedStocks.contains(tick.stock)) {
+            // if (g_subscribedStocks.contains(tick.stock)) {
                 MDD::handleTick(tick);
-            }
+            // }
         }
     }
 }

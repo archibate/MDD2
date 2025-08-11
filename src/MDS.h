@@ -24,7 +24,7 @@ using Stat = L2::Stat;
 using Tick = L2::Tick;
 #elif NE
 
-#if COMPAT_TICK
+// #if COMPAT_TICK
 namespace NescCompat
 {
 #pragma pack(push)
@@ -103,9 +103,9 @@ struct OrderSz
 
 #pragma pack(pop)
 }
-#else
-namespace NescCompat = NescForesight;
-#endif
+// #else
+// namespace NescCompat = NescForesight;
+// #endif
 
 
 struct Stat
@@ -150,9 +150,9 @@ struct Tick
 };
 #endif
 
-#if COMPAT_TICK
+// #if COMPAT_TICK
 static_assert(sizeof(Tick) == 64);
-#endif
+// #endif
 
 #elif OST
 
@@ -239,9 +239,9 @@ struct Tick
 };
 #endif
 
-#if COMPAT_TICK
+// #if COMPAT_TICK
 static_assert(sizeof(Tick) == 64);
-#endif
+// #endif
 
 void handleOstQuote(sse_hpf_tick &q);
 void handleOstQuote(sze_hpf_pkt_head &q);

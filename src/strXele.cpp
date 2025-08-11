@@ -1,3 +1,5 @@
+#include "config.h"
+#if XC || NE
 #include "strXele.h"
 #include <algorithm>
 #include <cstdio>
@@ -1148,3 +1150,4 @@ const char *strXeleError(TXeleErrorIdType x) {
     }
     return freeBuf;
 }
+#endif

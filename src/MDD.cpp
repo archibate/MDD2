@@ -25,7 +25,7 @@ std::vector<int32_t> MDD::g_prevLimitUpStockCodes;
 namespace
 {
 
-std::array<int16_t, 0x8000> g_stockIdLut;
+std::array<int16_t, 0x2000> g_stockIdLut;
 
 [[gnu::always_inline]] uint16_t linearizeStockId(int32_t stock)
 {
