@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+set(CMAKE_ENABLE_EXPORTS ON)
 
 option(BUILD_SPEED "Enable quick unity build" OFF)
 option(RECORD_FACTORS "Record factor to CSV files" ON)
@@ -109,9 +110,13 @@ if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo" OR CMAKE_BUILD_TYPE MATCHES "Relea
         elseif (TARGET_SECURITY MATCHES XC)
             target_compile_options(${PROJECT_NAME} PRIVATE -march=core-avx2 -mcx16 -msahf -mmovbe -maes -mpclmul -mpopcnt -mabm -mno-lwp -mfma -mno-fma4 -mno-xop -mbmi -mbmi2 -mno-tbm -mavx -mavx2 -msse4.2 -msse4.1 -mlzcnt -mno-rtm -mno-hle -mrdrnd -mf16c -mfsgsbase -mrdseed -mprfchw -madx -mfxsr -mxsave -mxsaveopt -mpku -mtune=generic)
         elseif (TARGET_SECURITY MATCHES OST)
-                target_compile_options(${PROJECT_NAME} PRIVATE -mavx2)
+            target_compile_options(${PROJECT_NAME} PRIVATE -mavx2)
         endif()
     endif()
+endif()
+
+if (NOT CMAKE_BUILD_TYPE MATCHES "MinSizeRel")
+    set_target_properties(${PROJECT_NAME} PROPERTIES ENABLE_EXPORTS ON)
 endif()
 
 if (CMAKE_BUILD_TYPE MATCHES "Release")

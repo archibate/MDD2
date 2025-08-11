@@ -45,6 +45,10 @@ void StockState::onStatic(MDS::Stat const &stat)
         case NescForesight::SZE: {
             preClosePrice = static_cast<int32_t>(std::round(stat.staticSzInfo.prevClosePx * 100));
             upperLimitPrice = static_cast<int32_t>(std::round(stat.staticSzInfo.upperLimitPrice * 100));
+            // if (preClosePrice && !upperLimitPrice) {
+            //     upperLimitPrice = static_cast<int32_t>(std::round(preClosePrice * 1.02));
+            //     SPDLOG_WARN("fixed SZ upper limit price: stock={} securityID={} preClosePrice={} upperLimitPrice={}", stockCode, stat.staticSzInfo.securityID, preClosePrice, upperLimitPrice);
+            // }
             upperLimitPrice10000 = static_cast<uint64_t>(upperLimitPrice) * 100;
             offsetTransactTime = getToday() * UINT64_C(1'00'00'00'000);
         } break;

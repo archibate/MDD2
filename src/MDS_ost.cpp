@@ -78,7 +78,9 @@ void MDS::subscribe(int32_t const *stocks, int32_t n)
 
 void MDS::stop()
 {
-    OstStop();
+    if (!g_isStopped.test_and_set()) {
+        OstStop();
+    }
 }
 
 void MDS::requestStop()

@@ -124,7 +124,7 @@ void parseDailyConfig(const char *config)
         SPDLOG_ERROR("no stock subscription found in daily factor file for market={} date={}", MARKET_NAME, date);
         throw std::runtime_error("no stock subscription found in daily factor file");
     }
-    SPDLOG_INFO("daily factor file contains numStocks={} numPrevLimitUp={} numFactors={}", header.stockCount, header.prevLimitUpCount, header.factorCount);
+    SPDLOG_DEBUG("daily factor file contains numStocks={} numPrevLimitUp={} numFactors={}", header.stockCount, header.prevLimitUpCount, header.factorCount);
 
     MDD::g_stockCodes.resize(header.stockCount);
     bin.read((char *)MDD::g_stockCodes.data(), MDD::g_stockCodes.size() * sizeof(int32_t));
@@ -254,6 +254,18 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 #elif OST
     int32_t stock = rspOrder.userLocalID;
 #endif
+
+#if SH
+    if (!(stock >= 600000 && stock <= 609999)) {
+        return;
+    }
+#endif
+#if SZ
+    if (!(stock >= 0 && stock <= 9999)) {
+        return;
+    }
+#endif
+
     int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {
         return;
@@ -265,11 +277,18 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 void MDD::handleStatic(MDS::Stat &stat)
 {
     int32_t stock = statStockCode(stat);
+
 #if SH
-    if (stock >= 600000) {
+    if (!(stock >= 600000 && stock <= 609999)) {
         return;
     }
 #endif
+#if SZ
+    if (!(stock >= 0 && stock <= 9999)) {
+        return;
+    }
+#endif
+
     int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {
         return;
@@ -295,7 +314,7 @@ void MDD::start(const char *config)
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
-    SPDLOG_INFO("starting {} stocks", MDD::g_stockCodes.size());
+    SPDLOG_DEBUG("starting {} stocks", MDD::g_stockCodes.size());
     for (int32_t i = 0; i < kChannelCount; ++i) {
         g_tickRings[i].start();
     }
@@ -306,7 +325,7 @@ void MDD::start(const char *config)
         g_stockStates[i].start();
     }
 
-    SPDLOG_INFO("preparing {} compute channels", kChannelCount);
+    SPDLOG_DEBUG("preparing {} compute channels", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
         int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
         int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
@@ -327,7 +346,7 @@ void MDD::start(const char *config)
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     SPDLOG_INFO("mds receive started");
 
-    SPDLOG_INFO("setting up {} stock computes", MDD::g_stockCodes.size());
+    SPDLOG_DEBUG("setting up {} stock computes", MDD::g_stockCodes.size());
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockComputes[i].start();
     }
@@ -351,19 +370,19 @@ void MDD::start(const char *config)
 void MDD::stop()
 {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    SPDLOG_INFO("stopping mds");
+    SPDLOG_DEBUG("stopping mds");
     MDS::stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    SPDLOG_INFO("stopping oes");
+    SPDLOG_DEBUG("stopping oes");
     OES::stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(60));
-    SPDLOG_INFO("stopping {} compute channels", kChannelCount);
+    SPDLOG_DEBUG("stopping {} compute channels", kChannelCount);
 
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c].request_stop();
         g_computeThreads[c].join();
     }
-    SPDLOG_INFO("stopping {} stocks", MDD::g_stockCodes.size());
+    SPDLOG_DEBUG("stopping {} stocks", MDD::g_stockCodes.size());
 
     for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
         g_stockComputes[i].stop();

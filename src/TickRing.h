@@ -26,13 +26,15 @@ struct alignas(64) TickRing
 
     void stop() {}
 
-    COLD_ZONE void onOverflow() {
+    COLD_ZONE void onOverflow()
+    {
         SPDLOG_ERROR("ring queue overflow");
     }
 
     void pushTick(MDS::Tick const &tick)
     {
-        if (!ring.write_one(tick)) {
+        if (!ring.write_one(tick)) [[unlikely]] {
+            onOverflow();
         }
     }
 
