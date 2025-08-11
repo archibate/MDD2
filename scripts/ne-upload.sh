@@ -7,6 +7,8 @@ if [ "x$market" == "xsh" ]; then
     port=9622
 elif [ "x$market" == "xsz" ]; then
     port=9822
+elif [ "x$market" == "xsz2" ]; then
+    port=9922
 else
     echo "Usage:" >&2
     echo "  $0 sh /some/remote/file.txt file.txt" >&2

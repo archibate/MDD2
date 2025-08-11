@@ -37,10 +37,20 @@ HEAT_ZONE_TICK void MDS::handleOstQuote(sze_hpf_pkt_head &q)
 
 void MDS::handleOstQuote(sse_hpf_lev2 &q)
 {
+    MDS::Snap snap = {
+        .isSz = false,
+        .sseLev2 = &q,
+    };
+    MDD::handleSnap(snap);
 }
 
 void MDS::handleOstQuote(sze_hpf_lev2_pkt &q)
 {
+    MDS::Snap snap = {
+        .isSz = true,
+        .szeLev2 = &q,
+    };
+    MDD::handleSnap(snap);
 }
 
 void MDS::start(const char *config)

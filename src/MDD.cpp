@@ -276,6 +276,12 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
     // todo: forward to StockState
 }
 
+void MDD::handleSnap(MDS::Snap &snap)
+{
+    int32_t stock = snapStockCode(snap);
+    throw "TODO"
+}
+
 void MDD::handleStatic(MDS::Stat &stat)
 {
     int32_t stock = statStockCode(stat);

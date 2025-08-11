@@ -5,6 +5,7 @@
 #if REPLAY
 #include "L2/Stat.h"
 #include "L2/Tick.h"
+#include "L2/Snap.h"
 #elif NE
 #include <nesc/Const.h>
 #include <nesc/SseMdStruct.h>
@@ -22,6 +23,7 @@ namespace MDS
 #if REPLAY
 using Stat = L2::Stat;
 using Tick = L2::Tick;
+using Snap = L2::Snap;
 #elif NE
 
 // #if COMPAT_TICK
@@ -150,6 +152,15 @@ struct Tick
 };
 #endif
 
+struct Snap
+{
+    NescForesight::MarketType marketType;
+    union {
+        NescForesight::MarketDataSnapshotSse const *snapshotSse;
+        NescForesight::MarketDataSnapshotSz const *snapshotSz;
+    };
+};
+
 // #if COMPAT_TICK
 static_assert(sizeof(Tick) == 64);
 // #endif
@@ -238,6 +249,15 @@ struct Tick
     sse_hpf_tick_64 tick;
 };
 #endif
+
+struct Snap
+{
+    bool isSz;
+    union {
+        sse_hpf_lev2 *sseLev2;
+        sze_hpf_lev2_pkt *szeLev2;
+    };
+};
 
 // #if COMPAT_TICK
 static_assert(sizeof(Tick) == 64);

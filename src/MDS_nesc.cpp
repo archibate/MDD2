@@ -100,11 +100,23 @@ HEAT_ZONE_TICK void handleSzTradeAndOrder(const uint8_t *buf, int len)
 void handleShSnapShotLevel1(const uint8_t *buf, int len)
 {
     // assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SSE);
+    auto snapshot = reinterpret_cast<const NescForesight::MarketDataSnapshotSse *>(buf);
+    MDS::Snap snap = {
+        .marketType = NescForesight::SSE,
+        .snapshotSse = snapshot,
+    };
+    MDD::handleSnap(snap);
 }
 
 void handleSzSnapShotLevel1(const uint8_t *buf, int len)
 {
     // assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SZ);
+    auto snapshot = reinterpret_cast<const NescForesight::MarketDataSnapshotSz *>(buf);
+    MDS::Snap snap = {
+        .marketType = NescForesight::SZE,
+        .snapshotSz = snapshot,
+    };
+    MDD::handleSnap(snap);
 }
 
 }
@@ -190,6 +202,58 @@ void MDS::start(const char *config)
     };
 #endif
 #if SZ
+#if SZ2
+    static NescForesight::MdParam mdChannels[] = {
+        {
+            .m_interfaceName = "enp1s0f1",
+            .m_localIp = "127.0.0.1",
+            .m_mcastIp = "234.20.8.1",
+            .m_mcastPort = 16599,
+            .m_bindCpuId = kMDSBindCpu,
+            .m_nicType = NescForesight::E_NIC_SOLARFLARE_EFVI,
+            .handler = handleSzTradeAndOrder,
+
+            .m_backupIntName = "enp2s0f0",
+            .m_backupLocalIp = "10.107.52.34",
+            .m_backupMcastIp = "234.20.6.1",
+            .m_backSwitchTime = 15,
+            .m_backupMcastPort = 15000,
+            .m_backupNicType = NescForesight::E_NIC_NORMAL,
+        },
+        {
+            .m_interfaceName = "enp2s0f0",
+            .m_localIp = "10.107.52.34",
+            .m_mcastIp = "234.30.2.1",
+            .m_mcastPort = 50500,
+            .m_bindCpuId = kMDSBindCpu,
+            .m_nicType = NescForesight::E_NIC_NORMAL,
+            .handler = handleShSnapShotLevel1,
+
+            .m_backupIntName = "enp2s0f0",
+            .m_backupLocalIp = "10.107.52.34",
+            .m_backupMcastIp = "234.30.4.1",
+            .m_backSwitchTime = 15,
+            .m_backupMcastPort = 60500,
+            .m_backupNicType = NescForesight::E_NIC_NORMAL,
+        },
+        {
+            .m_interfaceName = "enp2s0f0",
+            .m_localIp = "10.107.52.34",
+            .m_mcastIp = "234.30.6.1",
+            .m_mcastPort = 51500,
+            .m_bindCpuId = kMDSBindCpu,
+            .m_nicType = NescForesight::E_NIC_NORMAL,
+            .handler = handleSzSnapShotLevel1,
+
+            .m_backupIntName = "enp2s0f0",
+            .m_backupLocalIp = "10.107.52.34",
+            .m_backupMcastIp = "234.30.8.1",
+            .m_backSwitchTime = 15,
+            .m_backupMcastPort = 61500,
+            .m_backupNicType = NescForesight::E_NIC_NORMAL,
+        },
+    };
+#else
     static NescForesight::MdParam mdChannels[] = {
         {
             .m_interfaceName = "enp1s0f0",
@@ -240,6 +304,7 @@ void MDS::start(const char *config)
             .m_backupNicType = NescForesight::E_NIC_NORMAL,
         },
     };
+#endif
 #endif
     constexpr size_t kNumMdParams = sizeof(mdChannels) / sizeof(mdChannels[0]);
     NescForesight::MdParam *params[kNumMdParams];
