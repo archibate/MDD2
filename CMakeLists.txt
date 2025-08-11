@@ -11,6 +11,7 @@ option(ALWAYS_BUY "Always purchase regardless model" OFF)
 option(ASYNC_LOGGER "Enable spdlog async logger" OFF)
 option(BEST_ORDER "Enable best-order-this-side report" OFF)
 option(SPLIT_ORDER "Enable split order report" OFF)
+option(SZ_IS_SECOND "Shenzhen is 2nd machine" OFF)
 set(TARGET_SECURITY REPLAY CACHE STRING "Choices: REPLAY NE XC OST")
 set(TARGET_MARKET SH CACHE STRING "Choices: SH SZ")
 

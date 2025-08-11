@@ -7,7 +7,7 @@ targets = {
         '-DCMAKE_BUILD_TYPE=Release',
         '-DBUILD_SPEED=ON',
         '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=OFF',
+        '-DALWAYS_BUY=ON',
         '-DASYNC_LOGGER=OFF',
         '-DTARGET_SECURITY=NE',
         '-DTARGET_MARKET=SH',
@@ -17,20 +17,22 @@ targets = {
         '-DCMAKE_BUILD_TYPE=Release',
         '-DBUILD_SPEED=ON',
         '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=OFF',
+        '-DALWAYS_BUY=ON',
         '-DASYNC_LOGGER=OFF',
         '-DTARGET_SECURITY=NE',
         '-DTARGET_MARKET=SZ',
+        '-DSZ_IS_SECOND=OFF',
     ],
-    # 'NE2Z': [
-    #     '-DCMAKE_BUILD_TYPE=Release',
-    #     '-DBUILD_SPEED=ON',
-    #     '-DRECORD_FACTORS=ON',
-    #     '-DALWAYS_BUY=OFF',
-    #     '-DASYNC_LOGGER=OFF',
-    #     '-DTARGET_SECURITY=NE',
-    #     '-DTARGET_MARKET=SZ',
-    # ],
+    'NESZ2': [
+        '-DCMAKE_BUILD_TYPE=Release',
+        '-DBUILD_SPEED=ON',
+        '-DRECORD_FACTORS=ON',
+        '-DALWAYS_BUY=ON',
+        '-DASYNC_LOGGER=OFF',
+        '-DTARGET_SECURITY=NE',
+        '-DTARGET_MARKET=SZ',
+        '-DSZ_IS_SECOND=ON',
+    ],
 }
 
 markets = [
@@ -116,7 +118,7 @@ for target in targets:
     os.makedirs('log', exist_ok=True)
     os.makedirs('config', exist_ok=True)
 
-    market = target[-2:].lower()
+    market = target[2:4].lower()
     security = target[:2].lower()
 
     shutil.copyfile(f'/data/daily_csv/mdd2_factors_{market}_{today}.bin', f'config/factors.bin')
@@ -154,10 +156,10 @@ for target in targets:
     subprocess.check_call(['tar', 'zcvf', f'/data/release/MDD-{target}-{today}.tar.gz', '.'], cwd=f'dist/{target}')
 
 for target in targets:
-    market = target[-2:].lower()
+    market_full = target[2:].lower()
     security = target[:2].lower()
-    subprocess.check_call([f'scripts/{security}-upload.sh', market, f'/data/release/MDD-{target}-{today}.tar.gz', f'/root/MDD-{target}-{today}.tar.gz'])
-    with subprocess.Popen([f'scripts/{security}-connect.sh', market], stdin=subprocess.PIPE) as p:
+    subprocess.check_call([f'scripts/{security}-upload.sh', market_full, f'/data/release/MDD-{target}-{today}.tar.gz', f'/root/MDD-{target}-{today}.tar.gz'])
+    with subprocess.Popen([f'scripts/{security}-connect.sh', market_full], stdin=subprocess.PIPE) as p:
         p.communicate(f'''set +o history
 set -e
 cd /root

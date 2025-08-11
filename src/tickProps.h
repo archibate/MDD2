@@ -28,12 +28,12 @@ inline int32_t snapStockCode(MDS::Snap &snap)
     int32_t stock = snap.stock;
 #elif NE
     int32_t stock = securityId(snap.marketType == NescForesight::SSE
-                               ? snap.snapshotSse.securityID
-                               : snap.snapshotSz.securityID);
+                               ? snap.snapshotSse->securityID
+                               : snap.snapshotSz->securityID);
 #elif OST
     int32_t stock = securityId(snap.isSz
-                               ? snap.szeLev2.m_header.m_symbol
-                               : snap.sseLev2.m_symbol_id);
+                               ? snap.szeLev2->m_header.m_symbol
+                               : snap.sseLev2->m_symbol_id);
 #endif
     return stock;
 }

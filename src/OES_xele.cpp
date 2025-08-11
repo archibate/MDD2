@@ -332,8 +332,15 @@ int callReqLogin()
     param.AutoReLogin = 0;
     param.LoopRepeatConnect = 0;
     param.RecvSendDetach = 1;
-#if NE
+#if NE && SH
     param.solarfareTradeEthName = "enp1s0f1";
+#endif
+#if NE && SZ
+#if SZ2
+    param.solarfareTradeEthName = "enp1s0f0";
+#else
+    param.solarfareTradeEthName = "enp1s0f1";
+#endif
 #endif
 #if XC && SH
     param.solarfareTradeEthName = "enp1s0f0";

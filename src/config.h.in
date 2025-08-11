@@ -6,6 +6,7 @@
 #cmakedefine01 ASYNC_LOGGER
 #cmakedefine01 BEST_ORDER
 #cmakedefine01 SPLIT_ORDER
+#cmakedefine01 SZ_IS_SECOND
 #define TARGET_SECURITY TARGET_SECURITY_@TARGET_SECURITY@
 #define TARGET_MARKET TARGET_MARKET_@TARGET_MARKET@
 
@@ -47,4 +48,8 @@
 
 #if TARGET_SECURITY == TARGET_SECURITY_OST
 #define OST 1
+#endif
+
+#if SZ && SZ_IS_SECOND
+#define SZ2 1
 #endif

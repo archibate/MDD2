@@ -226,10 +226,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
 #endif
     if (limitUp) {
         auto intent = wantCache->checkWantBuyAtTimestamp(tick.timestamp);
-#if ALWAYS_BUY
-        intent = WantCache::WantBuy;
-#endif
-        if (intent == WantCache::WantBuy) [[likely]] {
+        if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
             OES::sendReqOrder(*reqOrder);
         }
 
@@ -256,10 +253,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     if (limitUp) {
         int32_t timestamp = tick.tickMergeSse.tickTime * 10;
         auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
-#if ALWAYS_BUY
-        intent = WantCache::WantBuy;
-#endif
-        if (intent == WantCache::WantBuy) [[likely]] {
+        if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
             OES::sendReqOrder(*reqOrder);
         }
 
@@ -277,10 +271,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
                     tick.tradeSz.transactTime - offsetTransactTime);
                 if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
                     auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
-#if ALWAYS_BUY
-                    intent = WantCache::WantBuy;
-#endif
-                    if (intent == WantCache::WantBuy) [[likely]] {
+                    if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
                         OES::sendReqOrder(*reqOrder);
                     }
 
@@ -308,10 +299,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
     if (limitUp) {
         int32_t timestamp = tick.tick.m_tick_time * 10;
         auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
-#if ALWAYS_BUY
-        intent = WantCache::WantBuy;
-#endif
-        if (intent == WantCache::WantBuy) [[likely]] {
+        if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
             OES::sendReqOrder(*reqOrder);
         }
 
@@ -328,10 +316,7 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
                     tick.head.m_quote_update_time - offsetTransactTime);
                 if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
                     auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
-#if ALWAYS_BUY
-                    intent = WantCache::WantBuy;
-#endif
-                    if (intent == WantCache::WantBuy) [[likely]] {
+                    if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
                         OES::sendReqOrder(*reqOrder);
                     }
 
@@ -350,6 +335,13 @@ HEAT_ZONE_TICK void StockState::onTick(MDS::Tick &tick)
 #endif
 
     tickRing->pushTick(tick);
+}
+
+HEAT_ZONE_TICK void StockState::onSnap(MDS::Snap &snap)
+{
+    if (!alive) [[unlikely]] {
+        return;
+    }
 }
 
 HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)

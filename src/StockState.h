@@ -43,6 +43,7 @@ struct alignas(64) StockState
     void onStatic(MDS::Stat const &stat);
     void stop(int32_t timestamp = 0);
     void onTick(MDS::Tick &tick);
+    void onSnap(MDS::Snap &snap);
     void onRspOrder(OES::RspOrder &rspOrder);
 
 private:

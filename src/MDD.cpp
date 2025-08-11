@@ -279,7 +279,11 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 void MDD::handleSnap(MDS::Snap &snap)
 {
     int32_t stock = snapStockCode(snap);
-    throw "TODO"
+    int32_t id = g_stockIdLut[linearizeStockId(stock)];
+    if (id == -1) [[unlikely]] {
+        return;
+    }
+    MDD::g_stockStates[id].onSnap(snap);
 }
 
 void MDD::handleStatic(MDS::Stat &stat)
