@@ -164,11 +164,12 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t
     approachStockIds.reserve(8);
     remainSellAmounts.reserve(8);
 
-    int64_t sleepInterval = 98'521'100;
+    int64_t sleepInterval = 95'000'000;
 #if REPLAY
     sleepInterval = static_cast<int64_t>(sleepInterval * MDS::g_timeScale);
 #endif
-    int64_t nextSleepTime = steadyNow() + 200'000 + channel * 1'000'000;
+    int64_t nextSleepTime = steadyNow() + 200'000;
+    nextSleepTime += sleepInterval * channel / (kChannelCount + 1);
 
     while (!stop.stop_requested()) [[likely]] {
 
@@ -193,16 +194,16 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t
                 MDD::g_stockComputes[id].onTick(tick);
             }
             int64_t now = steadyNow();
-            if (now > nextSleepTime - 10'000) {
+            if (now > nextSleepTime - 5'000) {
                 break;
             }
             if (n == 0) {
                 _mm_pause();
-                if (now > nextSleepTime - 10'000) {
+                if (now > nextSleepTime - 5'000) {
                     break;
                 }
-                if (now > nextSleepTime - 20'000) {
-                    blockingSleepUntil(now + 5'000);
+                if (now > nextSleepTime - 8'000) {
+                    blockingSleepUntil(now + 2'000);
                 }
             }
         }
@@ -264,6 +265,11 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 void MDD::handleStatic(MDS::Stat &stat)
 {
     int32_t stock = statStockCode(stat);
+#if SH
+    if (stock >= 600000) {
+        return;
+    }
+#endif
     int32_t id = g_stockIdLut[static_cast<int16_t>(stock & 0x7FFF)];
     if (id == -1) [[unlikely]] {
         return;

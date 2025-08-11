@@ -18,7 +18,6 @@ struct alignas(64) StockCompute
     void onTick(MDS::Tick &tick);
     bool checkApproach();
     void onApproach();
-    void onBusy();
 
     int64_t upSellOrderAmount() const;
     void dumpFactors(int32_t timestamp) const;

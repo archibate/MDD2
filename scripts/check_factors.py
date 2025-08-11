@@ -93,7 +93,7 @@ print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.colum
 del diff['ts_code']
 del diff['timestamp']
 # error = diff.abs().max()
-error = diff.abs().quantile(0.6)
+error = diff.abs().quantile(0.8)
 error = error.sort_values(ascending=False)
 
 print()
