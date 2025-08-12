@@ -303,7 +303,6 @@ int callReqLogin()
 #if NE && SZ && SZ2
     param.ManagerURL = "tcp://10.107.39.12:50000;tcp://10.107.39.13:50000";
 #endif
-#endif
 #if XC
     param.ManagerURL = "tcp://10.208.48.27:50000;tcp://10.208.48.28:50000";
 #endif

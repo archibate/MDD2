@@ -13,6 +13,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <smmintrin.h>
 
 std::array<std::jthread, kChannelCount> MDD::g_computeThreads;
 std::unique_ptr<StockState[]> MDD::g_stockStates;

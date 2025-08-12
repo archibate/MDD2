@@ -160,7 +160,7 @@ int main(int argc, char **argv)
             SPDLOG_TRACE("now time: {}", now);
         }
         if (now >= 15'00'03'000) {
-            SPDLOG_CRITICAL("MDD v2 exiting at market close time {}", now);
+            SPDLOG_INFO("MDD v2 exiting at market close time {}", now);
             break;
         }
 #endif
