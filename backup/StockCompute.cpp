@@ -38,7 +38,6 @@ COLD_ZONE void logLimitUp(int32_t stockIndex, int32_t tickTimestamp, WantCache::
     stockCompute.dumpFactors(timestampDelinear(minLinearTimestamp));
 
     SPDLOG_INFO("limit up model status: stock={} upPrice={} tickTime={} roundTime={} bestTime={} minDt={} toleranceDt={} intent={}", stockState.stockCode, stockState.upperLimitPrice, tickTimestamp, timestampDelinear(linearTimestamp), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, magic_enum::enum_name(intent));
-    SPDLOG_TRACE("limit up detected: stock={} timestamp={} intent={}", stockState.stockCode, tickTimestamp, magic_enum::enum_name(intent));
 }
 
 }
