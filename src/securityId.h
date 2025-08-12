@@ -6,7 +6,7 @@
 // #include <smmintrin.h>
 
 
-[[gnu::always_inline]] inline uint32_t atou6(const char *s)
+inline uint32_t atou6(const char *s)
 {
     uint32_t i;
     i = 100000 * (*s++ - '0');
@@ -18,7 +18,7 @@
     return i;
 }
 
-// [[gnu::always_inline]] inline uint32_t atou4(const char input[4]) {
+// inline uint32_t atou4(const char input[4]) {
 //     // Load 4 bytes into a 32-bit temporary
 //     uint32_t tmp;
 //     __builtin_memcpy(&tmp, input, 4);

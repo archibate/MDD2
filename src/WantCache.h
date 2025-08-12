@@ -38,7 +38,7 @@ struct alignas(64) WantCache
     //     return n;
     // }
 
-    [[gnu::always_inline]] void pushWantBuyTimestamp(int32_t timestamp, bool wantBuy)
+    void pushWantBuyTimestamp(int32_t timestamp, bool wantBuy)
     {
         timestamp = timestampLinear(timestamp);
         if (wantBuy) {
@@ -56,7 +56,7 @@ struct alignas(64) WantCache
         NotSure,
     };
 
-    [[gnu::always_inline]] Intent checkWantBuyAtTimestamp(int32_t timestamp)
+    Intent checkWantBuyAtTimestamp(int32_t timestamp)
     {
         timestamp = (timestampLinear(timestamp) + 90) / 100 * 100;
         int32_t minTimestamp = wantBuyTimestamp[0].load(std::memory_order_relaxed);

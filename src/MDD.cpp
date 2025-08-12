@@ -4,6 +4,7 @@
 #include "SPSC.h"
 #include "constants.h"
 #include "threadAffinity.h"
+#include "clockMonotonic.h"
 #include "DailyFactorFile.h"
 #include "generatedModels.h"
 #include "WantCache.h"
@@ -21,7 +22,8 @@
 #include <absl/container/btree_map.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
-#include <smmintrin.h>
+#include <magic_enum/magic_enum_format.hpp>
+#include <emmintrin.h>
 
 namespace
 {
@@ -558,7 +560,7 @@ HEAT_ZONE_COMPUTE void computeKaiyuan(Compute &compute, FactorList &factorList)
     if (!transactions.empty()) {
         radixSort<8, 4, sizeof(float), offsetof(Transaction, meanAmount), sizeof(Transaction)>(transactions.data(), transactions.size());
 
-        auto m = transactions.size();// - 1;
+        auto m = transactions.size();
         auto it096 = transactions.begin() + static_cast<size_t>(std::ceil(0.096 * m));
         auto it096f = transactions.begin() + static_cast<size_t>(std::floor(0.096 * m));
         auto it10 = transactions.begin() + static_cast<size_t>(std::ceil(0.10 * m));
@@ -700,35 +702,6 @@ HEAT_ZONE_TICK void pushTickToRing(int32_t id, MDS::Tick &tick)
     }
 }
 
-// void logStop(int32_t id, int32_t timestamp)
-// {
-//     int32_t stock = g_stockCodes[id];
-//     MDS::Tick endSign{};
-// #if REPLAY
-//     endSign.quantity = 0;
-//     endSign.stock = stock;
-//     endSign.timestamp = timestamp;
-// #elif NE && SH
-//     endSign.tickMergeSse.tickType = 0;
-//     std::sprintf(endSign.tickMergeSse.securityID, "%06d", stock);
-//     endSign.tickMergeSse.tickTime = timestamp / 10;
-//     endSign.tickMergeSse.tickBSFlag = timestamp % 10;
-// #elif NE && SZ
-//     endSign.tradeSz.messageType = 0;
-//     std::sprintf(endSign.tradeSz.securityID, "%06d", stock);
-//     endSign.tradeSz.transactTime = timestamp;
-// #elif OST && SH
-//     endSign.tick.m_tick_type = 0;
-//     std::sprintf(endSign.tick.m_symbol_id, "%06d", stock);
-//     endSign.tick.m_tick_time = timestamp;
-// #elif OST && SZ
-//     endSign.head.m_message_type = 0;
-//     std::sprintf(endSign.head.m_symbol, "%06d", stock);
-//     endSign.head.m_quote_update_time = timestamp;
-// #endif
-//     pushTickToRing(id, endSign);
-// }
-
 void unsubscribeStock(int32_t id)
 {
     g_stockIdLut[linearizeStockIdRaw(g_stockCodes[id])] = -1;
@@ -737,22 +710,6 @@ void unsubscribeStock(int32_t id)
 void logStop(int32_t id, int32_t timestamp, WantCache::Intent intent)
 {
     unsubscribeStock(id);
-
-//     auto &state = g_stockStates[id];
-// #if (NE || OST) && SH
-//     state.upperLimitPrice1000 = 0;
-// #endif
-// #if (NE || OST) && SZ
-//     state.upperLimitPrice10000 = 0;
-//     state.upRemainQty100 = 0;
-// #endif
-// #if REPLAY && SH
-//     state.upperLimitPrice = 0;
-// #endif
-// #if REPLAY && SZ
-//     state.upperLimitPrice = 0;
-//     state.upRemainQty = 0;
-// #endif
 
     int32_t stock = g_stockCodes[id];
     MDS::Tick endSign{};
@@ -778,6 +735,8 @@ void logStop(int32_t id, int32_t timestamp, WantCache::Intent intent)
     endSign.head.m_quote_update_time = g_szOffsetTransactTime + timestamp;
 #endif
     pushTickToRing(id, endSign);
+
+    SPDLOG_INFO("limit up: stock={} timestamp={} intent={}", g_stockCodes[id], timestamp, intent);
 }
 
 }
@@ -1243,7 +1202,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
 #if REPLAY
     sleepInterval = static_cast<int64_t>(sleepInterval * MDS::g_timeScale);
 #endif
-    int64_t nextSleepTime = steadyNow() + 200'000;
+    int64_t nextSleepTime = monotonicTime() + 200'000;
     nextSleepTime += sleepInterval * channel / (kChannelCount + 1);
 
     int32_t nTickBrust = 0;
@@ -1275,7 +1234,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
                 addComputeTick(g_stockComputes[id], *pTick);
             }
 
-            int64_t now = steadyNow();
+            int64_t now = monotonicTime();
             if (now > nextSleepTime - 5'000) {
                 break;
             }
@@ -1285,11 +1244,11 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
                     break;
                 }
                 if (now > nextSleepTime - 8'000) {
-                    blockingSleepUntil(now + 2'000);
+                    monotonicSleepUntil(now + 2'000);
                 }
             }
         }
-        blockingSleepUntil(nextSleepTime);
+        monotonicSleepUntil(nextSleepTime);
         nextSleepTime += sleepInterval;
 
         for (int32_t id = startId; id != stopId; ++id) {
