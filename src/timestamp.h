@@ -3,43 +3,43 @@
 
 #include <cstdint>
 
-// inline constexpr int32_t timestampLinear(int32_t timestamp)
-// {
-//     int32_t hours = timestamp / 10000000;
-//     int32_t minutes = (timestamp / 100000) % 100;
-//     int32_t seconds = (timestamp / 1000) % 100;
-//     int32_t milliseconds = timestamp % 1000;
-//
-//     return (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds;
-// }
-
 inline constexpr int32_t timestampLinear(int32_t timestamp)
 {
-    uint32_t u = timestamp;
-    uint16_t mh = uint16_t((uint64_t(u >> 5) * 175921861) >> 39);
-    uint32_t hours = uint16_t((uint32_t(mh >> 2) * 5243) >> 17);
-    return u - (hours * 60 + uint32_t(mh)) * 40000;
+    int32_t hours = timestamp / 10000000;
+    int32_t minutes = (timestamp / 100000) % 100;
+    int32_t seconds = (timestamp / 1000) % 100;
+    int32_t milliseconds = timestamp % 1000;
+
+    return (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds;
 }
 
-// inline constexpr int32_t timestampDelinear(int32_t time)
+// inline constexpr int32_t timestampLinear(int32_t timestamp)
 // {
-//     int32_t milliseconds = time % 1000;
-//     time /= 1000;
-//     int32_t seconds = time % 60;
-//     time /= 60;
-//     int32_t minutes = time % 60;
-//     time /= 60;
-//     int32_t hours = time % 24;
-//     return milliseconds + 1000 * (seconds + 100 * (minutes + 100 * hours));
+//     uint32_t u = timestamp;
+//     uint16_t mh = uint16_t((uint64_t(u >> 5) * 175921861) >> 39);
+//     uint32_t hours = uint16_t((uint32_t(mh >> 2) * 5243) >> 17);
+//     return u - (hours * 60 + uint32_t(mh)) * 40000;
 // }
 
 inline constexpr int32_t timestampDelinear(int32_t time)
 {
-    uint32_t u = time;
-    uint16_t mh = uint16_t((uint64_t(u) * 1172812403) >> 46);
-    uint16_t hours = uint16_t((uint32_t(mh) * 34953) >> 21);
-    return u + 40000 * uint32_t(mh + 100 * hours);
+    int32_t milliseconds = time % 1000;
+    time /= 1000;
+    int32_t seconds = time % 60;
+    time /= 60;
+    int32_t minutes = time % 60;
+    time /= 60;
+    int32_t hours = time % 24;
+    return milliseconds + 1000 * (seconds + 100 * (minutes + 100 * hours));
 }
+
+// inline constexpr int32_t timestampDelinear(int32_t time)
+// {
+//     uint32_t u = time;
+//     uint16_t mh = uint16_t((uint64_t(u) * 1172812403) >> 46);
+//     uint16_t hours = uint16_t((uint32_t(mh) * 34953) >> 21);
+//     return u + 40000 * uint32_t(mh + 100 * hours);
+// }
 
 inline constexpr int64_t timestampAbsLinear(int32_t timestamp)
 {

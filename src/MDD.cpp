@@ -154,11 +154,11 @@ void initStockArrays()
         g_stockIdLut[linearizeStockIdRaw(g_stockCodes[i])] = i;
     }
 
-    g_idToChannelLut.resize(g_stockCodes.size());
+    g_idToChannelLut.resize(g_stockCodes.size(), 0xff);
     for (int32_t channel = 0; channel < kChannelCount; ++channel) {
         const int32_t startId = (g_stockCodes.size() * channel) / kChannelCount;
         const int32_t stopId = (g_stockCodes.size() * (channel + 1)) / kChannelCount;
-        for (int32_t id = startId; id < stopId; ++id) {
+        for (int32_t id = startId; id != stopId; ++id) {
             g_idToChannelLut[id] = static_cast<uint8_t>(channel);
         }
     }
@@ -1140,7 +1140,7 @@ COLD_ZONE void logLimitUp(int32_t id, int32_t timestamp, WantCache::Intent oldIn
         wantTimestamp += wantTimestamp & 1;
         if (minLinearTimestamp == wantTimestamp) {
 #if RECORD_FACTORS
-            compute.factorListCache[i].dumpFactors(timestamp, compute.stockCode);
+            compute.factorListCache[i].dumpFactors(timestampDelinear(minLinearTimestamp), compute.stockCode);
 #endif
             break;
         }
@@ -1300,6 +1300,9 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
                 if (id == -1) [[unlikely]] {
                     continue;
                 }
+                // if (g_idToChannelLut[id] != channel) [[unlikely]] {
+                //     SPDLOG_ERROR("invalid channel data mistransfer");
+                // }
                 addComputeTick(g_stockComputes[id], *pTick);
             }
 
