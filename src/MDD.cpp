@@ -1,6 +1,7 @@
 #include "MDD.h"
 #include "MDS.h"
 #include "OES.h"
+#include "SPSC.h"
 #include "constants.h"
 #include "threadAffinity.h"
 #include "DailyState.h"
@@ -45,10 +46,11 @@ std::array<std::jthread, kChannelCount> g_computeThreads;
 std::vector<int32_t> g_stockCodes;
 std::vector<int32_t> g_prevLimitUpStockCodes;
 std::vector<FactorList> g_stockFactors;
-std::array<uint16_t, 0x2000> g_stockIdLut;
+std::array<int16_t, 0x2000> g_stockIdLut;
 std::unique_ptr<State[]> g_stockStates;
 std::unique_ptr<WantCache[]> g_wantCaches;
 std::unique_ptr<TickRing[]> g_tickRings;
+std::unique_ptr<OES::ReqOrder[]> g_buyRequests;
 
 uint16_t linearizeStockIdRaw(int32_t stock)
 {
@@ -64,7 +66,7 @@ uint16_t linearizeStockIdRaw(int32_t stock)
     return static_cast<uint16_t>(u);
 }
 
-uint16_t linearizeStockId(int32_t stock)
+int32_t linearizeStockId(int32_t stock)
 {
     return g_stockIdLut[linearizeStockIdRaw(stock)];
 }
@@ -88,6 +90,8 @@ void initStockArrays()
     // g_stockComputes = g_memPool.allocate<StockCompute>(g_stockCodes.size());
     g_stockStates = std::make_unique<State[]>(g_stockCodes.size());
     g_wantCaches = std::make_unique<WantCache[]>(g_stockCodes.size());
+    g_tickRings = std::make_unique<TickRing[]>(g_stockCodes.size());
+    g_buyRequests = std::make_unique<OES::ReqOrder[]>(g_stockCodes.size());
 }
 
 void parseDailyConfig(const char *config)
@@ -112,16 +116,10 @@ void parseDailyConfig(const char *config)
         throw;
     }
 
-    // if (date <= 0) {
-    //     SPDLOG_ERROR("invalid config date: {}", date);
-    //     throw std::runtime_error("invalid config date");
-    // }
-
     SPDLOG_INFO("daily start: market={} date={}", MARKET_NAME, date);
 #if !REPLAY
     if (int32_t today = getToday(); date != today) {
         SPDLOG_WARN("config file date not today: fileDate={} todayDate={}", date, today);
-        // throw std::runtime_error("config file date not today");
     }
 #endif
 
@@ -200,8 +198,21 @@ void parseDailyConfig(const char *config)
     initStockArrays();
 }
 
-WantCache::Intent checkWantBuyAtTimestamp()
+WantCache::Intent checkWantBuyAtTimestamp(int32_t id, int32_t timestamp)
 {
+    return g_wantCaches[id].checkWantBuyAtTimestamp(timestamp);
+}
+
+void sendBuyRequest(int32_t id)
+{
+    return OES::sendReqOrder(g_buyRequests[id]);
+}
+
+void pushTickToRing(int32_t id, MDS::Tick &tick)
+{
+    if (!g_tickRings[id].write_one(tick)) [[unlikely]] {
+        _Exit(233);
+    }
 }
 
 }
@@ -234,10 +245,10 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
     if (limitUp) {
         auto intent = wantCache->checkWantBuyAtTimestamp(tick.timestamp);
         if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
-            sendBuyRequest();
+            sendBuyRequest(id);
         }
 
-        logStop(tick.timestamp + static_cast<int32_t>(intent));
+        logStop(id, tick.timestamp + static_cast<int32_t>(intent));
         return;
     }
 
@@ -261,18 +272,16 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
         int32_t timestamp = tick.tickMergeSse.tickTime * 10;
         auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
         if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
-            sendBuyRequest();
+            sendBuyRequest(id);
         }
 
-        logStop(timestamp + static_cast<int32_t>(intent));
+        logStop(id, timestamp + static_cast<int32_t>(intent));
         return;
     }
 
 #elif NE && SZ
     if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ) {
-        // SPDLOG_DEBUG("TRADE {} {} {} {} {}", stockCode, tick.securityID, tick.tradeSz.tradePrice, upperLimitPrice, upperLimitPrice10000);
         if (tick.tradeSz.tradePrice == state.upperLimitPrice10000) {
-            // SPDLOG_DEBUG("UP TRADE {} {} {}", tick.securityID, upRemainQty100, tick.tradeSz.tradeQty);
             state.upRemainQty100 -= tick.tradeSz.tradeQty;
             if (state.upRemainQty100 < 0 && tick.tradeSz.execType == 0x2) {
                 int32_t timestamp = static_cast<uint32_t>(
@@ -284,7 +293,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
                     }
 
 
-                    logStop(timestamp + static_cast<int32_t>(intent));
+                    logStop(id, timestamp + static_cast<int32_t>(intent));
                     return;
                 }
             }
@@ -308,10 +317,10 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
         int32_t timestamp = tick.tick.m_tick_time * 10;
         auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
         if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
-            sendBuyRequest();
+            sendBuyRequest(id);
         }
 
-        logStop(timestamp + static_cast<int32_t>(intent));
+        logStop(id, timestamp + static_cast<int32_t>(intent));
         return;
     }
 
@@ -325,10 +334,10 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
                 if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
                     auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
                     if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
-                        sendBuyRequest();
+                        sendBuyRequest(id);
                     }
 
-                    logStop(timestamp + static_cast<int32_t>(intent));
+                    logStop(id, timestamp + static_cast<int32_t>(intent));
                     return;
                 }
             }
@@ -342,7 +351,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
     }
 #endif
 
-    g_tickRing->pushTick(tick);
+    pushTickToRing(id, tick);
 }
 
 void MDD::handleSnap(MDS::Snap &snap)
