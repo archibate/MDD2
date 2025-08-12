@@ -14,3 +14,5 @@ constexpr std::array<int32_t, kChannelCount> kChannelCpus = {
 };
 
 constexpr int32_t kWantBuyTimeTolerance = 402;
+
+constexpr int64_t kReportMoney = 5'0000'00;

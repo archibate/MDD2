@@ -208,6 +208,7 @@ void MDS::startReceive()
         setThisThreadAffinity(kMDSBindCpu);
         SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
         g_isStarted.store(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         replayMain(tickBuf, stop);
         g_isFinished.store(true);

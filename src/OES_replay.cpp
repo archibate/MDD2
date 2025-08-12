@@ -48,6 +48,13 @@ HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
     MDD::handleRspOrder(rspOrder);
 }
 
+HEAT_ZONE_REQORDER void OES::sendReqOrderBatch(ReqOrderBatch &reqOrderBatch)
+{
+    for (size_t i = 0; i < reqOrderBatch.numBatch; ++i) {
+        OES::sendReqOrder(reqOrderBatch.reqOrders[i]);
+    }
+}
+
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
     SPDLOG_DEBUG("oes replay request cancel: stock={} orderSysId={}",

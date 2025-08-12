@@ -12,6 +12,7 @@
 #include "dateTime.h"
 #include "tickProps.h"
 #include "radixSort.h"
+#include "BuyRequest.h"
 #include "heatZone.h"
 #include <chrono>
 #include <fstream>
@@ -98,19 +99,21 @@ struct alignas(64) Compute
     double floatMV{};
 };
 
-using TickRing = spsc_ring<MDS::Tick, 1024>;
+using TickRing = spsc_ring<MDS::Tick, 0x40000>;
+
+auto kTickRingSizeMB = sizeof(TickRing) / 1024 / 1024;
 
 std::array<std::jthread, kChannelCount> g_computeThreads;
-std::vector<int32_t> g_stockCodes;
-std::vector<int32_t> g_prevLimitUpStockCodes;
-std::vector<FactorList> g_stockFactors;
-std::vector<uint8_t> g_idToChannelLut;
-std::array<int16_t, 0x2000> g_stockIdLut;
-std::unique_ptr<State[]> g_stockStates;
-std::unique_ptr<Compute[]> g_stockComputes;
-std::unique_ptr<WantCache[]> g_wantCaches;
-std::unique_ptr<TickRing[]> g_tickRings;
-std::unique_ptr<OES::ReqOrder[]> g_buyRequests;
+std::vector<int32_t> g_stockCodes; // constant, owned by all
+std::vector<int32_t> g_prevLimitUpStockCodes; // constant, owned by all
+std::vector<FactorList> g_stockFactors; // owned by compute thread [c:c]
+std::vector<uint8_t> g_idToChannelLut; // owned by mds thread
+std::array<int16_t, 0x2000> g_stockIdLut; // owned by mds thread
+std::unique_ptr<State[]> g_stockStates; // owned by mds thread
+std::unique_ptr<Compute[]> g_stockComputes; // owned by compute thread [c:c]
+std::unique_ptr<WantCache[]> g_wantCaches; // shared by compute thread [c:c] and mds thread
+std::unique_ptr<TickRing[]> g_tickRings; // shared by compute thread [c] and mds thread
+std::unique_ptr<BuyRequest[]> g_buyRequests; // owned by mds thread
 
 // SH 600xxx 601xxx 603xxx 605xxx
 // SZ 000xxx 001xxx 002xxx 003xxx
@@ -675,18 +678,24 @@ WantCache::Intent checkWantBuyAtTimestamp(int32_t id, int32_t timestamp)
 
 HEAT_ZONE_REQORDER void sendBuyRequest(int32_t id)
 {
-    return OES::sendReqOrder(g_buyRequests[id]);
+#if SPLIT_ORDER
+    OES::sendReqOrderBatch(g_buyRequests[id]);
+#else
+    OES::sendReqOrder(g_buyRequests[id]);
+#endif
 }
 
-COLD_ZONE void reportTickRingOverflow()
+COLD_ZONE void reportTickRingOverflow(int32_t channel)
 {
-    SPDLOG_WARN("tick ring overflow");
+    SPDLOG_WARN("tick ring overflow: channel={}", channel);
+    throw;
 }
 
 void pushTickToRing(int32_t id, MDS::Tick &tick)
 {
-    if (!g_tickRings[g_idToChannelLut[id]].write_one(tick)) [[unlikely]] {
-        reportTickRingOverflow();
+    int32_t ch = g_idToChannelLut[id];
+    if (!g_tickRings[ch].write_one(tick)) [[unlikely]] {
+        reportTickRingOverflow(ch);
     }
 }
 
@@ -721,6 +730,24 @@ void pushTickToRing(int32_t id, MDS::Tick &tick)
 
 void logStop(int32_t id, int32_t timestamp)
 {
+    g_stockIdLut[linearizeStockIdRaw(g_stockCodes[id])] = -1;
+
+//     auto &state = g_stockStates[id];
+// #if (NE || OST) && SH
+//     state.upperLimitPrice1000 = 0;
+// #endif
+// #if (NE || OST) && SZ
+//     state.upperLimitPrice10000 = 0;
+//     state.upRemainQty100 = 0;
+// #endif
+// #if REPLAY && SH
+//     state.upperLimitPrice = 0;
+// #endif
+// #if REPLAY && SZ
+//     state.upperLimitPrice = 0;
+//     state.upRemainQty = 0;
+// #endif
+
     int32_t stock = g_stockCodes[id];
     MDS::Tick endSign{};
 #if REPLAY
@@ -775,7 +802,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
         && tick.timestamp < 14'57'00'000;
 #endif
     if (limitUp) {
-        auto intent = wantCache->checkWantBuyAtTimestamp(tick.timestamp);
+        auto intent = checkWantBuyAtTimestamp(id, tick.timestamp);
         if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
             sendBuyRequest(id);
         }
@@ -916,7 +943,7 @@ void MDD::handleStatic(MDS::Stat &stat)
 #endif
 
     auto &compute = g_stockComputes[id];
-    compute.stockCode = g_stockCodes[id];
+    compute.stockCode = stock;
     compute.upperLimitPrice = upperLimitPrice;
     compute.preClosePrice = preClosePrice;
 
@@ -932,6 +959,17 @@ void MDD::handleStatic(MDS::Stat &stat)
     compute.bState.iirState = std::make_unique<IIRState>();
 
     compute.futureTimestamp = compute.fState.nextTickTimestamp = 9'30'00'000;
+
+#if DUMMY_QUANTITY
+    int32_t reportQuantity = 100;
+#else
+    int32_t reportQuantity = std::max(static_cast<int32_t>(std::min(std::round(
+        (static_cast<double>(kReportMoney) / static_cast<double>(upperLimitPrice))
+        * 0.01), 9999.0)) * INT32_C(100), INT32_C(100));
+#endif
+
+    auto &buyRequest = g_buyRequests[id];
+    makeBuyRequest(buyRequest, stock, upperLimitPrice, reportQuantity);
 }
 
 namespace
@@ -1018,13 +1056,13 @@ HEAT_ZONE_ORDBOOK void addComputeTrade(Compute &compute, MDS::Tick &tick)
     }
 
     if (tick.timestamp < 9'30'00'000) {
-        fState.currSnapshot.lastPrice = openPrice = tick.price;
-        openVolume += tick.quantity;
+        compute.fState.currSnapshot.lastPrice = compute.openPrice = tick.price;
+        compute.openVolume += tick.quantity;
         return;
     }
 
-    if (tick.price >= upperLimitPriceApproach) {
-        approachingLimitUp = true;
+    if (tick.price >= compute.upperLimitPriceApproach) {
+        compute.approachingLimitUp = true;
     }
     addRealTrade(compute, tick.timestamp, tick.price, tick.quantity);
 
@@ -1086,9 +1124,7 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
 
 #if REPLAY
     if (tick.quantity == 0) [[unlikely]] {
-        logLimitUp(&compute - g_stockComputes.get(), tick.timestamp / 10 * 10,
-                   static_cast<WantCache::Intent>(tick.timestamp % 10));
-        stop();
+        compute.upperLimitPrice = 0;
         return;
     }
 
@@ -1197,25 +1233,32 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
     int64_t nextSleepTime = steadyNow() + 200'000;
     nextSleepTime += sleepInterval * channel / (kChannelCount + 1);
 
+    int32_t nTickBrust = 0;
+
     while (!stop.stop_requested()) [[likely]] {
         approachStockIds.clear();
         for (int32_t id = startId; id != stopId; ++id) {
             g_stockComputes[id].approachingLimitUp = false;
         }
 
-        while (true) {
-            if (stop.stop_requested()) [[unlikely]] {
-                return;
-            }
+        while (!stop.stop_requested()) [[likely]] {
 
             MDS::Tick *endTicks = g_tickRings[channel].read_some(tickBuf, tickBuf + std::size(tickBuf));
+            if (endTicks != tickBuf && endTicks - tickBuf == std::size(tickBuf)) {
+                ++nTickBrust;
+            } else {
+                if (nTickBrust >= 3) {
+                    SPDLOG_TRACE("tick burst: channel={} nBrust={}", channel, nTickBrust * std::size(tickBuf));
+                }
+                nTickBrust = 0;
+            }
+
             for (MDS::Tick *pTick = tickBuf; pTick != endTicks; ++pTick) {
                 int32_t stock = tickStockCode(*pTick);
                 int32_t id = linearizeStockId(stock);
                 if (id == -1) [[unlikely]] {
                     continue;
                 }
-
                 addComputeTick(g_stockComputes[id], *pTick);
             }
 
@@ -1298,22 +1341,24 @@ void MDD::start(const char *config)
     SPDLOG_INFO("subscribing {} stocks", g_stockCodes.size());
     MDS::subscribe(g_stockCodes.data(), g_stockCodes.size());
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    SPDLOG_DEBUG("starting {} compute threads", kChannelCount);
+    for (int32_t c = 0; c < kChannelCount; ++c) {
+        g_computeThreads[c] = std::jthread([c] (std::stop_token stop) {
+            setThisThreadAffinity(kChannelCpus[c]);
+            SPDLOG_DEBUG("compute thread started: channel={}", c);
+            computeThreadMain(c, stop);
+        });
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
     SPDLOG_INFO("start receiving stock quotes");
     MDS::startReceive();
     while (!MDS::isStarted()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
     SPDLOG_DEBUG("mds receive started");
-
-    SPDLOG_DEBUG("starting {} compute threads", kChannelCount);
-    for (int32_t c = 0; c < kChannelCount; ++c) {
-        g_computeThreads[c] = std::jthread([c] (std::stop_token stop) {
-            setThisThreadAffinity(kChannelCpus[c]);
-            computeThreadMain(c, stop);
-        });
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     SPDLOG_INFO("system fully started");
 }
