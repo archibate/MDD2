@@ -3,6 +3,7 @@
 #include "config.h"
 #include "dateTime.h"
 #include <stdexcept>
+#include <algorithm>
 #include <thread>
 #include <chrono>
 #include <cstring>
@@ -32,7 +33,7 @@ void abortHandler(int signo)
     signal(signo, SIG_DFL);
 
     void *addrs[32];
-    size_t size = backtrace(addrs, sizeof addrs / sizeof addrs[0]);
+    size_t size = backtrace(addrs, std::size(addrs));
     backtrace_symbols_fd(addrs, size, STDERR_FILENO);
     char **symbols = backtrace_symbols(addrs, size);
     SPDLOG_ERROR("Stack backtrace:");
@@ -66,7 +67,7 @@ void faultHandler(int signo, siginfo_t *info, void *ucontext) {
     fflush(stderr);
 
     void *addrs[32];
-    size_t size = backtrace(addrs, sizeof addrs / sizeof addrs[0]);
+    size_t size = backtrace(addrs, std::size(addrs));
     backtrace_symbols_fd(addrs, size, STDERR_FILENO);
     SPDLOG_ERROR("PROGRAM CRASHED");
     char **symbols = backtrace_symbols(addrs, size);
@@ -93,7 +94,7 @@ void faultHandler(int signo, siginfo_t *info, void *ucontext) {
             "SEGV_MTESERR",
         };
         SPDLOG_ERROR("Signal code: {} ({})", info->si_code, info->si_code > 0
-                     && info->si_code <= sizeof kSegvCodeNames / sizeof kSegvCodeNames[0]
+                     && info->si_code <= std::size(kSegvCodeNames)
                      ? kSegvCodeNames[info->si_code - 1] : "???");
     } else {
         SPDLOG_ERROR("Signal code: {}", info->si_code);

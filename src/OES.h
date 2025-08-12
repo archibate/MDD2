@@ -4,6 +4,7 @@
 #include <absl/types/internal/variant.h>
 #include <cstdint>
 #include "config.h"
+#include "exchangeFronts.h"
 #if XC || NE
 #include <xele/XeleSecuritiesUserApiStruct.h>
 #elif OST
@@ -105,6 +106,13 @@ const char *strErrorId(TXeleErrorIdType errorId);
 struct ReqOrder
 {
     CUTInputOrderField inputOrder;
+    uint32_t userLocalID;
+};
+
+struct ReqOrderBatch
+{
+    CUTInputOrderField inputOrder[kExchangeFronts.size()];
+    size_t numBatch;
     uint32_t userLocalID;
 };
 
