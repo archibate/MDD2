@@ -4,7 +4,7 @@
 #include "SPSC.h"
 #include "constants.h"
 #include "threadAffinity.h"
-#include "DailyState.h"
+#include "DailyFactorFile.h"
 #include "WantCache.h"
 #include "FactorList.h"
 #include "dateTime.h"
@@ -47,6 +47,7 @@ std::array<std::jthread, kChannelCount> g_computeThreads;
 std::vector<int32_t> g_stockCodes;
 std::vector<int32_t> g_prevLimitUpStockCodes;
 std::vector<FactorList> g_stockFactors;
+std::vector<int32_t> g_idToChannelLut;
 std::array<int16_t, 0x2000> g_stockIdLut;
 std::unique_ptr<State[]> g_stockStates;
 std::unique_ptr<WantCache[]> g_wantCaches;
@@ -81,6 +82,11 @@ void initStockArrays()
         g_stockIdLut[linearizeStockIdRaw(g_stockCodes[i])] = i;
     }
 
+    g_idToChannelLut.resize(g_stockCodes.size());
+    for (int32_t i = 0; i < g_stockCodes.size(); ++i) {
+        g_idToChannelLut[i] = (i * kChannelCount) / g_stockCodes.size();
+    }
+
     // g_tickRings = std::make_unique<TickRing[]>(kChannelCount);
     // g_wantCaches = std::make_unique<WantCache[]>(g_stockCodes.size());
     // g_stockStates = std::make_unique<StockState[]>(g_stockCodes.size());
@@ -91,7 +97,7 @@ void initStockArrays()
     // g_stockComputes = g_memPool.allocate<StockCompute>(g_stockCodes.size());
     g_stockStates = std::make_unique<State[]>(g_stockCodes.size());
     g_wantCaches = std::make_unique<WantCache[]>(g_stockCodes.size());
-    g_tickRings = std::make_unique<TickRing[]>(g_stockCodes.size());
+    g_tickRings = std::make_unique<TickRing[]>(kChannelCount);
     g_buyRequests = std::make_unique<OES::ReqOrder[]>(g_stockCodes.size());
 }
 
@@ -137,7 +143,7 @@ void parseDailyConfig(const char *config)
         SPDLOG_ERROR("cannot open daily factors for market={} date={} factorFile=[{}]", MARKET_NAME, date, factorFile);
         throw std::runtime_error("cannot open daily factors");
     }
-    DailyHeader header{};
+    DailyFactorFileHeader header{};
     facFile.read((char *)&header, sizeof(header));
 
     constexpr int32_t kFileVersion = 250722;
@@ -209,11 +215,44 @@ void sendBuyRequest(int32_t id)
     return OES::sendReqOrder(g_buyRequests[id]);
 }
 
+COLD_ZONE void reportTickRingOverflow()
+{
+    SPDLOG_WARN("tick ring overflow");
+}
+
 void pushTickToRing(int32_t id, MDS::Tick &tick)
 {
-    if (!g_tickRings[id].write_one(tick)) [[unlikely]] {
-        _Exit(233);
+    if (!g_tickRings[g_idToChannelLut[id]].write_one(tick)) [[unlikely]] {
+        reportTickRingOverflow();
     }
+}
+
+void logStop(int32_t id, int32_t timestamp)
+{
+    MDS::Tick endSign{};
+#if REPLAY
+    endSign.quantity = 0;
+    endSign.stock = stockCode;
+    endSign.timestamp = timestamp;
+#elif NE && SH
+    endSign.tickMergeSse.tickType = 0;
+    std::sprintf(endSign.tickMergeSse.securityID, "%06d", stockCode);
+    endSign.tickMergeSse.tickTime = timestamp / 10;
+    endSign.tickMergeSse.tickBSFlag = timestamp % 10;
+#elif NE && SZ
+    endSign.tradeSz.messageType = 0;
+    std::sprintf(endSign.tradeSz.securityID, "%06d", stockCode);
+    endSign.tradeSz.transactTime = timestamp;
+#elif OST && SH
+    endSign.tick.m_tick_type = 0;
+    std::sprintf(endSign.tick.m_symbol_id, "%06d", stockCode);
+    endSign.tick.m_tick_time = timestamp;
+#elif OST && SZ
+    endSign.head.m_message_type = 0;
+    std::sprintf(endSign.head.m_symbol, "%06d", stockCode);
+    endSign.head.m_quote_update_time = timestamp;
+#endif
+    pushTickToRing(id, endSign);
 }
 
 }
@@ -388,7 +427,10 @@ void MDD::handleStatic(MDS::Stat &stat)
 namespace
 {
 
-HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t stopId, std::stop_token stop);
+HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
+{
+}
+
 // {
 //     thread_local MDS::Tick tickBuf[1024];
 //     std::vector<int32_t> approachStockIds;
@@ -495,16 +537,13 @@ void MDD::start(const char *config)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    SPDLOG_INFO("mds receive started");
+    SPDLOG_DEBUG("mds receive started");
 
-    SPDLOG_DEBUG("starting {} compute channels", kChannelCount);
+    SPDLOG_DEBUG("starting {} compute threads", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
-        int32_t startId = (g_stockCodes.size() * c) / kChannelCount;
-        int32_t stopId = (g_stockCodes.size() * (c + 1)) / kChannelCount;
-
-        g_computeThreads[c] = std::jthread([c, startId, stopId] (std::stop_token stop) {
+        g_computeThreads[c] = std::jthread([c] (std::stop_token stop) {
             setThisThreadAffinity(kChannelCpus[c]);
-            computeThreadMain(c, startId, stopId, stop);
+            computeThreadMain(c, stop);
         });
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
@@ -522,7 +561,7 @@ void MDD::stop()
     OES::stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(60));
 
-    SPDLOG_DEBUG("stopping {} compute channels", kChannelCount);
+    SPDLOG_DEBUG("stopping {} compute threads", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c].request_stop();
         g_computeThreads[c].join();

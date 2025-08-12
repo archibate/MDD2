@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-struct DailyHeader
+struct DailyFactorFileHeader
 {
     int32_t fileVersion; // 250722
     int32_t today; // 20250102
