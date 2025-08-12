@@ -294,8 +294,15 @@ int callReqLogin()
     ConfigParam98 param{};
     param.IsJustConnectManager = false;
     param.DependentCounterVersion = 2;
-#if NE
+#if NE && SH
     param.ManagerURL = "tcp://10.101.58.32:50000;tcp://10.101.58.33:50000";
+#endif
+#if NE && SZ && !SZ2
+    param.ManagerURL = "tcp://10.101.58.32:50000;tcp://10.101.58.33:50000";
+#endif
+#if NE && SZ && SZ2
+    param.ManagerURL = "tcp://10.107.39.12:50000;tcp://10.107.39.13:50000";
+#endif
 #endif
 #if XC
     param.ManagerURL = "tcp://10.208.48.27:50000;tcp://10.208.48.28:50000";
@@ -335,12 +342,11 @@ int callReqLogin()
 #if NE && SH
     param.solarfareTradeEthName = "enp1s0f1";
 #endif
-#if NE && SZ
-#if SZ2
-    param.solarfareTradeEthName = "enp1s0f0";
-#else
+#if NE && SZ && !SZ2
     param.solarfareTradeEthName = "enp1s0f1";
 #endif
+#if NE && SZ && SZ2
+    param.solarfareTradeEthName = "enp1s0f0";
 #endif
 #if XC && SH
     param.solarfareTradeEthName = "enp1s0f0";
