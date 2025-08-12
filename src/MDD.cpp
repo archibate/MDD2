@@ -645,7 +645,8 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
     *compute.bState.iirState = *compute.fState.iirState;
     compute.bState.iirState.swap(compute.fState.iirState);
 
-    stepSnapshotUntil(compute, compute.futureTimestamp);
+    int32_t timestamp = compute.futureTimestamp;
+    stepSnapshotUntil(compute, timestamp);
 
     for (auto const &[sellOrderId, sell]: compute.upSellOrders) {
         int64_t q64 = sell.quantity;
@@ -662,7 +663,11 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
     compute.fState.iirState->finalCompute(factorList.crowdind);
 
     bool wantBuy = predictModel(factorList.rawFactors);
-    g_wantCaches[id].pushWantBuyTimestamp(compute.futureTimestamp, wantBuy);
+    g_wantCaches[id].pushWantBuyTimestamp(timestamp, wantBuy);
+
+#if RECORD_FACTORS
+    factorList.dumpFactors(timestamp, compute.stockCode);
+#endif
 
     compute.bState.savingMode = false;
     compute.fState.nextTickTimestamp = compute.bState.nextTickTimestamp;
@@ -728,9 +733,14 @@ void pushTickToRing(int32_t id, MDS::Tick &tick)
 //     pushTickToRing(id, endSign);
 // }
 
-void logStop(int32_t id, int32_t timestamp)
+void unsubscribeStock(int32_t id)
 {
     g_stockIdLut[linearizeStockIdRaw(g_stockCodes[id])] = -1;
+}
+
+void logStop(int32_t id, int32_t timestamp, WantCache::Intent intent)
+{
+    unsubscribeStock(id);
 
 //     auto &state = g_stockStates[id];
 // #if (NE || OST) && SH
@@ -807,7 +817,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
             sendBuyRequest(id);
         }
 
-        logStop(id, tick.timestamp);
+        logStop(id, tick.timestamp, intent);
         return;
     }
 
@@ -834,7 +844,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
             sendBuyRequest(id);
         }
 
-        logStop(id, timestamp);
+        logStop(id, timestamp, intent);
         return;
     }
 
@@ -852,7 +862,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
                     }
 
 
-                    logStop(id, timestamp);
+                    logStop(id, timestamp, intent);
                     return;
                 }
             }
@@ -879,7 +889,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
             sendBuyRequest(id);
         }
 
-        logStop(id, timestamp);
+        logStop(id, timestamp, intent);
         return;
     }
 
@@ -896,7 +906,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
                         sendBuyRequest(id);
                     }
 
-                    logStop(id, timestamp);
+                    logStop(id, timestamp, intent);
                     return;
                 }
             }
@@ -928,6 +938,13 @@ void MDD::handleStatic(MDS::Stat &stat)
 
     int32_t upperLimitPrice = statUpperLimitPrice(stat);
     int32_t preClosePrice = statPreClosePrice(stat);
+
+    if (upperLimitPrice == 0) [[unlikely]] {
+        SPDLOG_WARN("invalid static price: stock={} upperLimitPrice={}", stock, upperLimitPrice);
+        unsubscribeStock(id);
+        return;
+    }
+
 
 #if (NE || OST) && SH
     state.upperLimitPrice1000 = upperLimitPrice * 10;
@@ -1346,7 +1363,7 @@ void MDD::start(const char *config)
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c] = std::jthread([c] (std::stop_token stop) {
             setThisThreadAffinity(kChannelCpus[c]);
-            SPDLOG_DEBUG("compute thread started: channel={}", c);
+            SPDLOG_TRACE("compute thread started: channel={}", c);
             computeThreadMain(c, stop);
         });
     }

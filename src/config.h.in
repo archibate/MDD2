@@ -3,6 +3,7 @@
 #cmakedefine01 BUILD_SPEED
 #cmakedefine01 RECORD_FACTORS
 #cmakedefine01 ALWAYS_BUY
+#cmakedefine01 DUMMY_QUANTITY
 #cmakedefine01 ASYNC_LOGGER
 #cmakedefine01 BEST_ORDER
 #cmakedefine01 SPLIT_ORDER

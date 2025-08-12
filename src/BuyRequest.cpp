@@ -4,13 +4,7 @@
 
 void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimitPrice, int32_t quantity)
 {
-    if (upperLimitPrice == 0) [[unlikely]] {
-        SPDLOG_WARN("invalid static price: stock={} upperLimitPrice={}",
-                    stockCode, upperLimitPrice);
-        return;
-    }
-
-    SPDLOG_TRACE("initial static: stock={} upperLimitPrice={} reportQuantity={}",
+    SPDLOG_TRACE("prepared buy request: stock={} upperLimitPrice={} reportQuantity={}",
                  stockCode, upperLimitPrice, quantity);
 
 #if SPLIT_ORDER
