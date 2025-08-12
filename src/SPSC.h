@@ -19,6 +19,7 @@ struct alignas(64) spsc_ring
     T *m_write_pos_local;
 
     alignas(64) T m_ring_buffer[N];
+    T m_ring_buffer_end[0];
 
     spsc_ring(spsc_ring &&) = delete;
 
@@ -40,7 +41,7 @@ struct alignas(64) spsc_ring
         while (input_first != input_last) {
             T *next_write_pos = write_pos_local;
             ++next_write_pos;
-            if (next_write_pos == m_ring_buffer + N) {
+            if (next_write_pos == m_ring_buffer_end) {
                 next_write_pos = m_ring_buffer;
             }
             if (next_write_pos == read_pos_cached) {
@@ -98,7 +99,7 @@ struct alignas(64) spsc_ring
             *output_first = *read_pos_local;
             ++output_first;
             ++read_pos_local;
-            if (read_pos_local == m_ring_buffer + N) {
+            if (read_pos_local == m_ring_buffer_end) {
                 read_pos_local = m_ring_buffer;
             }
         }
@@ -122,7 +123,7 @@ struct alignas(64) spsc_ring
         while (input_first != input_last) {
             T *next_write_pos = write_pos_local;
             ++next_write_pos;
-            if (next_write_pos == m_ring_buffer + N) {
+            if (next_write_pos == m_ring_buffer_end) {
                 next_write_pos = m_ring_buffer;
             }
             if (next_write_pos == read_pos_cached) {
@@ -152,7 +153,7 @@ struct alignas(64) spsc_ring
         T *read_pos_cached = m_read_pos_cached;
         T *next_write_pos = write_pos_local;
         ++next_write_pos;
-        if (next_write_pos == m_ring_buffer + N) {
+        if (next_write_pos == m_ring_buffer_end) {
             next_write_pos = m_ring_buffer;
         }
         if (next_write_pos == read_pos_cached) {
@@ -197,7 +198,7 @@ struct alignas(64) spsc_ring
             *output_first = *read_pos_local;
             ++output_first;
             ++read_pos_local;
-            if (read_pos_local == m_ring_buffer + N) {
+            if (read_pos_local == m_ring_buffer_end) {
                 read_pos_local = m_ring_buffer;
             }
         }

@@ -386,7 +386,7 @@ HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
     }
 
     if (rspOrder.rspType == OES::RspOrder::XeleRspOrderInsert) {
-        SPDLOG_DEBUG("ost responsed rspType=XeleRspOrderInsert stock={} userLocalID={} errorID={} {}", stockCode, rspOrder.userLocalID, rspOrder.errorID, refl::to_string(*rspOrder.xeleRspOrderInsert));
+        SPDLOG_DEBUG("xele responsed rspType=XeleRspOrderInsert stock={} userLocalID={} errorID={} {}", stockCode, rspOrder.userLocalID, rspOrder.errorID, refl::to_string(*rspOrder.xeleRspOrderInsert));
 
         // if (rspOrder.errorID != 0) {
         //     SPDLOG_ERROR("(XeleRspOrderInsert) stock={} errorId={} errorMsg=[{}]", stockCode, rspOrder.errorID, OES::strErrorId(rspOrder.errorID));
@@ -394,7 +394,7 @@ HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
         // SPDLOG_INFO("(XeleRspOrderInsert) stock={} securityId={} orderSysId={} orderPrice={} orderQuantity={} exchangeFrontId={} orderDirection={} errorId={}", stockCode, rspOrder.xeleRspOrderInsert->SecuritiesID, rspOrder.xeleRspOrderInsert->OrderSysID, rspOrder.xeleRspOrderInsert->LimitPrice, rspOrder.xeleRspOrderInsert->Volume, rspOrder.xeleRspOrderAction->ExchangeFrontID, rspOrder.xeleRspOrderInsert->Direction == XELE_ORDER_BUY ? "BUY" : rspOrder.xeleRspOrderInsert->Direction == '2' ? "SELL" : "WARM", rspOrder.xeleRspOrderAction->ErrorId);
 
     } else if (rspOrder.rspType == OES::RspOrder::XeleRspOrderAction) {
-        SPDLOG_DEBUG("ost responsed rspType=XeleRspOrderAction stock={} userLocalID={} errorID={} {}", stockCode, rspOrder.userLocalID, rspOrder.errorID, refl::to_string(*rspOrder.xeleRspOrderAction));
+        SPDLOG_DEBUG("xele responsed rspType=XeleRspOrderAction stock={} userLocalID={} errorID={} {}", stockCode, rspOrder.userLocalID, rspOrder.errorID, refl::to_string(*rspOrder.xeleRspOrderAction));
 
         // if (rspOrder.errorID != 0) {
         //     SPDLOG_ERROR("(XeleRspOrderAction) stock={} errorId={} errorMsg=[{}]", stockCode, rspOrder.errorID, OES::strErrorId(rspOrder.errorID));
@@ -402,7 +402,7 @@ HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
         // SPDLOG_INFO("(XeleRspOrderAction) stock={} orderSysId={} orderExchangeId={} exchangeFrontId={} errorId={}", stockCode, rspOrder.xeleRspOrderAction->OrderSysID, rspOrder.xeleRspOrderAction->OrderExchangeID, rspOrder.xeleRspOrderAction->ExchangeFrontID, rspOrder.xeleRspOrderAction->ErrorId);
 
     } else if (rspOrder.rspType == OES::RspOrder::XeleRtnOrder) {
-        SPDLOG_DEBUG("ost responsed rspType=XeleRtnOrder stock={} userLocalID={} errorID={} {}", stockCode, rspOrder.userLocalID, rspOrder.errorID, refl::to_string(*rspOrder.xeleRtnOrder));
+        SPDLOG_DEBUG("xele responsed rspType=XeleRtnOrder stock={} userLocalID={} errorID={} {}", stockCode, rspOrder.userLocalID, rspOrder.errorID, refl::to_string(*rspOrder.xeleRtnOrder));
 
         // if (rspOrder.errorID != 0) {
         //     SPDLOG_ERROR("(XeleRtnOrder) stock={} errorId={} errorMsg=[{}]", stockCode, rspOrder.errorID, OES::strErrorId(rspOrder.errorID));
@@ -410,7 +410,7 @@ HEAT_ZONE_RSPORDER void StockState::onRspOrder(OES::RspOrder &rspOrder)
         // SPDLOG_INFO("(XeleRtnOrder) stock={} orderSysId={} orderExchangeId={} orderPrice={} orderQuantity={} orderDirection={} transactTime={} tradeQuantity={} leavesQuantity={} orderStatus={} exchangeFrontId={}", stockCode, rspOrder.xeleRtnOrder->OrderSysID, rspOrder.xeleRtnOrder->OrderExchangeID, rspOrder.xeleRtnOrder->LimitPrice, rspOrder.xeleRtnOrder->Volume, rspOrder.xeleRtnOrder->Direction == XELE_ORDER_BUY ? "BUY" : "SELL", rspOrder.xeleRtnOrder->TransactTime, rspOrder.xeleRtnOrder->TradeVolume, rspOrder.xeleRtnOrder->LeavesVolume, rspOrder.xeleRtnOrder->OrderStatus, rspOrder.xeleRtnOrder->ExchangeFrontID);
 
     } else if (rspOrder.rspType == OES::RspOrder::XeleRtnTrade) {
-        SPDLOG_DEBUG("ost responsed rspType=XeleRtnTrade stock={} userLocalID={} errorID={} {}", stockCode, rspOrder.userLocalID, rspOrder.errorID, refl::to_string(*rspOrder.xeleRtnTrade));
+        SPDLOG_DEBUG("xele responsed rspType=XeleRtnTrade stock={} userLocalID={} errorID={} {}", stockCode, rspOrder.userLocalID, rspOrder.errorID, refl::to_string(*rspOrder.xeleRtnTrade));
 
         // if (rspOrder.errorID != 0) {
         //     SPDLOG_ERROR("(XeleRtnTrade) stock={} errorId={} errorMsg=[{}]", stockCode, rspOrder.errorID, OES::strErrorId(rspOrder.errorID));
@@ -477,7 +477,7 @@ HEAT_ZONE_REQORDER void StockState::sendBuyRequest()
 
 int32_t StockState::stockIndex() const
 {
-    return this - MDD::g_stockStates.get();
+    return this - MDD::g_stockStates;
 }
 
 StockCompute &StockState::stockCompute() const

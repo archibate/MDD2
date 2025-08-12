@@ -842,7 +842,7 @@ HEAT_ZONE_MODEL bool StockCompute::computeModel()
 
 int32_t StockCompute::stockIndex() const
 {
-    return this - MDD::g_stockComputes.get();
+    return this - MDD::g_stockComputes;
 }
 
 StockState &StockCompute::stockState() const

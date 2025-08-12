@@ -8,19 +8,22 @@
 #include "FactorList.h"
 #include "dateTime.h"
 #include "tickProps.h"
+#include "MemPool.h"
 #include "heatZone.h"
 #include <chrono>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
-std::array<std::jthread, kChannelCount> MDD::g_computeThreads;
-std::unique_ptr<StockState[]> MDD::g_stockStates;
-std::unique_ptr<StockCompute[]> MDD::g_stockComputes;
-std::unique_ptr<WantCache[]> MDD::g_wantCaches;
-std::unique_ptr<TickRing[]> MDD::g_tickRings;
-std::vector<int32_t> MDD::g_stockCodes;
-std::vector<int32_t> MDD::g_prevLimitUpStockCodes;
+extern MemPool g_memPool;
+
+std::array<std::jthread, kChannelCount> g_computeThreads;
+StockState *g_stockStates;
+StockCompute *g_stockComputes;
+WantCache *g_wantCaches;
+TickRing *g_tickRings;
+std::vector<int32_t> g_stockCodes;
+std::vector<int32_t> g_prevLimitUpStockCodes;
 
 namespace
 {
@@ -50,10 +53,14 @@ void initStockArrays()
         g_stockIdLut[linearizeStockId(MDD::g_stockCodes[i])] = i;
     }
 
-    MDD::g_tickRings = std::make_unique<TickRing[]>(kChannelCount);
-    MDD::g_wantCaches = std::make_unique<WantCache[]>(MDD::g_stockCodes.size());
-    MDD::g_stockStates = std::make_unique<StockState[]>(MDD::g_stockCodes.size());
-    MDD::g_stockComputes = std::make_unique<StockCompute[]>(MDD::g_stockCodes.size());
+    // MDD::g_tickRings = std::make_unique<TickRing[]>(kChannelCount);
+    // MDD::g_wantCaches = std::make_unique<WantCache[]>(MDD::g_stockCodes.size());
+    // MDD::g_stockStates = std::make_unique<StockState[]>(MDD::g_stockCodes.size());
+    // MDD::g_stockComputes = std::make_unique<StockCompute[]>(MDD::g_stockCodes.size());
+    MDD::g_tickRings = g_memPool.allocate<TickRing>(kChannelCount);
+    MDD::g_wantCaches = g_memPool.allocate<WantCache>(MDD::g_stockCodes.size());
+    MDD::g_stockStates = g_memPool.allocate<StockState>(MDD::g_stockCodes.size());
+    MDD::g_stockComputes = g_memPool.allocate<StockCompute>(MDD::g_stockCodes.size());
 }
 
 void parseDailyConfig(const char *config)
@@ -278,12 +285,12 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 
 void MDD::handleSnap(MDS::Snap &snap)
 {
-    int32_t stock = snapStockCode(snap);
-    int32_t id = g_stockIdLut[linearizeStockId(stock)];
-    if (id == -1) [[unlikely]] {
-        return;
-    }
-    MDD::g_stockStates[id].onSnap(snap);
+    // int32_t stock = snapStockCode(snap);
+    // int32_t id = g_stockIdLut[linearizeStockId(stock)];
+    // if (id == -1) [[unlikely]] {
+    //     return;
+    // }
+    // MDD::g_stockStates[id].onSnap(snap);
 }
 
 void MDD::handleStatic(MDS::Stat &stat)
@@ -397,10 +404,10 @@ void MDD::stop()
         g_tickRings[i].stop();
     }
 
-    g_stockComputes.reset();
-    g_stockStates.reset();
-    g_wantCaches.reset();
-    g_tickRings.reset();
+    // g_stockComputes;
+    // g_stockStates;
+    // g_wantCaches;
+    // g_tickRings;
     SPDLOG_INFO("system fully stopped");
 }
 
