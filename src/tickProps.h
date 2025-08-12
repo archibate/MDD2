@@ -3,6 +3,7 @@
 
 #include "MDS.h"
 #include "securityId.h"
+#include <cmath>
 
 
 inline int32_t tickStockCode(MDS::Tick &tick)
@@ -51,4 +52,44 @@ inline int32_t statStockCode(MDS::Stat &stat)
     int32_t stock = securityId(stat.depthMarketData.InstrumentID);
 #endif
     return stock;
+}
+
+inline int32_t statUpperLimitPrice(MDS::Stat &stat)
+{
+#if REPLAY
+    int32_t price = stat.upperLimitPrice;
+#elif NE
+    int32_t price = 0;
+    switch (stat.marketType) {
+        case NescForesight::SSE: {
+            price = static_cast<int32_t>(std::round(stat.staticSseInfo.upperLimitPrice * 100));
+        } break;
+        case NescForesight::SZE: {
+            price = static_cast<int32_t>(std::round(stat.staticSzInfo.upperLimitPrice * 100));
+        } break;
+    }
+#elif OST
+    int32_t price = static_cast<int32_t>(std::round(stat.depthMarketData.UpperLimitPrice * 100));
+#endif
+    return price;
+}
+
+inline int32_t statPreClosePrice(MDS::Stat &stat)
+{
+#if REPLAY
+    int32_t price = stat.preClosePrice;
+#elif NE
+    int32_t price = 0;
+    switch (stat.marketType) {
+        case NescForesight::SSE: {
+            price = static_cast<int32_t>(std::round(stat.staticSseInfo.prevClosePx * 100));
+        } break;
+        case NescForesight::SZE: {
+            price = static_cast<int32_t>(std::round(stat.staticSzInfo.prevClosePx * 100));
+        } break;
+    }
+#elif OST
+    int32_t price = static_cast<int32_t>(std::round(stat.depthMarketData.PreClosePrice * 100));
+#endif
+    return price;
 }

@@ -2,35 +2,55 @@
 #include "MDS.h"
 #include "OES.h"
 #include "constants.h"
-#include "StockState.h"
 #include "threadAffinity.h"
 #include "DailyState.h"
+#include "WantCache.h"
 #include "FactorList.h"
 #include "dateTime.h"
 #include "tickProps.h"
-#include "MemPool.h"
 #include "heatZone.h"
 #include <chrono>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
-extern MemPool g_memPool;
-
-std::array<std::jthread, kChannelCount> g_computeThreads;
-StockState *g_stockStates;
-StockCompute *g_stockComputes;
-WantCache *g_wantCaches;
-TickRing *g_tickRings;
-std::vector<int32_t> g_stockCodes;
-std::vector<int32_t> g_prevLimitUpStockCodes;
-
 namespace
 {
 
-std::array<int16_t, 0x2000> g_stockIdLut;
+#if (NE || OST) && SZ
+const uint64_t g_szOffsetTransactTime = static_cast<uint64_t>(getToday()) * UINT64_C(1'00'00'00'000);
+#endif
 
-[[gnu::always_inline]] uint16_t linearizeStockId(int32_t stock)
+struct State
+{
+#if (NE || OST) && SH
+    uint32_t upperLimitPrice1000;
+#endif
+#if (NE || OST) && SZ
+    uint64_t upperLimitPrice10000;
+    int64_t upRemainQty100;
+#endif
+#if REPLAY && SH
+    int32_t upperLimitPrice;
+#endif
+#if REPLAY && SZ
+    int32_t upperLimitPrice;
+    uint64_t upRemainQty;
+#endif
+};
+
+using TickRing = spsc_ring<MDS::Tick, 1024>;
+
+std::array<std::jthread, kChannelCount> g_computeThreads;
+std::vector<int32_t> g_stockCodes;
+std::vector<int32_t> g_prevLimitUpStockCodes;
+std::vector<FactorList> g_stockFactors;
+std::array<uint16_t, 0x2000> g_stockIdLut;
+std::unique_ptr<State[]> g_stockStates;
+std::unique_ptr<WantCache[]> g_wantCaches;
+std::unique_ptr<TickRing[]> g_tickRings;
+
+uint16_t linearizeStockIdRaw(int32_t stock)
 {
     uint32_t u = static_cast<uint32_t>(stock);
 #if SH
@@ -44,23 +64,30 @@ std::array<int16_t, 0x2000> g_stockIdLut;
     return static_cast<uint16_t>(u);
 }
 
+uint16_t linearizeStockId(int32_t stock)
+{
+    return g_stockIdLut[linearizeStockIdRaw(stock)];
+}
+
 void initStockArrays()
 {
     for (int32_t s = 0; s < g_stockIdLut.size(); ++s) {
         g_stockIdLut[s] = -1;
     }
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_stockIdLut[linearizeStockId(MDD::g_stockCodes[i])] = i;
+    for (int32_t i = 0; i < g_stockCodes.size(); ++i) {
+        g_stockIdLut[linearizeStockIdRaw(g_stockCodes[i])] = i;
     }
 
-    // MDD::g_tickRings = std::make_unique<TickRing[]>(kChannelCount);
-    // MDD::g_wantCaches = std::make_unique<WantCache[]>(MDD::g_stockCodes.size());
-    // MDD::g_stockStates = std::make_unique<StockState[]>(MDD::g_stockCodes.size());
-    // MDD::g_stockComputes = std::make_unique<StockCompute[]>(MDD::g_stockCodes.size());
-    MDD::g_tickRings = g_memPool.allocate<TickRing>(kChannelCount);
-    MDD::g_wantCaches = g_memPool.allocate<WantCache>(MDD::g_stockCodes.size());
-    MDD::g_stockStates = g_memPool.allocate<StockState>(MDD::g_stockCodes.size());
-    MDD::g_stockComputes = g_memPool.allocate<StockCompute>(MDD::g_stockCodes.size());
+    // g_tickRings = std::make_unique<TickRing[]>(kChannelCount);
+    // g_wantCaches = std::make_unique<WantCache[]>(g_stockCodes.size());
+    // g_stockStates = std::make_unique<StockState[]>(g_stockCodes.size());
+    // g_stockComputes = std::make_unique<StockCompute[]>(g_stockCodes.size());
+    // g_tickRings = g_memPool.allocate<TickRing>(kChannelCount);
+    // g_wantCaches = g_memPool.allocate<WantCache>(g_stockCodes.size());
+    // g_stockStates = g_memPool.allocate<StockState>(g_stockCodes.size());
+    // g_stockComputes = g_memPool.allocate<StockCompute>(g_stockCodes.size());
+    g_stockStates = std::make_unique<State[]>(g_stockCodes.size());
+    g_wantCaches = std::make_unique<WantCache[]>(g_stockCodes.size());
 }
 
 void parseDailyConfig(const char *config)
@@ -106,13 +133,13 @@ void parseDailyConfig(const char *config)
         throw std::runtime_error("no factor file provided in config");
 #endif
     }
-    std::ifstream bin(factorFile, std::ios::binary);
-    if (!bin.is_open()) {
+    std::ifstream facFile(factorFile, std::ios::binary);
+    if (!facFile.is_open()) {
         SPDLOG_ERROR("cannot open daily factors for market={} date={} factorFile=[{}]", MARKET_NAME, date, factorFile);
         throw std::runtime_error("cannot open daily factors");
     }
     DailyHeader header{};
-    bin.read((char *)&header, sizeof(header));
+    facFile.read((char *)&header, sizeof(header));
 
     constexpr int32_t kFileVersion = 250722;
     if (header.fileVersion != kFileVersion) {
@@ -147,111 +174,34 @@ void parseDailyConfig(const char *config)
     }
     SPDLOG_DEBUG("daily factor file contains numStocks={} numPrevLimitUp={} numFactors={}", header.stockCount, header.prevLimitUpCount, header.factorCount);
 
-    MDD::g_stockCodes.resize(header.stockCount);
-    bin.read((char *)MDD::g_stockCodes.data(), MDD::g_stockCodes.size() * sizeof(int32_t));
-    if (!bin.good()) {
+    g_stockCodes.resize(header.stockCount);
+    facFile.read((char *)g_stockCodes.data(), g_stockCodes.size() * sizeof(int32_t));
+    if (!facFile.good()) {
         SPDLOG_ERROR("failed to read all stock subscribes");
         throw std::runtime_error("failed to read all stock subscribes");
     }
 
-    MDD::g_prevLimitUpStockCodes.resize(header.prevLimitUpCount);
-    bin.read((char *)MDD::g_prevLimitUpStockCodes.data(), MDD::g_prevLimitUpStockCodes.size() * sizeof(int32_t));
-    if (!bin.good()) {
+    g_prevLimitUpStockCodes.resize(header.prevLimitUpCount);
+    facFile.read((char *)g_prevLimitUpStockCodes.data(), g_prevLimitUpStockCodes.size() * sizeof(int32_t));
+    if (!facFile.good()) {
         SPDLOG_ERROR("failed to read all prev-limit-up stocks");
         throw std::runtime_error("failed to read all prev-limit-up stocks");
     }
 
     static_assert(FactorEnum::kMaxFactors * sizeof(FactorList::ScalarType) == sizeof(FactorList));
-    std::vector<FactorList> factors(header.stockCount);
-    bin.read((char *)factors.data(), factors.size() * sizeof(FactorList));
-    if (!bin.good()) {
+    g_stockFactors.resize(header.stockCount);
+    facFile.read((char *)g_stockFactors.data(), g_stockFactors.size() * sizeof(FactorList));
+    if (!facFile.good()) {
         SPDLOG_ERROR("failed to read all stock factors");
         throw std::runtime_error("failed to read all stock factors");
     }
 
-    bin.close();
+    facFile.close();
     initStockArrays();
-
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        MDD::g_stockComputes[i].loadFactors(factors[i]);
-    }
 }
 
-HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t stopId, std::stop_token stop)
+WantCache::Intent checkWantBuyAtTimestamp()
 {
-    thread_local MDS::Tick tickBuf[1024];
-    std::vector<int32_t> approachStockIds;
-    std::vector<int64_t> remainSellAmounts;
-    approachStockIds.reserve(8);
-    remainSellAmounts.reserve(8);
-
-    int64_t sleepInterval = 95'000'000;
-#if REPLAY
-    sleepInterval = static_cast<int64_t>(sleepInterval * MDS::g_timeScale);
-#endif
-    int64_t nextSleepTime = steadyNow() + 200'000;
-    nextSleepTime += sleepInterval * channel / (kChannelCount + 1);
-
-    while (!stop.stop_requested()) [[likely]] {
-
-        approachStockIds.clear();
-        for (int32_t id = startId; id != stopId; ++id) {
-            MDD::g_stockComputes[id].clearApproach();
-        }
-
-        while (true) {
-            if (stop.stop_requested()) [[unlikely]] {
-                return;
-            }
-
-            size_t n = MDD::g_tickRings[channel].fetchSomeTicks(tickBuf, sizeof tickBuf / sizeof tickBuf[0]);
-            for (size_t i = 0; i < n; ++i) {
-                auto &tick = tickBuf[i];
-                int32_t stock = tickStockCode(tick);
-                int32_t id = g_stockIdLut[linearizeStockId(stock)];
-                if (id == -1) [[unlikely]] {
-                    continue;
-                }
-                MDD::g_stockComputes[id].onTick(tick);
-            }
-            int64_t now = steadyNow();
-            if (now > nextSleepTime - 5'000) {
-                break;
-            }
-            if (n == 0) {
-                _mm_pause();
-                if (now > nextSleepTime - 5'000) {
-                    break;
-                }
-                if (now > nextSleepTime - 8'000) {
-                    blockingSleepUntil(now + 2'000);
-                }
-            }
-        }
-        blockingSleepUntil(nextSleepTime);
-        nextSleepTime += sleepInterval;
-
-        for (int32_t id = startId; id != stopId; ++id) {
-            if (MDD::g_stockComputes[id].checkApproach()) {
-                approachStockIds.push_back(id);
-            }
-        }
-        if (!approachStockIds.empty()) {
-            if (approachStockIds.size() > 3) [[unlikely]] {
-                remainSellAmounts.clear();
-                for (int32_t id: approachStockIds) {
-                    remainSellAmounts.push_back(MDD::g_stockComputes[id].upSellOrderAmount());
-                }
-                std::nth_element(approachStockIds.begin(), approachStockIds.begin() + 2, approachStockIds.end(), [&] (int32_t &id1, int32_t &id2) {
-                    return remainSellAmounts[&id1 - approachStockIds.data()] < remainSellAmounts[&id2 - approachStockIds.data()];
-                });
-                approachStockIds.resize(2);
-            }
-            for (int32_t id: approachStockIds) {
-                MDD::g_stockComputes[id].onApproach();
-            }
-        }
-    }
 }
 
 }
@@ -259,54 +209,258 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t
 HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 {
     int32_t stock = tickStockCode(tick);
-    int32_t id = g_stockIdLut[linearizeStockId(stock)];
+    int32_t id = linearizeStockId(stock);
     if (id == -1) [[unlikely]] {
         return;
     }
-    MDD::g_stockStates[id].onTick(tick);
-}
-
-HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
-{
+    auto &state = g_stockStates[id];
 #if REPLAY
-    int32_t stock = rspOrder.stockCode;
-#elif XC || NE
-    int32_t stock = rspOrder.userLocalID;
-#elif OST
-    int32_t stock = rspOrder.userLocalID;
+#if SH
+    bool limitUp = tick.buyOrderNo != 0
+        && tick.sellOrderNo == 0
+        && tick.quantity > 0
+        && tick.price == state.upperLimitPrice
+        && tick.timestamp >= 9'30'00'000
+        && tick.timestamp < 14'57'00'000;
 #endif
-    int32_t id = g_stockIdLut[linearizeStockId(stock)];
-    if (id == -1) [[unlikely]] {
+#if SZ
+    bool limitUp = tick.buyOrderNo != 0
+        && tick.sellOrderNo == 0
+        && tick.quantity > state.upRemainQty
+        && tick.price == state.upperLimitPrice
+        && tick.timestamp >= 9'30'00'000
+        && tick.timestamp < 14'57'00'000;
+#endif
+    if (limitUp) {
+        auto intent = wantCache->checkWantBuyAtTimestamp(tick.timestamp);
+        if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
+            sendBuyRequest();
+        }
+
+        logStop(tick.timestamp + static_cast<int32_t>(intent));
         return;
     }
-    MDD::g_stockStates[id].onRspOrder(rspOrder);
-    // todo: forward to StockState
+
+#if SZ
+    if (tick.sellOrderNo != 0 && tick.price == upperLimitPrice) {
+        if (tick.buyOrderNo == 0) {
+            upRemainQty += tick.quantity;
+        } else {
+            upRemainQty -= tick.quantity;
+        }
+    }
+#endif
+
+#elif NE && SH
+    bool limitUp = tick.tickMergeSse.tickType == 'A'
+        && tick.tickMergeSse.tickBSFlag == '0'
+        && tick.tickMergeSse.price == upperLimitPrice1000
+        && tick.tickMergeSse.tickTime >= 9'30'00'00
+        && tick.tickMergeSse.tickTime < 14'57'00'00;
+    if (limitUp) {
+        int32_t timestamp = tick.tickMergeSse.tickTime * 10;
+        auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
+        if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
+            sendBuyRequest();
+        }
+
+        logStop(timestamp + static_cast<int32_t>(intent));
+        return;
+    }
+
+#elif NE && SZ
+    if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ) {
+        // SPDLOG_DEBUG("TRADE {} {} {} {} {}", stockCode, tick.securityID, tick.tradeSz.tradePrice, upperLimitPrice, upperLimitPrice10000);
+        if (tick.tradeSz.tradePrice == state.upperLimitPrice10000) {
+            // SPDLOG_DEBUG("UP TRADE {} {} {}", tick.securityID, upRemainQty100, tick.tradeSz.tradeQty);
+            state.upRemainQty100 -= tick.tradeSz.tradeQty;
+            if (state.upRemainQty100 < 0 && tick.tradeSz.execType == 0x2) {
+                int32_t timestamp = static_cast<uint32_t>(
+                    tick.tradeSz.transactTime - g_szOffsetTransactTime);
+                if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
+                    auto intent = checkWantBuyAtTimestamp(id, timestamp);
+                    if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
+                        sendBuyRequest(id);
+                    }
+
+
+                    logStop(timestamp + static_cast<int32_t>(intent));
+                    return;
+                }
+            }
+        }
+    } else {
+        // assert(tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ);
+        if (tick.orderSz.side == '2'
+            && tick.orderSz.orderType == '2'
+            && tick.orderSz.price == state.upperLimitPrice10000) {
+            state.upRemainQty100 += tick.orderSz.qty;
+        }
+    }
+
+#elif OST && SH
+    bool limitUp = tick.tick.m_tick_type == 'A'
+        && tick.tick.m_side_flag == '0'
+        && tick.tick.m_order_price == upperLimitPrice1000
+        && tick.tick.m_tick_time >= 9'30'00'00
+        && tick.tick.m_tick_time < 14'57'00'00;
+    if (limitUp) {
+        int32_t timestamp = tick.tick.m_tick_time * 10;
+        auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
+        if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
+            sendBuyRequest();
+        }
+
+        logStop(timestamp + static_cast<int32_t>(intent));
+        return;
+    }
+
+#elif OST && SZ
+    if (tick.head.m_message_type == sze_msg_type_trade) {
+        if (tick.exe.m_exe_px == upperLimitPrice10000) {
+            upRemainQty100 -= tick.exe.m_exe_qty;
+            if (upRemainQty100 < 0 && tick.exe.m_exe_type == 0x2) {
+                int32_t timestamp = static_cast<uint32_t>(
+                    tick.head.m_quote_update_time - g_szOffsetTransactTime);
+                if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
+                    auto intent = wantCache->checkWantBuyAtTimestamp(timestamp);
+                    if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
+                        sendBuyRequest();
+                    }
+
+                    logStop(timestamp + static_cast<int32_t>(intent));
+                    return;
+                }
+            }
+        }
+    } else if (tick.head.m_message_type == sze_msg_type_order) [[likely]] {
+        if (tick.order.m_side == '2'
+            && tick.order.m_order_type == '2'
+            && tick.order.m_px == upperLimitPrice10000) {
+            upRemainQty100 += tick.order.m_qty;
+        }
+    }
+#endif
+
+    g_tickRing->pushTick(tick);
 }
 
 void MDD::handleSnap(MDS::Snap &snap)
 {
-    // int32_t stock = snapStockCode(snap);
-    // int32_t id = g_stockIdLut[linearizeStockId(stock)];
-    // if (id == -1) [[unlikely]] {
-    //     return;
-    // }
-    // MDD::g_stockStates[id].onSnap(snap);
 }
 
 void MDD::handleStatic(MDS::Stat &stat)
 {
     int32_t stock = statStockCode(stat);
-    int32_t id = g_stockIdLut[linearizeStockId(stock)];
+    int32_t id = linearizeStockId(stock);
     if (id == -1) [[unlikely]] {
         return;
     }
-    MDD::g_stockStates[id].onStatic(stat);
+    auto &state = g_stockStates[id];
+
+    int32_t upperLimitPrice = statUpperLimitPrice(stat);
+    int32_t preClosePrice = statPreClosePrice(stat);
+
+#if (NE || OST) && SH
+    state.upperLimitPrice1000 = upperLimitPrice * 10;
+#endif
+#if (NE || OST) && SZ
+    state.upperLimitPrice10000 = upperLimitPrice * 100;
+#endif
+#if REPLAY && SH
+    state.upperLimitPrice = upperLimitPrice;
+#endif
+#if REPLAY && SZ
+    state.upperLimitPrice = upperLimitPrice;
+#endif
+}
+
+namespace
+{
+
+HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, int32_t startId, int32_t stopId, std::stop_token stop);
+// {
+//     thread_local MDS::Tick tickBuf[1024];
+//     std::vector<int32_t> approachStockIds;
+//     std::vector<int64_t> remainSellAmounts;
+//     approachStockIds.reserve(8);
+//     remainSellAmounts.reserve(8);
+//
+//     int64_t sleepInterval = 95'000'000;
+// #if REPLAY
+//     sleepInterval = static_cast<int64_t>(sleepInterval * MDS::g_timeScale);
+// #endif
+//     int64_t nextSleepTime = steadyNow() + 200'000;
+//     nextSleepTime += sleepInterval * channel / (kChannelCount + 1);
+//
+//     while (!stop.stop_requested()) [[likely]] {
+//
+//         approachStockIds.clear();
+//         for (int32_t id = startId; id != stopId; ++id) {
+//             g_stockComputes[id].clearApproach();
+//         }
+//
+//         while (true) {
+//             if (stop.stop_requested()) [[unlikely]] {
+//                 return;
+//             }
+//
+//             size_t n = g_tickRings[channel].fetchSomeTicks(tickBuf, sizeof tickBuf / sizeof tickBuf[0]);
+//             for (size_t i = 0; i < n; ++i) {
+//                 auto &tick = tickBuf[i];
+//                 int32_t stock = tickStockCode(tick);
+//                 int32_t id = linearizeStockId(stock);
+//                 if (id == -1) [[unlikely]] {
+//                     continue;
+//                 }
+//                 g_stockComputes[id].onTick(tick);
+//             }
+//             int64_t now = steadyNow();
+//             if (now > nextSleepTime - 5'000) {
+//                 break;
+//             }
+//             if (n == 0) {
+//                 _mm_pause();
+//                 if (now > nextSleepTime - 5'000) {
+//                     break;
+//                 }
+//                 if (now > nextSleepTime - 8'000) {
+//                     blockingSleepUntil(now + 2'000);
+//                 }
+//             }
+//         }
+//         blockingSleepUntil(nextSleepTime);
+//         nextSleepTime += sleepInterval;
+//
+//         for (int32_t id = startId; id != stopId; ++id) {
+//             if (g_stockComputes[id].checkApproach()) {
+//                 approachStockIds.push_back(id);
+//             }
+//         }
+//         if (!approachStockIds.empty()) {
+//             if (approachStockIds.size() > 3) [[unlikely]] {
+//                 remainSellAmounts.clear();
+//                 for (int32_t id: approachStockIds) {
+//                     remainSellAmounts.push_back(g_stockComputes[id].upSellOrderAmount());
+//                 }
+//                 std::nth_element(approachStockIds.begin(), approachStockIds.begin() + 2, approachStockIds.end(), [&] (int32_t &id1, int32_t &id2) {
+//                     return remainSellAmounts[&id1 - approachStockIds.data()] < remainSellAmounts[&id2 - approachStockIds.data()];
+//                 });
+//                 approachStockIds.resize(2);
+//             }
+//             for (int32_t id: approachStockIds) {
+//                 g_stockComputes[id].onApproach();
+//             }
+//         }
+//     }
+// }
+
 }
 
 void MDD::start(const char *config)
 {
     parseDailyConfig(config);
-    SPDLOG_INFO("found {} stocks", MDD::g_stockCodes.size());
+    SPDLOG_INFO("found {} stocks", g_stockCodes.size());
 
     std::this_thread::sleep_for(std::chrono::milliseconds(40));
     SPDLOG_INFO("initializing trade api");
@@ -322,29 +476,8 @@ void MDD::start(const char *config)
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
-    SPDLOG_DEBUG("starting {} stocks", MDD::g_stockCodes.size());
-    for (int32_t i = 0; i < kChannelCount; ++i) {
-        g_tickRings[i].start();
-    }
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_wantCaches[i].start();
-    }
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_stockStates[i].start();
-    }
-
-    SPDLOG_DEBUG("preparing {} compute channels", kChannelCount);
-    for (int32_t c = 0; c < kChannelCount; ++c) {
-        int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
-        int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
-
-        for (int32_t id = startId; id != stopId; ++id) {
-            g_stockStates[id].setChannelId(c);
-        }
-    }
-
-    SPDLOG_INFO("subscribing {} stocks", MDD::g_stockCodes.size());
-    MDS::subscribe(MDD::g_stockCodes.data(), MDD::g_stockCodes.size());
+    SPDLOG_INFO("subscribing {} stocks", g_stockCodes.size());
+    MDS::subscribe(g_stockCodes.data(), g_stockCodes.size());
 
     SPDLOG_INFO("start receiving stock quotes");
     MDS::startReceive();
@@ -354,15 +487,10 @@ void MDD::start(const char *config)
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     SPDLOG_INFO("mds receive started");
 
-    SPDLOG_DEBUG("setting up {} stock computes", MDD::g_stockCodes.size());
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_stockComputes[i].start();
-    }
-
     SPDLOG_DEBUG("starting {} compute channels", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
-        int32_t startId = (MDD::g_stockCodes.size() * c) / kChannelCount;
-        int32_t stopId = (MDD::g_stockCodes.size() * (c + 1)) / kChannelCount;
+        int32_t startId = (g_stockCodes.size() * c) / kChannelCount;
+        int32_t stopId = (g_stockCodes.size() * (c + 1)) / kChannelCount;
 
         g_computeThreads[c] = std::jthread([c, startId, stopId] (std::stop_token stop) {
             setThisThreadAffinity(kChannelCpus[c]);
@@ -383,31 +511,13 @@ void MDD::stop()
     SPDLOG_DEBUG("stopping oes");
     OES::stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(60));
-    SPDLOG_DEBUG("stopping {} compute channels", kChannelCount);
 
+    SPDLOG_DEBUG("stopping {} compute channels", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c].request_stop();
         g_computeThreads[c].join();
     }
-    SPDLOG_DEBUG("stopping {} stocks", MDD::g_stockCodes.size());
 
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_stockComputes[i].stop();
-    }
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_stockStates[i].stop();
-    }
-    for (int32_t i = 0; i < MDD::g_stockCodes.size(); ++i) {
-        g_wantCaches[i].stop();
-    }
-    for (int32_t i = 0; i < kChannelCount; ++i) {
-        g_tickRings[i].stop();
-    }
-
-    // g_stockComputes;
-    // g_stockStates;
-    // g_wantCaches;
-    // g_tickRings;
     SPDLOG_INFO("system fully stopped");
 }
 
@@ -419,4 +529,19 @@ void MDD::requestStop()
 bool MDD::isFinished()
 {
     return MDS::isFinished();
+}
+
+HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
+{
+#if REPLAY
+    int32_t stock = rspOrder.stockCode;
+#elif XC || NE
+    int32_t stock = rspOrder.userLocalID;
+#elif OST
+    int32_t stock = rspOrder.userLocalID;
+#endif
+    int32_t id = linearizeStockId(stock);
+    if (id == -1) [[unlikely]] {
+        return;
+    }
 }
