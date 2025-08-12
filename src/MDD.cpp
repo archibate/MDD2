@@ -72,15 +72,16 @@ struct alignas(64) Compute
         Snapshot currSnapshot{};
         size_t oldSnapshotsCount{};
         std::unique_ptr<IIRState> iirState{};
-        bool savingMode{};
     };
 
     int32_t stockCode{};
     int32_t upperLimitPrice{};
     int32_t preClosePrice{};
     int32_t upperLimitPriceApproach{};
-    bool alive{};
     bool approachingLimitUp{};
+
+    int32_t openPrice{};
+    int64_t openVolume{};
 
     FState fState;
     BState bState;
@@ -94,9 +95,6 @@ struct alignas(64) Compute
     };
 
     absl::btree_map<int32_t, UpSell> upSellOrders;
-    int32_t openPrice{};
-    int64_t openVolume{};
-    double floatMV{};
 };
 
 using TickRing = spsc_ring<MDS::Tick, 0x40000>;
@@ -638,7 +636,6 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
         return;
     }
 
-    compute.bState.savingMode = true;
     compute.bState.nextTickTimestamp = compute.fState.nextTickTimestamp;
     compute.bState.currSnapshot = compute.fState.currSnapshot;
     compute.bState.oldSnapshotsCount = compute.fState.snapshots.size();
@@ -666,17 +663,16 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
     g_wantCaches[id].pushWantBuyTimestamp(timestamp, wantBuy);
 
 #if RECORD_FACTORS
-    factorList.dumpFactors(timestamp, compute.stockCode);
+    // factorList.dumpFactors(timestamp, compute.stockCode);
 #endif
 
-    compute.bState.savingMode = false;
     compute.fState.nextTickTimestamp = compute.bState.nextTickTimestamp;
     compute.fState.currSnapshot = compute.bState.currSnapshot;
     compute.fState.snapshots.resize(compute.bState.oldSnapshotsCount);
     compute.fState.iirState.swap(compute.bState.iirState);
 }
 
-WantCache::Intent checkWantBuyAtTimestamp(int32_t id, int32_t timestamp)
+HEAT_ZONE_REQORDER WantCache::Intent checkWantBuyAtTimestamp(int32_t id, int32_t timestamp)
 {
     return g_wantCaches[id].checkWantBuyAtTimestamp(timestamp);
 }
@@ -696,7 +692,7 @@ COLD_ZONE void reportTickRingOverflow(int32_t channel)
     throw;
 }
 
-void pushTickToRing(int32_t id, MDS::Tick &tick)
+HEAT_ZONE_TICK void pushTickToRing(int32_t id, MDS::Tick &tick)
 {
     int32_t ch = g_idToChannelLut[id];
     if (!g_tickRings[ch].write_one(tick)) [[unlikely]] {
