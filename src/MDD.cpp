@@ -937,7 +937,7 @@ void MDD::handleStatic(MDS::Stat &stat)
 namespace
 {
 
-HEAT_ZONE_ORDBOOK void onOrder(Compute &compute, MDS::Tick &tick)
+HEAT_ZONE_ORDBOOK void addComputeOrder(Compute &compute, MDS::Tick &tick)
 {
 #if REPLAY
     if (tick.isSellOrder() && tick.price >= compute.upperLimitPriceApproach) {
@@ -967,7 +967,7 @@ HEAT_ZONE_ORDBOOK void onOrder(Compute &compute, MDS::Tick &tick)
 #endif
 }
 
-HEAT_ZONE_ORDBOOK void onCancel(Compute &compute, MDS::Tick &tick)
+HEAT_ZONE_ORDBOOK void addComputeCancel(Compute &compute, MDS::Tick &tick)
 {
 #if REPLAY
     if (tick.isSellOrder()) {
@@ -1006,7 +1006,7 @@ HEAT_ZONE_ORDBOOK void addRealTrade(Compute &compute, int32_t timestamp, int32_t
     compute.fState.currSnapshot.amount += price * q64;
 }
 
-HEAT_ZONE_ORDBOOK void onTrade(Compute &compute, MDS::Tick &tick)
+HEAT_ZONE_ORDBOOK void addComputeTrade(Compute &compute, MDS::Tick &tick)
 {
 #if REPLAY
     auto it = compute.upSellOrders.find(tick.sellOrderNo);
@@ -1042,7 +1042,7 @@ HEAT_ZONE_ORDBOOK void onTrade(Compute &compute, MDS::Tick &tick)
 
     if (tick.tickMergeSse.tickTime < 9'30'00'00) {
         compute.fState.currSnapshot.lastPrice = compute.openPrice = price;
-        openVolume += quantity;
+        compute.openVolume += quantity;
         return;
     }
 
@@ -1075,7 +1075,6 @@ HEAT_ZONE_ORDBOOK void onTrade(Compute &compute, MDS::Tick &tick)
     }
     addRealTrade(compute, timestamp, price, quantity);
 
-
 #endif
 }
 
@@ -1095,13 +1094,13 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
 
     if (tick.isOrder()) {
         if (tick.isOrderCancel()) {
-            onCancel(tick);
+            addComputeCancel(compute, tick);
         } else {
-            onOrder(tick);
+            addComputeOrder(compute, tick);
         }
 
     } else if (tick.isTrade()) {
-        onTrade(tick);
+        addComputeTrade(compute, tick);
     }
 
 #elif NE && SH
@@ -1112,13 +1111,13 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
 
     switch (tick.tickMergeSse.tickType) {
     case 'A':
-        onOrder(tick);
+        addComputeOrder(compute, tick);
         break;
     case 'D':
-        onCancel(tick);
+        addComputeCancel(compute, tick);
         break;
     case 'T':
-        onTrade(tick);
+        addComputeTrade(compute, tick);
         break;
     default:
         break;
@@ -1132,12 +1131,12 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
 
     if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ) {
         if (tick.tradeSz.execType == 0x1) {
-            onCancel(tick);
+            addComputeCancel(compute, tick);
         } else {
-            onTrade(tick);
+            addComputeTrade(compute, tick);
         }
     } else if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ) [[likely]] {
-        onOrder(tick);
+        addComputeOrder(compute, tick);
     }
 
 #elif OST && SH
@@ -1148,13 +1147,13 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
 
     switch (tick.tick.m_tick_type) {
     case 'A':
-        onOrder(tick);
+        addComputeOrder(compute, tick);
         break;
     case 'D':
-        onCancel(tick);
+        addComputeCancel(compute, tick);
         break;
     case 'T':
-        onTrade(tick);
+        addComputeTrade(compute, tick);
         break;
     default:
         break;
@@ -1168,12 +1167,12 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
 
     if (tick.head.m_message_type == sze_msg_type_trade) {
         if (tick.exe.m_exe_type == 0x1) {
-            onCancel(tick);
+            addComputeCancel(compute, tick);
         } else {
-            onTrade(tick);
+            addComputeTrade(compute, tick);
         }
     } else if (tick.head.m_message_type == sze_msg_type_order) [[likely]] {
-        onOrder(tick);
+        addComputeOrder(compute, tick);
     }
 #endif
 }
