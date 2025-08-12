@@ -138,16 +138,16 @@ struct Tick
     {
         NescCompat::TradeSz tradeSz;
         NescCompat::OrderSz orderSz;
-        struct
-        {
 #pragma pack(push)
 #pragma pack(1)
+        struct
+        {
             uint8_t messageType;
             uint32_t sequence;
             uint8_t exchangeID;
             char securityID[9];
-#pragma pack(pop)
         };
+#pragma pack(pop)
     };
 };
 #endif

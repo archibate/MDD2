@@ -3,16 +3,16 @@
 
 
 targets = {
-    'NESH': [
-        '-DCMAKE_BUILD_TYPE=Release',
-        '-DBUILD_SPEED=ON',
-        '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=ON',
-        '-DASYNC_LOGGER=OFF',
-        '-DTARGET_SECURITY=NE',
-        '-DTARGET_MARKET=SH',
-        '-DASYNC_LOGGER=OFF',
-    ],
+    # 'NESH': [
+    #     '-DCMAKE_BUILD_TYPE=Release',
+    #     '-DBUILD_SPEED=ON',
+    #     '-DRECORD_FACTORS=ON',
+    #     '-DALWAYS_BUY=ON',
+    #     '-DASYNC_LOGGER=OFF',
+    #     '-DTARGET_SECURITY=NE',
+    #     '-DTARGET_MARKET=SH',
+    #     '-DASYNC_LOGGER=OFF',
+    # ],
     'NESZ': [
         '-DCMAKE_BUILD_TYPE=Release',
         '-DBUILD_SPEED=ON',
@@ -23,16 +23,16 @@ targets = {
         '-DTARGET_MARKET=SZ',
         '-DSZ_IS_SECOND=OFF',
     ],
-    'NESZ2': [
-        '-DCMAKE_BUILD_TYPE=Release',
-        '-DBUILD_SPEED=ON',
-        '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=ON',
-        '-DASYNC_LOGGER=OFF',
-        '-DTARGET_SECURITY=NE',
-        '-DTARGET_MARKET=SZ',
-        '-DSZ_IS_SECOND=ON',
-    ],
+    # 'NESZ2': [
+    #     '-DCMAKE_BUILD_TYPE=Release',
+    #     '-DBUILD_SPEED=ON',
+    #     '-DRECORD_FACTORS=ON',
+    #     '-DALWAYS_BUY=ON',
+    #     '-DASYNC_LOGGER=OFF',
+    #     '-DTARGET_SECURITY=NE',
+    #     '-DTARGET_MARKET=SZ',
+    #     '-DSZ_IS_SECOND=ON',
+    # ],
 }
 
 markets = [

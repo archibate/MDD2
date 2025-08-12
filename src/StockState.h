@@ -4,6 +4,7 @@
 #include <absl/container/btree_map.h>
 #include <vector>
 #include "config.h"
+#include "exchangeFronts.h"
 #include "MDS.h"
 #include "OES.h"
 #include "FactorList.h"
@@ -26,7 +27,7 @@ struct alignas(64) StockState
 #if (NE || OST) && SZ
     uint64_t upperLimitPrice10000{};
     uint64_t offsetTransactTime{};
-    uint64_t upRemainQty100{};
+    int64_t upRemainQty100{};
 #endif
 #if REPLAY && SZ
     uint64_t upRemainQty{};
@@ -35,8 +36,13 @@ struct alignas(64) StockState
     WantCache *wantCache{};
     TickRing *tickRing{};
 
+#if SPLIT_ORDER
+    std::unique_ptr<OES::ReqOrderBatch> reqOrderBatch{};
+    std::unique_ptr<std::array<OES::ReqCancel, kExchangeFronts.size()>> reqCancels{};
+#else
     std::unique_ptr<OES::ReqOrder> reqOrder{};
     std::unique_ptr<OES::ReqCancel> reqCancel{};
+#endif
 
     void start();
     void setChannelId(int32_t channelId);
@@ -47,6 +53,7 @@ struct alignas(64) StockState
     void onRspOrder(OES::RspOrder &rspOrder);
 
 private:
+    void sendBuyRequest();
     int32_t stockIndex() const;
     StockCompute &stockCompute() const;
 };

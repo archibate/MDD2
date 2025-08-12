@@ -3,7 +3,10 @@
 #include <type_traits>
 #include <utility>
 #include <string>
+#include <string_view>
+#include <cctype>
 #include <fmt/format.h>
+#include <magic_enum/magic_enum.hpp>
 
 
 namespace refl
@@ -70,19 +73,48 @@ struct ToStringFn_
     std::string result_;
 
     template <class Mty_>
-    std::enable_if_t<!ReflectTrait_<Mty_>::is_reflected_> operator()(Mty_ &member_, const char *name_) {
-        if (!result_.empty()) {
-            result_ += ' ';
+    std::enable_if_t<std::is_same_v<std::remove_cvref_t<Mty_>, unsigned char> || std::is_same_v<std::remove_cvref_t<Mty_>, char> || std::is_same_v<std::remove_cvref_t<Mty_>, signed char>> invoke_(Mty_ &member_, const char *name_, std::false_type, int) {
+        result_ += fmt::format("{}=", name_);
+        uint8_t c = static_cast<uint8_t>(member_);
+        if (c <= 0x7F && std::isprint(c)) {
+            result_ += fmt::format("{}(`{}`)", static_cast<uint32_t>(c), static_cast<char>(c));
+        } else {
+            result_ += fmt::format("{}", static_cast<uint32_t>(c));
         }
+    }
+
+    template <class Mty_>
+    std::enable_if_t<std::is_same_v<std::remove_cvref_t<Mty_>, std::string> || std::is_same_v<std::remove_cvref_t<Mty_>, std::string_view> || std::is_same_v<std::decay_t<Mty_>, char *> || std::is_same_v<std::decay_t<Mty_>, const char *>> invoke_(Mty_ &member_, const char *name_, std::false_type, int) {
+        result_ += fmt::format("{}=`{}`", name_, member_);
+    }
+
+    template <class Mty_>
+    std::enable_if_t<std::is_enum_v<std::remove_cvref_t<Mty_>>> invoke_(Mty_ &member_, const char *name_, std::false_type, int) {
+        result_ += fmt::format("{}=", name_);
+        uint8_t c = static_cast<uint8_t>(member_);
+        if (magic_enum::enum_contains(member_)) {
+            result_ += fmt::format("{}({})", member_, magic_enum::enum_name(member_));
+        } else {
+            result_ += fmt::format("{}", member_);
+        }
+    }
+
+    template <class Mty_>
+    void invoke_(Mty_ &member_, const char *name_, std::false_type, ...) {
         result_ += fmt::format("{}={}", name_, member_);
     }
 
     template <class Mty_>
-    std::enable_if_t<ReflectTrait_<Mty_>::is_reflected_> operator()(Mty_ &member_, const char *name_) {
+    void invoke_(Mty_ &member_, const char *name_, std::true_type, ...) {
+        result_ += fmt::format("{}={}", name_, ::refl::to_typed_string(member_));
+    }
+
+    template <class Mty_>
+    void operator()(Mty_ &member_, const char *name_) {
         if (!result_.empty()) {
             result_ += ' ';
         }
-        result_ += fmt::format("{}={}", name_, ::refl::to_typed_string(member_));
+        return invoke_(member_, name_, std::bool_constant<ReflectTrait_<std::remove_cvref_t<Mty_>>::is_reflected_>{}, 0);
     }
 };
 

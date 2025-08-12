@@ -322,7 +322,7 @@ void MDS::startReceive()
     NescForesight::SseStaticInfoField g_sseStatic;
     NescForesight::SzStaticInfoField g_szStatic;
 
-#if SH
+// #if SH
     SPDLOG_INFO("querying SH static info, please wait");
     if (g_nesc.QuerySseStaticInfo(g_sseStatic) != 0) {
         SPDLOG_ERROR("nesc QuerySseStaticInfo failed");
@@ -336,9 +336,9 @@ void MDS::startReceive()
         };
         MDD::handleStatic(stat);
     }
-#endif
+// #endif
 
-#if SZ
+// #if SZ
     SPDLOG_INFO("querying SZ static info, please wait");
     if (g_nesc.QuerySzStaticInfo(g_szStatic) != 0) {
         SPDLOG_ERROR("nesc QuerySzStaticInfo failed");
@@ -352,7 +352,7 @@ void MDS::startReceive()
         };
         MDD::handleStatic(stat);
     }
-#endif
+// #endif
 
     SPDLOG_INFO("querying static info done");
 

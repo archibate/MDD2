@@ -884,6 +884,19 @@ HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
     g_orderRefLut.setOrderRef(requestID, reqOrder.userLocalID);
 }
 
+HEAT_ZONE_REQORDER void OES::sendReqOrderBatch(ReqOrderBatch &reqOrderBatch)
+{
+    // assume reqOrderBatch.xeleReqBatchOrderInsert.BatchType == BatchMuilt
+    uint32_t nBatch = reqOrderBatch.xeleReqBatchOrderInsert.BatchOrderQty;
+    int32_t requestID = g_requestID.fetch_add(nBatch, std::memory_order_relaxed);
+    uint32_t userLocalIDBase = g_maxUserLocalID + requestID;
+    for (uint32_t i = 0; i < nBatch; ++i) {
+        reqOrderBatch.xeleReqBatchOrderInsert.ReqOrderInsertField[i].UserLocalID = userLocalIDBase + i;
+    }
+    g_tradeApi->reqInsertBatchOrder(reqOrderBatch.xeleReqBatchOrderInsert, requestID);
+    g_orderRefLut.setOrderRef(requestID, reqOrderBatch.userLocalID);
+}
+
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
     int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);

@@ -68,6 +68,7 @@ void faultHandler(int signo, siginfo_t *info, void *ucontext) {
     void *addrs[32];
     size_t size = backtrace(addrs, sizeof addrs / sizeof addrs[0]);
     backtrace_symbols_fd(addrs, size, STDERR_FILENO);
+    SPDLOG_ERROR("PROGRAM CRASHED");
     char **symbols = backtrace_symbols(addrs, size);
     SPDLOG_ERROR("Stack backtrace:");
     for (size_t i = 0; i < size; i++) {

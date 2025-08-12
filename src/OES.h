@@ -58,10 +58,11 @@ struct ReqOrder
 };
 
 ///批量报单请求
-// struct ReqBatchOrder
-// {
-//     CXeleReqBatchOrderInsertField xeleReqBatchOrderInsert;
-// };
+struct ReqOrderBatch
+{
+    CXeleReqBatchOrderInsertField xeleReqBatchOrderInsert;
+    uint32_t userLocalID;
+};
 
 ///撤单请求
 struct ReqCancel
@@ -154,7 +155,7 @@ void start(const char *config);
 bool isStarted();
 void stop();
 void sendReqOrder(ReqOrder &reqOrder);
-// void sendBatchReqOrder(ReqOrder reqOrder[]);
+void sendReqOrderBatch(ReqOrderBatch &reqOrderBatch);
 void sendReqCancel(ReqCancel &reqCancel);
 
 }
