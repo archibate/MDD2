@@ -5,26 +5,5 @@
     "mds_password": "hnsr888!",
     "username": "18930842",
     "password": "220401",
-    "xele_trade_node": 0,
-    "xele_config": [
-        "DependentCounterVersion=2",
-        "ManagerURL=tcp://10.101.58.32:50000;tcp://10.101.58.33:50000",
-        "QueryURL=",
-        "TradeURL=",
-        "HeartBeatInterval=6",
-        "HeartBeatTimeOutCnt=3",
-        "OrderWarm=1",
-        "CpuCore=13,14",
-        "SoftRspRcv=0",
-        "SocketBlockFlag=0",
-        "ApiMode=1",
-        "RecvSendDetach=1",
-        "SuperLog=0",
-        "IsJustConnectManager=0",
-        "AppID=DQsig:V1.0",
-        "FlowRebuildFlag=0",
-        "OperWay=7",
-        "PcPrefix="
-    ],
     "comment": "nesc config"
 }
