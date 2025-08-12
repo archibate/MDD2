@@ -35,7 +35,7 @@ if 1:
     correct.columns = [x.replace('.', 'o') for x in correct.columns]
     correct['timestamp'] = correct['timestamp'].astype('int32')
 else:
-    correct = pd.read_csv('build/pred_correct.csv').reindex(columns=factors.columns)
+    correct = pd.read_csv('build/pred_old.csv').reindex(columns=factors.columns)
 
 factors = factors[factors['timestamp'] != 0]
 assert isinstance(factors, pd.DataFrame)

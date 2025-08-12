@@ -658,6 +658,7 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
         compute.fState.currSnapshot.amount += sell.price * q64;
     }
     compute.fState.currSnapshot.lastPrice = compute.upperLimitPrice;
+    stepSnapshot(compute);
 
     auto &factorList = g_stockFactors[id];
     computeMomentum(compute, factorList);
