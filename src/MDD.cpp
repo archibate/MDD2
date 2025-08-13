@@ -14,6 +14,7 @@
 #include "tickProps.h"
 #include "radixSort.h"
 #include "BuyRequest.h"
+#include "Reflect.h"
 #include "heatZone.h"
 #include <chrono>
 #include <fstream>
@@ -1450,4 +1451,45 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
     if (id == -1) [[unlikely]] {
         return;
     }
+
+#if XC || NE
+    std::string body;
+    switch (rspOrder.rspType) {
+#define PER_TYPE(name) case OES::RspOrder::Xele##name: body = refl::to_string(*rspOrder.xele##name); break;
+        PER_TYPE(RspOrderInsert)
+        PER_TYPE(RspOrderAction)
+        PER_TYPE(RtnOrder)
+        PER_TYPE(RtnTrade)
+#undef PER_TYPE
+        default: body = "?"; break;
+    }
+    SPDLOG_INFO("order response: rspType={} requestID={} errorID={} errorMsg={} userLocalID={} | {}",
+                rspOrder.rspType,
+                rspOrder.requestID,
+                rspOrder.errorID,
+                rspOrder.errorMsg,
+                rspOrder.userLocalID,
+                body);
+
+#elif OST
+    std::string body;
+    switch (rspOrder.rspType) {
+#define PER_TYPE(name) case OES::RspOrder::Ost##name: body = refl::to_string(*rspOrder.ost##name); break;
+        PER_TYPE(RspOrderInsert)
+        PER_TYPE(RspOrderAction)
+        PER_TYPE(RtnOrder)
+        PER_TYPE(ErrRtnOrderAction)
+        PER_TYPE(RtnTrade)
+#undef PER_TYPE
+        default: body = "?"; break;
+    }
+    SPDLOG_INFO("order response: rspType={} requestID={} errorID={} errorMsg={} userLocalID={} | {}",
+                rspOrder.rspType,
+                rspOrder.requestID,
+                rspOrder.errorID,
+                rspOrder.errorMsg,
+                rspOrder.userLocalID,
+                body);
+
+#endif
 }

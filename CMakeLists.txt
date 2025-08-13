@@ -93,7 +93,7 @@ else()
 endif()
 
 if (CMAKE_BUILD_TYPE MATCHES "Debug")
-    target_compile_options(${PROJECT_NAME} PRIVATE -ggdb -Werror=return-type)
+    target_compile_options(${PROJECT_NAME} PRIVATE -ggdb3 -Werror=return-type)
 endif()
 
 if (CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo")
