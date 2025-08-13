@@ -26,6 +26,17 @@ inline void monotonicSleepUntil(int64_t t)
     // std::this_thread::sleep_until(std::chrono::steady_clock::time_point(std::chrono::nanoseconds(t)));
 }
 
+inline void monotonicSleepFor(int64_t t)
+{
+    struct timespec tp;
+    uint64_t u = t;
+    uint64_t s = u / UINT64_C(1'000'000'000);
+    tp.tv_sec = s;
+    tp.tv_nsec = t - s * UINT64_C(1'000'000'000);
+    clock_nanosleep(CLOCK_MONOTONIC, 0, &tp, nullptr);
+    // std::this_thread::sleep_until(std::chrono::steady_clock::time_point(std::chrono::nanoseconds(t)));
+}
+
 // inline void monotonicSpinSleep(int64_t t)
 // {
 //     int64_t t0 = monotonicTime();

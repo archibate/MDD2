@@ -18,5 +18,7 @@ void handleTick(MDS::Tick &tick);
 void handleSnap(MDS::Snap &snap);
 void handleStatic(MDS::Stat &stat);
 void handleRspOrder(OES::RspOrder &rspOrder);
+void handleAccountFund(OES::AccountFund &fund);
+void handleAccountPosition(OES::AccountPosition *positions, size_t nPosition);
 
 }

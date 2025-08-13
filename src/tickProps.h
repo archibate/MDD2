@@ -39,6 +39,34 @@ inline int32_t snapStockCode(MDS::Snap &snap)
     return stock;
 }
 
+inline int32_t snapTimestamp(MDS::Snap &snap)
+{
+#if REPLAY
+    int32_t timestamp = snap.timestamp;
+#elif NE
+    int32_t timestamp = (snap.marketType == NescForesight::SSE
+                               ? snap.snapshotSse->timeStamp * UINT32_C(1000)
+                               : snap.snapshotSz->timeStamp % UINT64_C(1'00'00'00'000));
+#elif OST
+#error not implemented
+#endif
+    return timestamp;
+}
+
+inline double snapBid1Price(MDS::Snap &snap)
+{
+#if REPLAY
+    int32_t stock = snap.stock;
+#elif NE
+    int32_t stock = snap.marketType == NescForesight::SSE
+                               ? snap.snapshotSse->bidInfo[0].price / 1000.0
+                               : snap.snapshotSz->bidInfo[0].price / 1000000.0;
+#elif OST
+#error not implemented
+#endif
+    return stock;
+}
+
 
 inline int32_t statStockCode(MDS::Stat &stat)
 {

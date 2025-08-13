@@ -4,12 +4,15 @@
 #include "MDD.h"
 #include "heatZone.h"
 #include "strXele.h"
+#include "securityId.h"
 #include "OrderRefLut.h"
+#include "clockMonotonic.h"
 #include <string9811.h>
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
 #include <xele/XeleSecuritiesTraderApi.h>
 #include <fstream>
+#include <cstring>
 #include <cstdio>
 #include "LOG.h"
 
@@ -38,11 +41,11 @@ public:
     ~XeleTdSpi() override = default;
 
     //表明具有资金调拨的相关权限
-    bool canFundTransfer{false};
+    std::atomic_bool canFundTransfer{false};
     //表明具有柜台查询权限
-    bool canQuery{false};
+    std::atomic_bool canQuery{false};
     //表明具有柜台报、撤单权限
-    bool canOrder{false};
+    std::atomic_bool canOrder{false};
 
 private:
     ///艾科管理中心登录应答,当只有登录管理中心的需求时，收到该回报即可进行管理中心相关接口操作
@@ -796,6 +799,12 @@ void XeleTdSpi::onRspQryFund(CXeleRspQryStockClientAccountField* pRspField, CXel
 {
     LOGf(DEBUG, "onRspQryFund:%.15s,AvailableFund:%lf,TotalFund:%lf,InitTotalFund:%lf\n", pRspField->AccountID, pRspField->AvailableFund, pRspField->TotalFund, pRspField->InitTotalFund);
 
+    OES::AccountFund accountFund = {
+        .initTotalFund = static_cast<int64_t>(pRspField->InitTotalFund * 100),
+        .availableFund = static_cast<int64_t>(pRspField->AvailableFund * 100),
+    };
+    MDD::handleAccountFund(accountFund);
+
     // Td_RspQryCashAsset RspQryCashAsset;
     // std::memset(&RspQryCashAsset, 0, sizeof(Td_RspQryCashAsset));
     //
@@ -823,6 +832,25 @@ void XeleTdSpi::onRspQryFund(CXeleRspQryStockClientAccountField* pRspField, CXel
 void XeleTdSpi::onRspQryPosition(CXeleRspQryStockPositionField* pRspField, CXeleRspInfo* pRspInfo, int nRequestID, bool bIsLast)
 {
     LOGf(DEBUG, "onRspQryPosition:%s,SecuritiesID:%s,AvailablePosition:%ld, errorId:%d,%s\n", pRspField->AccountID, pRspField->SecuritiesID, pRspField->AvailablePosition, pRspInfo->ErrorID, pRspInfo->ErrorMsg);
+
+    thread_local std::vector<OES::AccountPosition> positions;
+
+    OES::AccountPosition accountPosition = {
+        .stock = securityId(pRspField->SecuritiesID),
+        .tdBuyPosition = static_cast<int64_t>(pRspField->TdBuyPosition),
+        .tdSellPosition = static_cast<int64_t>(pRspField->TdSellPosition),
+        .unTdBuyPosition = static_cast<int64_t>(pRspField->UnTdBuyPosition),
+        .unTdSellPosition = static_cast<int64_t>(pRspField->UnTdSellPosition),
+        .ydPosition = static_cast<int64_t>(pRspField->YdPosition),
+        .availablePosition = static_cast<int64_t>(pRspField->AvailablePosition),
+        .totalPosition = static_cast<int64_t>(pRspField->TotalPosition),
+        .totalCost = static_cast<int64_t>(pRspField->TotalCost),
+    };
+    positions.push_back(accountPosition);
+    if (bIsLast) {
+        MDD::handleAccountPosition(positions.data(), positions.size());
+        positions.clear();
+    }
 
     // Td_RspQryPosition RspQryPosition;
     // std::memset(&RspQryPosition, 0, sizeof(Td_RspQryPosition));
@@ -891,6 +919,26 @@ void OES::stop()
     g_userSpi = nullptr;
     g_tradeApi->release();
     g_tradeApi = nullptr;
+}
+
+void OES::queryAccountStatus()
+{
+    {
+        int32_t requestID = nextRequestID();
+        CXeleReqQryClientAccountField qryFund;
+        memset(&qryFund, 0, sizeof(qryFund));
+        std::strncpy(qryFund.AccountID, g_username.c_str(), sizeof(qryFund.AccountID));
+        g_tradeApi->reqQryFund(qryFund, requestID);
+    }
+    monotonicSleepFor(300'000'000);
+    {
+        int32_t requestID = nextRequestID();
+        CXeleReqQryPositionField qryPos;
+        memset(&qryPos, 0, sizeof(qryPos));
+        std::strncpy(qryPos.AccountID, g_username.c_str(), sizeof(qryPos.AccountID));
+        g_tradeApi->reqQryPosition(qryPos, requestID);
+    }
+    monotonicSleepFor(500'000'000);
 }
 
 HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)

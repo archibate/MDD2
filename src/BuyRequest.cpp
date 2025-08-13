@@ -88,3 +88,7 @@ void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimi
 
 #endif
 }
+
+void makeGCSellRequest(OES::ReqOrder &reqOrder, int32_t stockCode, int32_t price, int32_t quantity)
+{
+}

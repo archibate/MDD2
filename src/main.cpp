@@ -2,10 +2,9 @@
 #include "MDD.h"
 #include "config.h"
 #include "dateTime.h"
+#include "clockMonotonic.h"
 #include <stdexcept>
 #include <algorithm>
-#include <thread>
-#include <chrono>
 #include <cstring>
 #include <cstdio>
 #include <fstream>
@@ -128,6 +127,7 @@ int main(int argc, char **argv)
     COMPILE_FLAG(DUMMY_QUANTITY)
     COMPILE_FLAG(ASYNC_LOGGER)
     COMPILE_FLAG(SPDLOG_ACTIVE_LEVEL)
+    COMPILE_FLAG(SELL_GC001)
     COMPILE_FLAG(BEST_ORDER)
     COMPILE_FLAG(SPLIT_ORDER)
     COMPILE_FLAG(SZ_IS_SECOND)
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
 
     SPDLOG_CRITICAL("MDD v2 started, now waiting for finish");
     while (!MDD::isFinished()) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        monotonicSleepFor(1'000'000'000);
 #if !REPLAY
         int32_t now = getTimestamp();
         static uint32_t counter = 0;

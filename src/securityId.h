@@ -42,7 +42,7 @@ inline uint32_t atou6(const char *s)
 //     return _mm_cvtsi128_si32(sum_b);
 // }
 
-inline uint32_t securityId(const char *s)
+inline int32_t securityId(const char *s)
 {
     // return std::strtoul(s, nullptr, 10);
     return atou6(s);

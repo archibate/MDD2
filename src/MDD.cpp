@@ -33,6 +33,9 @@
 namespace
 {
 
+int64_t g_initTotalFund;
+int64_t g_availableFund;
+
 #if (NE || OST) && SZ
 const uint64_t g_szOffsetTransactTime = static_cast<uint64_t>(getToday()) * UINT64_C(1'00'00'00'000);
 #endif
@@ -652,6 +655,9 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
     if (compute.fState.snapshots.empty()) [[unlikely]] {
         return;
     }
+    if (compute.upperLimitPrice == 0 || compute.openPrice == compute.upperLimitPrice) [[unlikely]] {
+        return;
+    }
 
     compute.bState.nextTickTimestamp = compute.fState.nextTickTimestamp;
     compute.bState.currSnapshot = compute.fState.currSnapshot;
@@ -770,7 +776,6 @@ void logStop(int32_t id, int32_t timestamp, WantCache::Intent intent)
     pushTickToRing(id, endSign);
 
     SPDLOG_DEBUG("detected limit up: stock={} timestamp={} intent={}", g_stockCodes[id], timestamp, intent);
-
     unsubscribeStock(id);
 }
 
@@ -939,6 +944,34 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 
 void MDD::handleSnap(MDS::Snap &snap)
 {
+    int32_t stock = snapStockCode(snap);
+
+#if SELL_GC001
+#if SH
+    constexpr int32_t kGCStockCode = 204001; // GC001
+#endif
+#if SZ
+    constexpr int32_t kGCStockCode = 131810; // R-001
+#endif
+    if (stock == kGCStockCode && snapTimestamp(snap) >= 14'57'00'000) {
+        static uint32_t gcState = 0;
+        if (gcState == 0) {
+            OES::queryAccountStatus();
+        } else if (gcState == 5) {
+            OES::ReqOrder gcSellRequest;
+            std::atomic_thread_fence(std::memory_order_seq_cst);
+            int64_t quantity = (g_availableFund / 1000'00) * 10;
+            if (quantity > 100'0000) {
+                quantity = 100'0000;
+            }
+            if (quantity > 80) {
+                makeGCSellRequest(gcSellRequest, stock, snapBid1Price(snap), quantity);
+                OES::sendReqOrder(gcSellRequest);
+            }
+        }
+        ++gcState;
+    }
+#endif
 }
 
 void MDD::handleStatic(MDS::Stat &stat)
@@ -1419,24 +1452,27 @@ void MDD::start(const char *config)
     parseDailyConfig(config);
     SPDLOG_INFO("found {} stocks", g_stockCodes.size());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    monotonicSleepFor(40'000'000);
     SPDLOG_INFO("initializing trade api");
     OES::start(config);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    monotonicSleepFor(80'000'000);
 
     SPDLOG_INFO("initializing quote api");
     MDS::start(config);
 
     while (!OES::isStarted()) {
         SPDLOG_DEBUG("wait for trade initial");
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        monotonicSleepFor(400'000'000);
     }
+
+    OES::queryAccountStatus();
+    // monotonicSleepFor(200'000'000);
 
     SPDLOG_INFO("subscribing {} stocks", g_stockCodes.size());
     MDS::subscribe(g_stockCodes.data(), g_stockCodes.size());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    monotonicSleepFor(10'000'000);
     SPDLOG_DEBUG("starting {} compute threads", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c] = std::jthread([c] (std::stop_token stop) {
@@ -1445,28 +1481,28 @@ void MDD::start(const char *config)
             computeThreadMain(c, stop);
         });
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    monotonicSleepFor(120'000'000);
 
     SPDLOG_INFO("start receiving stock quotes");
     MDS::startReceive();
     while (!MDS::isStarted()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        monotonicSleepFor(10'000'000);
     }
     SPDLOG_DEBUG("mds receive started");
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    monotonicSleepFor(10'000'000);
 
     SPDLOG_INFO("system fully started");
 }
 
 void MDD::stop()
 {
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    monotonicSleepFor(20'000'000);
     SPDLOG_DEBUG("stopping mds");
     MDS::stop();
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    monotonicSleepFor(30'000'000);
     SPDLOG_DEBUG("stopping oes");
     OES::stop();
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    monotonicSleepFor(60'000'000);
 
     SPDLOG_DEBUG("stopping {} compute threads", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
@@ -1541,4 +1577,19 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
                 body);
 
 #endif
+}
+
+void MDD::handleAccountFund(OES::AccountFund &fund)
+{
+    SPDLOG_INFO("fund status: availableFund={} initTotalFund={}", fund.availableFund, fund.initTotalFund);
+    g_availableFund = fund.availableFund;
+    g_initTotalFund = fund.initTotalFund;
+}
+
+void MDD::handleAccountPosition(OES::AccountPosition *positions, size_t nPosition)
+{
+    SPDLOG_INFO("account position status: nPosition={}", nPosition);
+    for (size_t i = 0; i < nPosition; ++i) {
+        SPDLOG_INFO("position #{}: stock={} totalPos={} availPos={}", i, positions[i].stock, positions[i].totalPosition, positions[i].availablePosition);
+    }
 }

@@ -164,9 +164,29 @@ void getFrontID(TUTFrontIDType &frontID, TUTSessionIDType &sessionID);
 
 #endif
 
+struct AccountFund
+{
+    int64_t initTotalFund;
+    int64_t availableFund;
+};
+
+struct AccountPosition
+{
+    int32_t stock;
+    int64_t tdBuyPosition;
+    int64_t tdSellPosition;
+    int64_t unTdBuyPosition;
+    int64_t unTdSellPosition;
+    int64_t ydPosition;
+    int64_t availablePosition;
+    int64_t totalPosition;
+    int64_t totalCost;
+};
+
 void start(const char *config);
 bool isStarted();
 void stop();
+void queryAccountStatus();
 void sendReqOrder(ReqOrder &reqOrder);
 void sendReqOrderBatch(ReqOrderBatch &reqOrderBatch);
 void sendReqCancel(ReqCancel &reqCancel);

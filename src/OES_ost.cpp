@@ -5,13 +5,12 @@
 #include "constants.h"
 #include "heatZone.h"
 #include "OrderRefLut.h"
+#include "clockMonotonic.h"
 #include <atomic>
 #include <cstring>
 #include <stdexcept>
 #include <fstream>
 #include <vector>
-#include <chrono>
-#include <thread>
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
 
@@ -259,7 +258,7 @@ CUTDepthMarketDataField *OES::getDepthMarketData(size_t &size)
 {
     while (g_staticOK.load() < 2) {
         SPDLOG_DEBUG("waiting for market statics ready");
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        monotonicSleepFor(50'000'000);
     }
     size = g_marketStatics.size();
     return g_marketStatics.data();

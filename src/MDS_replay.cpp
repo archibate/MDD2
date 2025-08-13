@@ -9,8 +9,8 @@
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <fstream>
-#include <absl/container/flat_hash_set.h>
 #include <thread>
+#include <absl/container/flat_hash_set.h>
 #include <nlohmann/json.hpp>
 
 namespace
@@ -143,8 +143,7 @@ void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
         int64_t lastTimestamp = timestampAbsLinear(9'24'00'000);
         int64_t nextSleepTime = monotonicTime();
         int64_t timeScale = static_cast<int64_t>(1'000'000 * MDS::g_timeScale);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        monotonicSleepFor(100'000'000);
 
         for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
             MDS::Tick &tick = tickBuf[i];
@@ -191,7 +190,7 @@ void MDS::startReceive()
         setThisThreadAffinity(kMDSBindCpu);
         SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
         g_isStarted.store(true);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        monotonicSleepFor(100'000'000);
 
         replayMain(tickBuf, stop);
         g_isFinished.store(true);
