@@ -49,6 +49,8 @@ find_package(spdlog CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
 find_package(absl CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE absl::btree absl::flat_hash_map)
+find_package(tsl-robin-map CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE tsl::robin_map)
 find_package(Eigen3 CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
 find_package(TBB CONFIG REQUIRED)
@@ -127,17 +129,16 @@ if (NOT CMAKE_BUILD_TYPE MATCHES "MinSizeRel")
     set_target_properties(${PROJECT_NAME} PROPERTIES ENABLE_EXPORTS ON)
 endif()
 
-if (CMAKE_BUILD_TYPE MATCHES "Release")
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
-    if (IPO_SUPPORTED)
-        set_target_properties(${PROJECT_NAME} PROPERTIES
-            INTERPROCEDURAL_OPTIMIZATION TRUE
-        )
-    endif()
-
-    target_compile_options(${PROJECT_NAME} PRIVATE -w)
-endif()
+# if (CMAKE_BUILD_TYPE MATCHES "Release")
+    # include(CheckIPOSupported)
+    # check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
+    # if (IPO_SUPPORTED)
+    #     set_target_properties(${PROJECT_NAME} PROPERTIES
+    #         INTERPROCEDURAL_OPTIMIZATION TRUE
+    #     )
+    # endif()
+    #
+# endif()
 
 if (CMAKE_BUILD_TYPE MATCHES "Release")
     if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
@@ -147,5 +148,6 @@ if (CMAKE_BUILD_TYPE MATCHES "Release")
             -fno-stack-protector
             -fno-asynchronous-unwind-tables
         )
+        target_compile_options(${PROJECT_NAME} PRIVATE -w)
     endif()
 endif()

@@ -16,12 +16,15 @@
 #include "BuyRequest.h"
 #include "Reflect.h"
 #include "heatZone.h"
+#include "generatedReflect.h"
+#include "strXele.h"
 #include <chrono>
 #include <fstream>
 #include <cmath>
 #include <algorithm>
 #include <absl/container/btree_map.h>
-#include <absl/container/flat_hash_set.h>
+// #include <absl/container/flat_hash_set.h>
+#include <tsl/robin_set.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <magic_enum/magic_enum_format.hpp>
@@ -42,7 +45,7 @@ struct State
 #if (NE || OST) && SZ
     uint64_t upperLimitPrice10000;
     int64_t upRemainQty100;
-    absl::flat_hash_set<int32_t> upSellQty100;
+    tsl::robin_set<uint32_t> upSellOrderIds;
 #endif
 #if REPLAY && SH
     int32_t upperLimitPrice;
@@ -50,6 +53,7 @@ struct State
 #if REPLAY && SZ
     int32_t upperLimitPrice;
     uint64_t upRemainQty;
+    tsl::robin_set<uint32_t> upSellOrderIds;
 #endif
 };
 
@@ -92,7 +96,7 @@ struct alignas(64) Compute
     BState bState;
 
     int32_t futureTimestamp{};
-    bool firstCompute{};
+    bool firstComputeDone{};
 
     struct UpSell {
         int32_t price;
@@ -164,6 +168,9 @@ void initStockArrays()
         for (int32_t id = startId; id != stopId; ++id) {
             g_idToChannelLut[id] = static_cast<uint8_t>(channel);
         }
+    }
+    for (int32_t id = 0; id < g_idToChannelLut.size(); ++id) {
+        if (g_idToChannelLut[id] == 0xff) throw;
     }
 
     g_stockStates = std::make_unique<State[]>(g_stockCodes.size());
@@ -290,7 +297,8 @@ HEAT_ZONE_SNAPSHOT void stepSnapshotUntil(Compute &compute, int32_t timestamp)
 {
     if (timestamp > compute.fState.nextTickTimestamp) {
         stepSnapshot(compute);
-        while (timestamp > (compute.fState.nextTickTimestamp = timestampAdvance100ms(compute.fState.nextTickTimestamp))) {
+        while (timestamp > (compute.fState.nextTickTimestamp
+            = timestampAdvance100ms(compute.fState.nextTickTimestamp))) {
             stepSnapshot(compute);
         }
     }
@@ -700,12 +708,20 @@ HEAT_ZONE_REQORDER void sendBuyRequest(int32_t id)
 COLD_ZONE void reportTickRingOverflow(int32_t channel)
 {
     SPDLOG_WARN("tick ring overflow: channel={}", channel);
-    throw;
+}
+
+COLD_ZONE void reportTickRingInvalidCh(int32_t channel)
+{
+    SPDLOG_WARN("tick ring invalid channel: channel={}", channel);
 }
 
 HEAT_ZONE_TICK void pushTickToRing(int32_t id, MDS::Tick &tick)
 {
-    int32_t ch = g_idToChannelLut[id];
+    uint8_t ch = g_idToChannelLut[id];
+    if (ch == 0xff) [[unlikely]] {
+        reportTickRingInvalidCh(ch);
+        return;
+    }
     if (!g_tickRings[ch].write_one(tick)) [[unlikely]] {
         reportTickRingOverflow(ch);
     }
@@ -779,9 +795,9 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 #endif
 #if SZ
     bool limitUp = tick.buyOrderNo != 0
-        && tick.sellOrderNo == 0
-        && tick.quantity > state.upRemainQty
+        && tick.sellOrderNo != 0
         && tick.price == state.upperLimitPrice
+        && tick.quantity > state.upRemainQty
         && tick.timestamp >= 9'30'00'000
         && tick.timestamp < 14'57'00'000;
 #endif
@@ -796,12 +812,17 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
     }
 
 #if SZ
-    if (tick.sellOrderNo != 0 && tick.price == upperLimitPrice) {
-        if (tick.buyOrderNo == 0) {
-            upRemainQty += tick.quantity;
-        } else {
-            upRemainQty -= tick.quantity;
+    if (tick.isSellOrder()) {
+        if (tick.isOrderCancel()) {
+            if (state.upSellOrderIds.contains(tick.sellOrderNo)) {
+                state.upRemainQty -= -tick.quantity;
+            }
+        } else if (tick.price == state.upperLimitPrice) {
+            state.upRemainQty += tick.quantity;
+            state.upSellOrderIds.insert(tick.sellOrderNo);
         }
+    } else if (tick.isTrade() && tick.price == state.upperLimitPrice) {
+        state.upRemainQty -= tick.quantity;
     }
 #endif
 
@@ -828,13 +849,12 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
             && tick.orderSz.orderType == '2'
             && tick.orderSz.price == state.upperLimitPrice10000) {
             state.upRemainQty100 += tick.orderSz.qty;
-            state.upSellQty100.insert(tick.orderSz.applSeqNum);
+            state.upSellOrderIds.insert(tick.orderSz.applSeqNum);
         }
     } else {
         // assert(tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ);
         if (tick.tradeSz.execType == 0x1) {
-            auto it = state.upSellQty100.find(tick.tradeSz.offerapplSeqnum);
-            if (it != state.upSellQty100.end()) {
+            if (state.upSellOrderIds.contains(tick.tradeSz.offerapplSeqnum)) {
                 state.upRemainQty100 -= tick.tradeSz.tradeQty;
             }
 
@@ -879,28 +899,37 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
     }
 
 #elif OST && SZ
-    if (tick.head.m_message_type == sze_msg_type_trade) {
-        if (tick.exe.m_exe_px == state.upperLimitPrice10000) {
-            state.upRemainQty100 -= tick.exe.m_exe_qty;
-            if (state.upRemainQty100 < 0 && tick.exe.m_exe_type == 0x2) {
-                int32_t timestamp = static_cast<uint32_t>(
-                    tick.head.m_quote_update_time - g_szOffsetTransactTime);
-                if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
-                    auto intent = checkWantBuyAtTimestamp(id, timestamp);
-                    if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
-                        sendBuyRequest(id);
-                    }
-
-                    logStop(id, timestamp, intent);
-                    return;
-                }
-            }
-        }
-    } else if (tick.head.m_message_type == sze_msg_type_order) [[likely]] {
+    if (tick.head.m_message_type == sze_msg_type_order) {
         if (tick.order.m_side == '2'
             && tick.order.m_order_type == '2'
             && tick.order.m_px == state.upperLimitPrice10000) {
             state.upRemainQty100 += tick.order.m_qty;
+        }
+    } else {
+        // assert(tick.head.m_message_type == sze_msg_type_trade);
+        if (tick.exe.m_exe_px == state.upperLimitPrice10000) {
+            if (tick.exe.m_exe_type == 0x1) {
+                if (state.upSellOrderIds.contains(tick.exe.m_ask_app_seq_num)) {
+                    state.upRemainQty100 -= tick.exe.m_exe_qty;
+                }
+
+            } else {
+                // assert(tick.tradeSz.execType == 0x2);
+                state.upRemainQty100 -= tick.exe.m_exe_qty;
+                if (state.upRemainQty100 < 0) {
+                    int32_t timestamp = static_cast<uint32_t>(
+                        tick.head.m_quote_update_time - g_szOffsetTransactTime);
+                    if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
+                        auto intent = checkWantBuyAtTimestamp(id, timestamp);
+                        if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
+                            sendBuyRequest(id);
+                        }
+
+                        logStop(id, timestamp, intent);
+                        return;
+                    }
+                }
+            }
         }
     }
 #endif
@@ -1343,33 +1372,38 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
             auto &compute = g_stockComputes[id];
             if (compute.approachingLimitUp) {
                 compute.futureTimestamp = compute.fState.nextTickTimestamp;
-                compute.firstCompute = true;
                 approachStockIds.push_back(id);
             }
         }
         if (!approachStockIds.empty()) {
             if (approachStockIds.size() > 3) [[unlikely]] {
-                SPDLOG_TRACE("approach burst: channel={} nApproach={}", channel, approachStockIds.size());
-                remainSellAmounts.clear();
-                for (int32_t id: approachStockIds) {
-                    int64_t upSellAmount = 0;
-                    for (auto const &[sellOrderId, sell]: g_stockComputes[id].upSellOrders) {
-                        int64_t q64 = sell.quantity;
-                        upSellAmount += sell.price * q64;
-                    }
-                    remainSellAmounts.push_back(upSellAmount);
-                }
-                std::nth_element(approachStockIds.begin(), approachStockIds.begin() + 2, approachStockIds.end(), [&] (int32_t &id1, int32_t &id2) {
-                    return remainSellAmounts[&id1 - approachStockIds.data()] < remainSellAmounts[&id2 - approachStockIds.data()];
-                });
-                approachStockIds.resize(2);
+                SPDLOG_WARN("approach burst: channel={} nApproach={}", channel, approachStockIds.size());
             }
+            // if (approachStockIds.size() > 3) [[unlikely]] {
+            //     SPDLOG_WARN("approach burst: channel={} nApproach={}", channel, approachStockIds.size());
+            //     remainSellAmounts.clear();
+            //     for (int32_t id: approachStockIds) {
+            //         int64_t upSellAmount = 0;
+            //         for (auto const &[sellOrderId, sell]: g_stockComputes[id].upSellOrders) {
+            //             int64_t q64 = sell.quantity;
+            //             upSellAmount += sell.price * q64;
+            //         }
+            //         remainSellAmounts.push_back(upSellAmount);
+            //     }
+            //     std::nth_element(approachStockIds.begin(), approachStockIds.begin() + 2, approachStockIds.end(), [&] (int32_t &id1, int32_t &id2) {
+            //         return remainSellAmounts[&id1 - approachStockIds.data()] < remainSellAmounts[&id2 - approachStockIds.data()];
+            //     });
+            //     approachStockIds.resize(2);
+            // }
             for (int32_t id: approachStockIds) {
+                if (id <= 0 || id > g_stockCodes.size()) [[unlikely]] { /* debug for now */
+                    throw std::out_of_range("accessing out of range id in compute thread");
+                }
                 auto &compute = g_stockComputes[id];
                 computeFutureWantBuy(id);
                 compute.futureTimestamp = timestampAdvance100ms(compute.futureTimestamp);
-                if (compute.firstCompute) {
-                    compute.firstCompute = false;
+                if (!compute.firstComputeDone) {
+                    compute.firstComputeDone = true;
                     computeFutureWantBuy(id);
                     compute.futureTimestamp = timestampAdvance100ms(compute.futureTimestamp);
                 }
@@ -1482,7 +1516,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
                 rspOrder.rspType,
                 rspOrder.requestID,
                 rspOrder.errorID,
-                rspOrder.errorMsg,
+                strXeleError(rspOrder.errorID),
                 rspOrder.userLocalID,
                 body);
 
