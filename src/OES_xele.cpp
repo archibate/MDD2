@@ -123,6 +123,18 @@ std::atomic<uint32_t> g_requestID{1};
 TXeleOrderIDType g_maxUserLocalID;
 OrderRefLut g_orderRefLut;
 
+uint32_t nextRequestID()
+{
+    uint32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
+#if LIMIT_SPEED
+    if (requestID >= 280) [[unlikely]] {
+        SPDLOG_WARN("request rate limit reached 280/s, refuse to send");
+        return 0;
+    }
+#endif
+    return requestID;
+}
+
 std::string g_username;
 std::string g_password;
 
@@ -355,8 +367,8 @@ int callReqLogin()
 #endif
     param.openEncryption = 0;
     param.CaptureSignal = 0;
-    return g_tradeApi->reqLoginEx((const ConfigParam *)&param, g_requestID.fetch_add(1, std::memory_order_relaxed));
-    // return g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(), g_xeleTradeNode, '0' + MARKET_ID, g_requestID.fetch_add(1, std::memory_order_relaxed));
+    return g_tradeApi->reqLoginEx((const ConfigParam *)&param, nextRequestID());
+    // return g_tradeApi->reqLogin(g_xeleConfigFile.c_str(), g_username.c_str(), g_password.c_str(), g_xeleTradeNode, '0' + MARKET_ID, nextRequestID());
 }
 
 
@@ -468,7 +480,7 @@ void XeleTdSpi::onFrontTradeDisconnected(int nReason)
     /// 可以在回调函数中处理，也可以进行实时的异常检测另起线程处理
     ///*********************************///
     /// 先发送登出请求，取消用户注册权限
-    g_tradeApi->reqLogout(g_username.c_str(), g_requestID.fetch_add(1, std::memory_order_relaxed));
+    g_tradeApi->reqLogout(g_username.c_str(), nextRequestID());
     LOGf(DEBUG, "reqLogout\n");
     sleep(2);
     /// 此处等待所有连接都断开后，再进行下一步处理
@@ -883,7 +895,7 @@ void OES::stop()
 
 HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
-    int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
+    int32_t requestID = nextRequestID();
     reqOrder.xeleReqOrderInsert.UserLocalID = g_maxUserLocalID + requestID;
     g_tradeApi->reqInsertOrder(reqOrder.xeleReqOrderInsert, requestID);
     g_orderRefLut.setOrderRef(requestID, reqOrder.userLocalID);
@@ -904,7 +916,7 @@ HEAT_ZONE_REQORDER void OES::sendReqOrderBatch(ReqOrderBatch &reqOrderBatch)
 
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
-    int32_t requestID = g_requestID.fetch_add(1, std::memory_order_relaxed);
+    int32_t requestID = nextRequestID();
     reqCancel.xeleReqOrderAction.UserLocalID = g_maxUserLocalID + requestID;
     g_tradeApi->reqCancelOrder(reqCancel.xeleReqOrderAction, requestID);
 }

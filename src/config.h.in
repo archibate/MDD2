@@ -2,6 +2,7 @@
 
 #cmakedefine01 BUILD_SPEED
 #cmakedefine01 RECORD_FACTORS
+#cmakedefine01 LIMIT_SPEED
 #cmakedefine01 ALWAYS_BUY
 #cmakedefine01 DUMMY_QUANTITY
 #cmakedefine01 ASYNC_LOGGER

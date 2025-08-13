@@ -1,4 +1,5 @@
 #include "BuyRequest.h"
+#include "config.h"
 #include "OES.h"
 #include <spdlog/spdlog.h>
 
@@ -36,12 +37,7 @@ void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimi
 #endif
         std::sprintf(xeleInsert->SecuritiesID, "%06d", stockCode);
         xeleInsert->Direction = XELE_ORDER_BUY;
-#if SZ
-        xeleInsert->LimitPrice = stat.staticSzInfo.upperLimitPrice;
-#endif
-#if SH
-        xeleInsert->LimitPrice = stat.staticSseInfo.upperLimitPrice;
-#endif
+        xeleInsert->LimitPrice = upperLimitPrice * 0.01;
         xeleInsert->Volume = quantity;
         xeleInsert->OrderType = XELE_LIMIT_PRICE_TYPE;
         xeleInsert->TimeCondition = XELE_TIMEINFORCE_TYPE_GFD;
@@ -76,7 +72,7 @@ void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimi
     reqOrder->inputOrder.HedgeFlag = UT_HF_Speculation;
     reqOrder->inputOrder.Direction = UT_D_Buy;
     reqOrder->inputOrder.OffsetFlag = UT_OF_Open;
-    reqOrder->inputOrder.LimitPrice = stat.depthMarketData.UpperLimitPrice;
+    reqOrder->inputOrder.LimitPrice = upperLimitPrice * 0.01;
     reqOrder->inputOrder.VolumeTotalOriginal = quantity;
     reqOrder->inputOrder.TimeCondition = UT_TC_GFD;
     reqOrder->inputOrder.VolumeCondition = UT_VC_AV;
