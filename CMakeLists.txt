@@ -138,3 +138,14 @@ if (CMAKE_BUILD_TYPE MATCHES "Release")
 
     target_compile_options(${PROJECT_NAME} PRIVATE -w)
 endif()
+
+if (CMAKE_BUILD_TYPE MATCHES "Release")
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            -fcf-protection=none
+            -fno-stack-clash-protection
+            -fno-stack-protector
+            -fno-asynchronous-unwind-tables
+        )
+    endif()
+endif()

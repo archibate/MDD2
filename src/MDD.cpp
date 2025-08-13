@@ -21,6 +21,7 @@
 #include <cmath>
 #include <algorithm>
 #include <absl/container/btree_map.h>
+#include <absl/container/flat_hash_set.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <magic_enum/magic_enum_format.hpp>
@@ -41,6 +42,7 @@ struct State
 #if (NE || OST) && SZ
     uint64_t upperLimitPrice10000;
     int64_t upRemainQty100;
+    absl::flat_hash_set<int32_t> upSellQty100;
 #endif
 #if REPLAY && SH
     int32_t upperLimitPrice;
@@ -97,7 +99,7 @@ struct alignas(64) Compute
         int32_t quantity;
     };
 
-    absl::btree_map<int32_t, UpSell> upSellOrders;
+    absl::btree_map<uint64_t, UpSell> upSellOrders;
 
 #if RECORD_FACTORS
     std::unique_ptr<FactorList[]> factorListCache;
@@ -821,30 +823,41 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
     }
 
 #elif NE && SZ
-    if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ) {
-        if (tick.tradeSz.tradePrice == state.upperLimitPrice10000) {
-            state.upRemainQty100 -= tick.tradeSz.tradeQty;
-            if (state.upRemainQty100 < 0 && tick.tradeSz.execType == 0x2) {
-                int32_t timestamp = static_cast<uint32_t>(
-                    tick.tradeSz.transactTime - g_szOffsetTransactTime);
-                if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
-                    auto intent = checkWantBuyAtTimestamp(id, timestamp);
-                    if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
-                        sendBuyRequest(id);
-                    }
-
-
-                    logStop(id, timestamp, intent);
-                    return;
-                }
-            }
-        }
-    } else {
-        // assert(tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ);
+    if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ) {
         if (tick.orderSz.side == '2'
             && tick.orderSz.orderType == '2'
             && tick.orderSz.price == state.upperLimitPrice10000) {
             state.upRemainQty100 += tick.orderSz.qty;
+            state.upSellQty100.insert(tick.orderSz.applSeqNum);
+        }
+    } else {
+        // assert(tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ);
+        if (tick.tradeSz.execType == 0x1) {
+            auto it = state.upSellQty100.find(tick.tradeSz.offerapplSeqnum);
+            if (it != state.upSellQty100.end()) {
+                state.upRemainQty100 -= tick.tradeSz.tradeQty;
+            }
+
+        } else {
+            // assert(tick.tradeSz.execType == 0x2);
+            if (tick.tradeSz.tradePrice == state.upperLimitPrice10000) {
+                state.upRemainQty100 -= tick.tradeSz.tradeQty;
+
+                if (state.upRemainQty100 < 0) {
+                    int32_t timestamp = static_cast<uint32_t>(
+                        tick.tradeSz.transactTime - g_szOffsetTransactTime);
+                    if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
+                        auto intent = checkWantBuyAtTimestamp(id, timestamp);
+                        if (intent == WantCache::WantBuy || ALWAYS_BUY) [[likely]] {
+                            sendBuyRequest(id);
+                        }
+
+
+                        logStop(id, timestamp, intent);
+                        return;
+                    }
+                }
+            }
         }
     }
 
@@ -1154,6 +1167,7 @@ COLD_ZONE void logLimitUp(int32_t id, int32_t timestamp, WantCache::Intent oldIn
 HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
 {
     if (compute.upperLimitPrice == 0) [[unlikely]] {
+        compute.approachingLimitUp = false;
         return;
     }
 
@@ -1335,6 +1349,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
         }
         if (!approachStockIds.empty()) {
             if (approachStockIds.size() > 3) [[unlikely]] {
+                SPDLOG_TRACE("approach burst: channel={} nApproach={}", channel, approachStockIds.size());
                 remainSellAmounts.clear();
                 for (int32_t id: approachStockIds) {
                     int64_t upSellAmount = 0;

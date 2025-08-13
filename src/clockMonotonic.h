@@ -4,7 +4,7 @@
 // #include <thread>
 #include <time.h>
 #include <cstdint>
-#include <emmintrin.h>
+// #include <emmintrin.h>
 
 
 inline int64_t monotonicTime()
