@@ -1,5 +1,2 @@
-add_library(header-only OBJECT
-        aes.cpp
-        base64.cpp
-)
-target_include_directories(header-only PUBLIC include)
+add_library(header-only INTERFACE)
+target_include_directories(header-only INTERFACE include)

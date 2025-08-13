@@ -33,10 +33,13 @@ options = [
     '-DCMAKE_BUILD_TYPE=RelWithDebInfo',
     '-DBUILD_SPEED=ON',
     '-DRECORD_FACTORS=OFF',
+    '-DALWAYS_BUY=OFF',
+    '-DDUMMY_QUANTITY=OFF',
     '-DASYNC_LOGGER=OFF',
     '-DALWAYS_BUY=OFF',
     '-DTARGET_SECURITY=REPLAY',
     '-DTARGET_MARKET=SH',
+    '-DSZ_IS_SECOND=OFF',
 ]
 
 
@@ -49,5 +52,5 @@ def build():
 
 
 build()
-# flamegraph()
-callgrind()
+flamegraph()
+# callgrind()

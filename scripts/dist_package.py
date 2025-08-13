@@ -12,7 +12,7 @@ targets = {
         '-DASYNC_LOGGER=OFF',
         '-DTARGET_SECURITY=NE',
         '-DTARGET_MARKET=SH',
-        '-DASYNC_LOGGER=OFF',
+        '-DSZ_IS_SECOND=OFF',
     ],
     'NESZ': [
         '-DCMAKE_BUILD_TYPE=Release',
