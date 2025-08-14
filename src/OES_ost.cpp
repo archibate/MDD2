@@ -101,7 +101,7 @@ public:
     void OnRspOrderInsert(CUTInputOrderField *pInputOrder, CUTRspInfoField *pRspInfo, int nRequestID, bool bIsLast) override
     {
         // if (pRspInfo->ErrorID != 0) {
-        //     SPDLOG_WARN("insert order returned error: stock={} orderId={} errorId={} errorMsg=[{}]", pInputOrder->InstrumentID, pInputOrder->OrderRef, pRspInfo->ErrorID, pRspInfo->ErrorMsg);
+        //     SPDLOG_WARN("insert order returned error: stock={:06d} orderId={} errorId={} errorMsg=[{}]", pInputOrder->InstrumentID, pInputOrder->OrderRef, pRspInfo->ErrorID, pRspInfo->ErrorMsg);
         // }
 
         OES::RspOrder rsp{};

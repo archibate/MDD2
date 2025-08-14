@@ -923,6 +923,7 @@ void OES::stop()
 
 void OES::queryAccountStatus()
 {
+#if !BYPASS_OES
     {
         int32_t requestID = nextRequestID();
         CXeleReqQryClientAccountField qryFund;
@@ -939,13 +940,16 @@ void OES::queryAccountStatus()
         g_tradeApi->reqQryPosition(qryPos, requestID);
     }
     monotonicSleepFor(500'000'000);
+#endif
 }
 
 HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
     int32_t requestID = nextRequestID();
     reqOrder.xeleReqOrderInsert.UserLocalID = g_maxUserLocalID + requestID;
+#if !BYPASS_OES
     g_tradeApi->reqInsertOrder(reqOrder.xeleReqOrderInsert, requestID);
+#endif
     g_orderRefLut.setOrderRef(requestID, reqOrder.userLocalID);
 }
 
@@ -958,7 +962,9 @@ HEAT_ZONE_REQORDER void OES::sendReqOrderBatch(ReqOrderBatch &reqOrderBatch)
     for (uint32_t i = 0; i < nBatch; ++i) {
         reqOrderBatch.xeleReqBatchOrderInsert.ReqOrderInsertField[i].UserLocalID = userLocalIDBase + i;
     }
+#if !BYPASS_OES
     g_tradeApi->reqInsertBatchOrder(reqOrderBatch.xeleReqBatchOrderInsert, requestID);
+#endif
     g_orderRefLut.setOrderRef(requestID, reqOrderBatch.userLocalID);
 }
 
@@ -966,7 +972,9 @@ HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
     int32_t requestID = nextRequestID();
     reqCancel.xeleReqOrderAction.UserLocalID = g_maxUserLocalID + requestID;
+#if !BYPASS_OES
     g_tradeApi->reqCancelOrder(reqCancel.xeleReqOrderAction, requestID);
+#endif
 }
 
 const char *OES::strErrorId(TXeleErrorIdType errorId)

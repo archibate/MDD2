@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include "OES.h"
 #include <cstdint>
 
@@ -10,4 +11,6 @@ using BuyRequest = OES::ReqOrder;
 #endif
 
 void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimitPrice, int32_t quantity);
+#if SELL_GC001
 void makeGCSellRequest(OES::ReqOrder &reqOrder, int32_t stockCode, double price, int64_t quantity);
+#endif

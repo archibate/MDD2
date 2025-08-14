@@ -178,7 +178,7 @@ void MDS::startReceive()
     for (int32_t stock: g_subscribedStocks) {
         auto stat = getStatic(stock);
         if (stat.stock == 0) {
-            SPDLOG_WARN("stock static not found for stock={}", stock);
+            SPDLOG_WARN("stock static not found for stock={:06d}", stock);
         }
         MDD::handleStatic(stat);
     }

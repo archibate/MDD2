@@ -13,12 +13,13 @@
 #include "dateTime.h"
 #include "tickProps.h"
 #include "radixSort.h"
+#include "simdAlgo.h"
 #include "BuyRequest.h"
 #include "Reflect.h"
 #include "heatZone.h"
 #include "generatedReflect.h"
 #include "strXele.h"
-#include <chrono>
+#include <thread>
 #include <fstream>
 #include <cmath>
 #include <algorithm>
@@ -120,6 +121,8 @@ auto kTickRingSizeMB = sizeof(TickRing) / 1024 / 1024;
 std::array<std::jthread, kChannelCount> g_computeThreads;
 std::vector<int32_t> g_stockCodes; // constant, owned by all
 std::vector<int32_t> g_prevLimitUpStockCodes; // constant, owned by all
+std::vector<double> g_prevLimitUpReturns; // owned by mds_snap thread
+double g_prevLimitUpMeanReturn = NAN; // shared by mds thread and mds_snap thread
 std::vector<FactorList> g_stockFactors; // owned by compute thread [c:c]
 std::vector<uint8_t> g_idToChannelLut; // owned by mds thread
 std::array<int16_t, 0x2000> g_stockIdLut; // constant, owned by all
@@ -172,9 +175,9 @@ void initStockArrays()
             g_idToChannelLut[id] = static_cast<uint8_t>(channel);
         }
     }
-    for (int32_t id = 0; id < g_idToChannelLut.size(); ++id) {
-        if (g_idToChannelLut[id] == 0xff) throw;
-    }
+    // for (int32_t id = 0; id < g_idToChannelLut.size(); ++id) {
+    //     if (g_idToChannelLut[id] == 0xff) throw;
+    // }
 
     g_stockStates = std::make_unique<State[]>(g_stockCodes.size());
     g_stockComputes = std::make_unique<Compute[]>(g_stockCodes.size());
@@ -269,6 +272,7 @@ void parseDailyConfig(const char *config)
     }
 
     g_prevLimitUpStockCodes.resize(header.prevLimitUpCount);
+    g_prevLimitUpReturns.resize(header.prevLimitUpCount, NAN);
     facFile.read((char *)g_prevLimitUpStockCodes.data(), g_prevLimitUpStockCodes.size() * sizeof(int32_t));
     if (!facFile.good()) {
         SPDLOG_ERROR("failed to read all prev-limit-up stocks");
@@ -649,7 +653,7 @@ HEAT_ZONE_COMPUTE void computeKaiyuan(Compute &compute, FactorList &factorList)
     }
 }
 
-HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
+HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id, int32_t timestamp)
 {
     auto &compute = g_stockComputes[id];
     if (compute.fState.snapshots.empty()) [[unlikely]] {
@@ -665,7 +669,6 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
     *compute.bState.iirState = *compute.fState.iirState;
     compute.bState.iirState.swap(compute.fState.iirState);
 
-    int32_t timestamp = compute.futureTimestamp;
     stepSnapshotUntil(compute, timestamp);
 
     for (auto const &[sellOrderId, sell]: compute.upSellOrders) {
@@ -682,6 +685,7 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id)
     computeVolatility(compute, factorList);
     computeKaiyuan(compute, factorList);
     compute.fState.iirState->finalCompute(factorList.crowdind);
+    factorList.prevUMeanReturn = g_prevLimitUpMeanReturn;
 
     bool wantBuy = predictModel(factorList.rawFactors);
     auto &wantCache = g_wantCaches[id];
@@ -775,7 +779,7 @@ void logStop(int32_t id, int32_t timestamp, WantCache::Intent intent)
 #endif
     pushTickToRing(id, endSign);
 
-    SPDLOG_DEBUG("detected limit up: stock={} timestamp={} intent={}", g_stockCodes[id], timestamp, intent);
+    SPDLOG_DEBUG("detected limit up: stock={:06d} timestamp={} intent={}", g_stockCodes[id], timestamp, intent);
     unsubscribeStock(id);
 }
 
@@ -945,6 +949,17 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 void MDD::handleSnap(MDS::Snap &snap)
 {
     int32_t stock = snapStockCode(snap);
+    int32_t timestamp = snapTimestamp(snap);
+
+    if (timestamp >= 9'25'00'000 && timestamp < 9'26'00'000) {
+        if (size_t index = arrayContains(g_prevLimitUpStockCodes, stock); index != -1) {
+            double openRate = snapOpenPrice(snap) / snapPreClosePrice(snap) - 1;
+            g_prevLimitUpReturns[index] = openRate;
+            g_prevLimitUpMeanReturn = computeMean(g_prevLimitUpReturns);
+            std::atomic_thread_fence(std::memory_order_seq_cst);
+            SPDLOG_DEBUG("prev-limit-up: stock={:06d} preClosePrice={} openPrice={} openRate={:.03f}% meanOpenRate={:.03f}%", stock, snapPreClosePrice(snap), snapOpenPrice(snap), openRate * 100, g_prevLimitUpMeanReturn * 100);
+        }
+    }
 
 #if SELL_GC001
 #if SH
@@ -953,10 +968,10 @@ void MDD::handleSnap(MDS::Snap &snap)
 #if SZ
     constexpr int32_t kGCStockCode = 131810; // R-001
 #endif
-    if (stock == kGCStockCode && snapTimestamp(snap) >= 14'57'00'000) {
+    if (stock == kGCStockCode && timestamp >= 14'57'00'000) {
         static uint32_t gcState = 0;
         if (gcState == 0) {
-            OES::queryAccountStatus();
+            std::jthread(OES::queryAccountStatus).detach();
         } else if (gcState == 5) {
             OES::ReqOrder gcSellRequest;
             std::atomic_thread_fence(std::memory_order_seq_cst);
@@ -965,7 +980,7 @@ void MDD::handleSnap(MDS::Snap &snap)
                 quantity = 100'0000;
             }
             if (quantity > 80) {
-                makeGCSellRequest(gcSellRequest, stock, snapBid1Price(snap), quantity);
+                makeGCSellRequest(gcSellRequest, stock, snapPrice(snap, 1), quantity);
                 OES::sendReqOrder(gcSellRequest);
             }
         }
@@ -987,7 +1002,7 @@ void MDD::handleStatic(MDS::Stat &stat)
     int32_t preClosePrice = statPreClosePrice(stat);
 
     if (upperLimitPrice == 0) [[unlikely]] {
-        SPDLOG_WARN("invalid static price: stock={} upperLimitPrice={}", stock, upperLimitPrice);
+        SPDLOG_WARN("invalid static price: stock={:06d} upperLimitPrice={}", stock, upperLimitPrice);
         unsubscribeStock(id);
         return;
     }
@@ -1223,7 +1238,7 @@ COLD_ZONE void logLimitUp(int32_t id, int32_t timestamp, WantCache::Intent oldIn
         }
     }
 
-    SPDLOG_INFO("limit up model status: stock={} upPrice={} tickTime={} roundTime={} bestTime={} minDt={} toleranceDt={} intent={} oldIntent={}", compute.stockCode, compute.upperLimitPrice, timestamp, timestampDelinear(linearTimestamp), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, intent, oldIntent);
+    SPDLOG_INFO("limit up model status: stock={:06d} upPrice={} tickTime={} roundTime={} bestTime={} minDt={} toleranceDt={} intent={} oldIntent={}", compute.stockCode, compute.upperLimitPrice, timestamp, timestampDelinear(linearTimestamp), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, intent, oldIntent);
 }
 
 HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
@@ -1345,7 +1360,45 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
     const int32_t startId = (g_stockCodes.size() * channel) / kChannelCount;
     const int32_t stopId = (g_stockCodes.size() * (channel + 1)) / kChannelCount;
 
-    int64_t sleepInterval = 95'000'000;
+#if 1
+    while (!stop.stop_requested()) [[likely]] {
+        approachStockIds.clear();
+        for (int32_t id = startId; id != stopId; ++id) {
+            g_stockComputes[id].approachingLimitUp = false;
+        }
+
+        while (true) {
+            MDS::Tick *endTicks = g_tickRings[channel].read_some(tickBuf, tickBuf + std::size(tickBuf));
+            for (MDS::Tick *pTick = tickBuf; pTick != endTicks; ++pTick) {
+                int32_t stock = tickStockCode(*pTick);
+                int32_t id = linearizeStockId(stock);
+                if (id == -1) [[unlikely]] {
+                    continue;
+                }
+                addComputeTick(g_stockComputes[id], *pTick);
+            }
+            if (endTicks < tickBuf + std::size(tickBuf) / 2) {
+                break;
+            }
+        }
+
+        for (int32_t id = startId; id != stopId; ++id) {
+            auto &compute = g_stockComputes[id];
+            if (compute.approachingLimitUp) {
+                approachStockIds.push_back(id);
+            }
+        }
+
+        for (int32_t i = 0; i < 16; ++i) {
+            for (int32_t id: approachStockIds) {
+                auto &compute = g_stockComputes[id];
+                computeFutureWantBuy(id, timestampAdvance(compute.fState.nextTickTimestamp, i * 100));
+            }
+        }
+    }
+
+#else
+    int64_t sleepInterval = 99'000'000;
 #if REPLAY
     sleepInterval = static_cast<int64_t>(sleepInterval * MDS::g_timeScale);
 #endif
@@ -1367,7 +1420,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
                 ++nTickBrust;
             } else {
                 if (nTickBrust >= 3) {
-                    SPDLOG_TRACE("tick burst: channel={} nBrust={}", channel, nTickBrust * std::size(tickBuf));
+                    SPDLOG_DEBUG("tick burst: channel={} nBrust={}", channel, nTickBrust * std::size(tickBuf));
                 }
                 nTickBrust = 0;
             }
@@ -1378,9 +1431,6 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
                 if (id == -1) [[unlikely]] {
                     continue;
                 }
-                // if (g_idToChannelLut[id] != channel) [[unlikely]] {
-                //     SPDLOG_ERROR("invalid channel data mistransfer");
-                // }
                 addComputeTick(g_stockComputes[id], *pTick);
             }
 
@@ -1433,16 +1483,17 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
                     throw std::out_of_range("accessing out of range id in compute thread");
                 }
                 auto &compute = g_stockComputes[id];
-                computeFutureWantBuy(id);
+                computeFutureWantBuy(id, compute.futureTimestamp);
                 compute.futureTimestamp = timestampAdvance100ms(compute.futureTimestamp);
                 if (!compute.firstComputeDone) {
                     compute.firstComputeDone = true;
-                    computeFutureWantBuy(id);
+                    computeFutureWantBuy(id, compute.futureTimestamp);
                     compute.futureTimestamp = timestampAdvance100ms(compute.futureTimestamp);
                 }
             }
         }
     }
+#endif
 }
 
 }
@@ -1452,22 +1503,26 @@ void MDD::start(const char *config)
     parseDailyConfig(config);
     SPDLOG_INFO("found {} stocks", g_stockCodes.size());
 
-    monotonicSleepFor(40'000'000);
+    monotonicSleepFor(5'000'000);
+
+#if !BYPASS_OES
     SPDLOG_INFO("initializing trade api");
     OES::start(config);
-
-    monotonicSleepFor(80'000'000);
+    monotonicSleepFor(5'000'000);
+#endif
 
     SPDLOG_INFO("initializing quote api");
     MDS::start(config);
 
+#if !BYPASS_OES
     while (!OES::isStarted()) {
         SPDLOG_DEBUG("wait for trade initial");
         monotonicSleepFor(400'000'000);
     }
 
     OES::queryAccountStatus();
-    // monotonicSleepFor(200'000'000);
+    monotonicSleepFor(200'000'000);
+#endif
 
     SPDLOG_INFO("subscribing {} stocks", g_stockCodes.size());
     MDS::subscribe(g_stockCodes.data(), g_stockCodes.size());
@@ -1500,9 +1555,12 @@ void MDD::stop()
     SPDLOG_DEBUG("stopping mds");
     MDS::stop();
     monotonicSleepFor(30'000'000);
+
+#if !BYPASS_OES
     SPDLOG_DEBUG("stopping oes");
     OES::stop();
     monotonicSleepFor(60'000'000);
+#endif
 
     SPDLOG_DEBUG("stopping {} compute threads", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
@@ -1548,7 +1606,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 #undef PER_TYPE
         default: body = "?"; break;
     }
-    SPDLOG_INFO("order response: rspType={} requestID={} errorID={} errorMsg={} userLocalID={} | {}",
+    SPDLOG_DEBUG("order response: rspType={} requestID={} errorID={} errorMsg={} userLocalID={} | {}",
                 rspOrder.rspType,
                 rspOrder.requestID,
                 rspOrder.errorID,
@@ -1568,7 +1626,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 #undef PER_TYPE
         default: body = "?"; break;
     }
-    SPDLOG_INFO("order response: rspType={} requestID={} errorID={} errorMsg={} userLocalID={} | {}",
+    SPDLOG_DEBUG("order response: rspType={} requestID={} errorID={} errorMsg={} userLocalID={} | {}",
                 rspOrder.rspType,
                 rspOrder.requestID,
                 rspOrder.errorID,
@@ -1590,6 +1648,6 @@ void MDD::handleAccountPosition(OES::AccountPosition *positions, size_t nPositio
 {
     SPDLOG_INFO("account position status: nPosition={}", nPosition);
     for (size_t i = 0; i < nPosition; ++i) {
-        SPDLOG_INFO("position #{}: stock={} totalPos={} availPos={}", i, positions[i].stock, positions[i].totalPosition, positions[i].availablePosition);
+        SPDLOG_INFO("position #{}: stock={:06d} totalPos={} availPos={}", i, positions[i].stock, positions[i].totalPosition, positions[i].availablePosition);
     }
 }

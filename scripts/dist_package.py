@@ -11,8 +11,10 @@ targets = {
         '-DDUMMY_QUANTITY=ON',
         '-DASYNC_LOGGER=OFF',
         '-DDETAIL_LOG=OFF',
+        '-DSELL_GC001=OFF',
         '-DTARGET_SECURITY=NE',
         '-DTARGET_MARKET=SH',
+        '-DBYPASS_OES=OFF',
         '-DSZ_IS_SECOND=OFF',
     ],
     'NESZ': [
@@ -23,8 +25,10 @@ targets = {
         '-DDUMMY_QUANTITY=ON',
         '-DASYNC_LOGGER=OFF',
         '-DDETAIL_LOG=OFF',
+        '-DSELL_GC001=OFF',
         '-DTARGET_SECURITY=NE',
         '-DTARGET_MARKET=SZ',
+        '-DBYPASS_OES=OFF',
         '-DSZ_IS_SECOND=OFF',
     ],
     'NESZ2': [
@@ -35,8 +39,10 @@ targets = {
         '-DDUMMY_QUANTITY=ON',
         '-DASYNC_LOGGER=OFF',
         '-DDETAIL_LOG=OFF',
+        '-DSELL_GC001=OFF',
         '-DTARGET_SECURITY=NE',
         '-DTARGET_MARKET=SZ',
+        '-DBYPASS_OES=ON',
         '-DSZ_IS_SECOND=ON',
     ],
 }
@@ -59,7 +65,18 @@ import subprocess
 import datetime
 import sys
 
-today = sys.argv[1] if len(sys.argv) > 1 else datetime.datetime.now().strftime('%Y%m%d')
+today = datetime.datetime.now().strftime('%Y%m%d')
+if len(sys.argv) > 1 and any(k in sys.argv[1:] for k in targets):
+    targets = {k: v for k, v in targets.items() if k in sys.argv[1:]}
+    try:
+        int(sys.argv[1])
+    except ValueError:
+        pass
+    else:
+        today = sys.argv[1]
+
+print('today:', today)
+print('targets:', targets)
 
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 for market in markets:

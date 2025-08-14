@@ -5,7 +5,7 @@
 
 void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimitPrice, int32_t quantity)
 {
-    SPDLOG_TRACE("prepared buy request: stock={} upperLimitPrice={} reportQuantity={}",
+    SPDLOG_TRACE("prepared buy request: stock={:06d} upperLimitPrice={} reportQuantity={}",
                  stockCode, upperLimitPrice, quantity);
 
 #if SPLIT_ORDER
@@ -89,6 +89,9 @@ void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimi
 #endif
 }
 
+#if SELL_GC001
 void makeGCSellRequest(OES::ReqOrder &reqOrder, int32_t stockCode, int32_t price, int32_t quantity)
 {
+#error not implemented
 }
+#endif

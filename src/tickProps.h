@@ -53,20 +53,69 @@ inline int32_t snapTimestamp(MDS::Snap &snap)
     return timestamp;
 }
 
-inline double snapBid1Price(MDS::Snap &snap)
+inline double snapOpenPrice(MDS::Snap &snap)
 {
 #if REPLAY
-    int32_t stock = snap.stock;
+    int32_t stock = snap.openPrice;
 #elif NE
     int32_t stock = snap.marketType == NescForesight::SSE
-                               ? snap.snapshotSse->bidInfo[0].price / 1000.0
-                               : snap.snapshotSz->bidInfo[0].price / 1000000.0;
+                               ? snap.snapshotSse->openPrice / 1000.0
+                               : snap.snapshotSz->openPrice / 1000000.0;
 #elif OST
 #error not implemented
 #endif
     return stock;
 }
 
+inline double snapPreClosePrice(MDS::Snap &snap)
+{
+#if REPLAY
+    int32_t stock = snap.preClosePrice;
+#elif NE
+    int32_t stock = snap.marketType == NescForesight::SSE
+                               ? snap.snapshotSse->preClosePrice / 1000.0
+                               : snap.snapshotSz->preClosePrice / 10000.0;
+#elif OST
+#error not implemented
+#endif
+    return stock;
+}
+
+inline double snapPrice(MDS::Snap &snap, int32_t n)
+{
+    if (n == 0) {
+#if REPLAY
+        return snap.lastPrice;
+#elif NE
+        return snap.marketType == NescForesight::SSE
+                               ? snap.snapshotSse->lastPrice / 1000.0
+                               : snap.snapshotSz->lastPrice / 1000000.0;
+#elif OST
+#error not implemented
+#endif
+    } else if (n > 0) {
+#if REPLAY
+        return snap.bidPrice[n - 1];
+#elif NE
+        return snap.marketType == NescForesight::SSE
+                               ? snap.snapshotSse->bidInfo[n - 1].price / 1000.0
+                               : snap.snapshotSz->bidInfo[n - 1].price / 1000000.0;
+#elif OST
+#error not implemented
+#endif
+    } else {
+#if REPLAY
+        return snap.askPrice[-n - 1];
+#elif NE
+        return snap.marketType == NescForesight::SSE
+                               ? snap.snapshotSse->askInfo[-n - 1].price / 1000.0
+                               : snap.snapshotSz->askInfo[-n - 1].price / 1000000.0;
+#elif OST
+#error not implemented
+#endif
+    }
+    return 0;
+}
 
 inline int32_t statStockCode(MDS::Stat &stat)
 {

@@ -33,7 +33,7 @@ void OES::stop()
 
 HEAT_ZONE_REQORDER void OES::sendReqOrder(ReqOrder &reqOrder)
 {
-    SPDLOG_DEBUG("oes replay request order: stock={} price={} quantity={}",
+    SPDLOG_DEBUG("oes replay request order: stock={:06d} price={} quantity={}",
                 reqOrder.stockCode, reqOrder.price, reqOrder.quantity);
 
     OES::RspOrder rspOrder{};
@@ -57,7 +57,17 @@ HEAT_ZONE_REQORDER void OES::sendReqOrderBatch(ReqOrderBatch &reqOrderBatch)
 
 HEAT_ZONE_REQORDER void OES::sendReqCancel(ReqCancel &reqCancel)
 {
-    SPDLOG_DEBUG("oes replay request cancel: stock={} orderSysId={}",
+    SPDLOG_DEBUG("oes replay request cancel: stock={:06d} orderSysId={}",
                  reqCancel.stockCode, reqCancel.orderSysId);
+}
+
+void OES::queryAccountStatus()
+{
+    OES::AccountFund fund = {
+        .initTotalFund = 100'0000'00,
+        .availableFund = 100'0000'00,
+    };
+    MDD::handleAccountFund(fund);
+    MDD::handleAccountPosition(nullptr, 0);
 }
 #endif
