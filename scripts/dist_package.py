@@ -82,22 +82,20 @@ os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 for market in markets:
     subprocess.check_call(['/opt/miniconda3/bin/python', 'scripts/fetch_state.py', market.upper(), today])
 
-def strip_file(*paths):
-    for path in paths:
-        subprocess.check_call(['chmod', '+x', path])
-        subprocess.check_call(['strip', path])
-        subprocess.check_call(['patchelf', '--set-rpath', '$ORIGIN', path])
+def patch_file(path):
+    subprocess.check_call(['chmod', '+x', path])
+    subprocess.check_call(['patchelf', '--set-rpath', '$ORIGIN', path])
 
 blacklist = ['linux-vdso.so.1', 'ld-linux-x86-64.so.2']
 
-def prepare_file(*paths):
+def prepare_file(out, *paths):
     paths = set(paths)
     result = set(paths)
 
     stack = list(paths)
     while stack:
         path = stack.pop()
-        for line in subprocess.check_output(['ldd', path]).decode().splitlines():
+        for line in subprocess.check_output(['ldd', os.path.join(out, path)]).decode().splitlines():
             line = line.strip()
             if '=>' not in line:
                 continue
@@ -117,10 +115,15 @@ def prepare_file(*paths):
     for path in result:
         if path in paths:
             continue
-        dest = os.path.join('bin', os.path.basename(path))
-        shutil.copyfile(path, dest)
+        dest = os.path.join(out, os.path.basename(path))
         print('Copying', path)
-        strip_file(dest)
+        shutil.copyfile(path, dest)
+        patch_file(dest)
+
+    for path in files:
+        dest = os.path.join(out, path)
+        print('Patching', path)
+        patch_file(dest)
 
 
 for target, options in targets.items():
@@ -135,65 +138,60 @@ for target, options in targets.items():
 shutil.rmtree(f'dist', ignore_errors=True)
 for target in targets:
     os.makedirs(f'dist/{target}', exist_ok=True)
-    os.chdir(f'dist/{target}')
-
-    os.makedirs('bin', exist_ok=True)
-    os.makedirs('log', exist_ok=True)
-    os.makedirs('config', exist_ok=True)
 
     market = target[2:4].lower()
     security = target[:2].lower()
 
-    shutil.copyfile(f'/data/daily_csv/mdd2_factors_{market}_{today}.bin', f'config/factors.bin')
-    with open(f'../../config/{target}.json', 'rb') as f:
+    shutil.copyfile(f'build/{target}/mdd_v2', f'dist/{target}/mdd_v2')
+    shutil.copyfile('/lib64/ld-linux-x86-64.so.2', f'dist/{target}/ld-linux-x86-64.so.2')
+    shutil.copyfile('/lib/x86_64-linux-gnu/librt.so.1', f'dist/{target}/librt.so.1')
+    shutil.copyfile('/lib/x86_64-linux-gnu/libdl.so.2', f'dist/{target}/libdl.so.2')
+    subprocess.check_call(['chmod', '+x', f'dist/{target}/ld-linux-x86-64.so.2'])
+
+    files = ['librt.so.1', 'libdl.so.2', 'mdd_v2']
+    prepare_file(f'dist/{target}', *files)
+    subprocess.check_call(['patchelf', '--set-interpreter', '/root/MDD/ld-linux-x86-64.so.2', f'dist/{target}/mdd_v2'])
+
+    shutil.copyfile(f'/data/daily_csv/mdd2_factors_{market}_{today}.bin', f'dist/{target}/factors_{market}_{today}.bin')
+    with open(f'config/{target}.json', 'rb') as f:
         config = json.load(f)
     config['date'] = int(today)
     market = target[-2:].lower()
-    config['factor_file'] = f'../config/factors.bin'
-    with open('config/config.json', 'w') as f:
+    config['factor_file'] = f'/root/MDD/factors_{market}_{today}.bin'
+    with open(f'config_{target}_{today}.json', 'w') as f:
         json.dump(config, f)
 
-    shutil.copyfile(f'../../build/{target}/mdd_v2', 'bin/mdd_v2')
-    shutil.copyfile('/lib64/ld-linux-x86-64.so.2', 'bin/ld-linux-x86-64.so.2')
-    shutil.copyfile('/lib/x86_64-linux-gnu/librt.so.1', 'bin/librt.so.1')
-    shutil.copyfile('/lib/x86_64-linux-gnu/libdl.so.2', 'bin/libdl.so.2')
-    subprocess.check_call(['chmod', '+x', 'bin/ld-linux-x86-64.so.2'])
-
-    files = ['bin/librt.so.1', 'bin/libdl.so.2', f'bin/mdd_v2']
-    prepare_file(*files)
-    strip_file(*files)
-
-    with open('bin/start', 'w') as f:
+    with open(f'dist/{target}/start', 'w') as f:
         f.write(rf'''#!/bin/bash
 set -e
-mkdir -p `dirname "$0"`/../log
-cd `dirname "$0"`/../log
+cd `dirname "$0"`
+wd=$PWD
+mkdir -p /root/log
+cd /root/log
 
-export XELE_MD_DISABLE_AUTH=1
-exec -a mdd_v2 ../bin/ld-linux-x86-64.so.2 ../bin/mdd_v2 ../config/config.json
+exec -a mdd_v2 $wd/ld-linux-x86-64.so.2 $wd/mdd_v2 $wd/config_{target}_{today}.json'
 ''')
-    subprocess.check_call(['chmod', '+x', 'bin/start'])
-    os.chdir('../..')
+    subprocess.check_call(['chmod', '+x', f'dist/{target}/start'])
 
 for target in targets:
     subprocess.check_call(['tar', 'zcvf', f'/data/release/MDD-{target}-{today}.tar.gz', '.'], cwd=f'dist/{target}')
 
+exit()
 for target in targets:
     market_full = target[2:].lower()
     security = target[:2].lower()
-    subprocess.check_call([f'scripts/{security}-upload.sh', market_full, f'/data/release/MDD-{target}-{today}.tar.gz', f'/root/MDD-{target}-{today}.tar.gz'])
+    subprocess.check_call([f'scripts/{security}-upload.sh', market_full, f'/data/release/MDD-{target}-{today}.tar.gz', f'/tmp/MDD-{target}-{today}.tar.gz'])
     with subprocess.Popen([f'scripts/{security}-connect.sh', market_full], stdin=subprocess.PIPE) as p:
         p.communicate(f'''set +o history
 set -e
 cd /root
-rm -rf {today}
-mkdir -p {today}
-cd {today}
-tar zxvf ../MDD-{target}-{today}.tar.gz
-cd ..
-rm -f MDD-{target}-{today}.tar.gz
-rm -f today
-ln -sf {today} today
-echo /root/today/bin/start > start.sh
-chmod +x start.sh
+rm -rf /root/MDD
+mkdir -p /root/MDD
+cd /root/MDD
+tar zxvf /tmp/MDD-{target}-{today}.tar.gz
+cd /root
+rm -f /tmp/MDD-{target}-{today}.tar.gz
+mkdir -p /root/log
+echo exec /root/MDD/start > /root/start.sh
+chmod +x /root/start.sh
 '''.encode())
