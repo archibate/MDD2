@@ -880,11 +880,15 @@ void XeleTdSpi::onRspQryPosition(CXeleRspQryStockPositionField* pRspField, CXele
 
 void OES::start(const char *config)
 {
+    std::string xeleLogPath;
     try {
         nlohmann::json json;
         std::ifstream(config) >> json;
         g_username = json["username"];
         g_password = json["password"];
+        if (json.contains("xeleLogPath")) {
+            xeleLogPath = json["xeleLogPath"];
+        }
 
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
@@ -897,6 +901,10 @@ void OES::start(const char *config)
     g_tradeApi = XeleSecuritiesTraderApi::createTraderApi();
     // SPDLOG_TRACE("oes registering user api");
     g_tradeApi->registerSpi(g_userSpi);
+    if (!xeleLogPath.empty()) {
+        SPDLOG_DEBUG("api log path: {}", xeleLogPath);
+        g_tradeApi->setApiLogPath(xeleLogPath.c_str());
+    }
 
     SPDLOG_DEBUG("oes call req login");
     int ret = callReqLogin();

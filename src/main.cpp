@@ -57,8 +57,6 @@ void abortHandler(int signo)
     _Exit(signo);
 }
 
-static pid_t mainThreadId = gettid();
-
 void faultHandler(int signo, siginfo_t *info, void *ucontext) {
     signal(signo, SIG_DFL);
 
@@ -78,7 +76,7 @@ void faultHandler(int signo, siginfo_t *info, void *ucontext) {
     SPDLOG_ERROR("Caught signal: {} ({})", signo, strsignal(signo));
     SPDLOG_ERROR("Fault address: {}", info->si_addr);
     SPDLOG_ERROR("Thread ID: {}", gettid());
-    SPDLOG_ERROR("Main thread ID: {}", mainThreadId);
+    SPDLOG_ERROR("Process ID: {}", getpid());
 
     if (signo == SIGSEGV) {
         static const char *const kSegvCodeNames[] = {

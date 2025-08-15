@@ -158,7 +158,7 @@ for target in targets:
     config['date'] = int(today)
     market = target[-2:].lower()
     config['factor_file'] = f'/root/MDD/factors_{market}_{today}.bin'
-    with open(f'config_{target}_{today}.json', 'w') as f:
+    with open(f'dist/{target}/config_{target}_{today}.json', 'w') as f:
         json.dump(config, f)
 
     with open(f'dist/{target}/start', 'w') as f:
@@ -176,7 +176,6 @@ exec -a mdd_v2 $wd/ld-linux-x86-64.so.2 $wd/mdd_v2 $wd/config_{target}_{today}.j
 for target in targets:
     subprocess.check_call(['tar', 'zcvf', f'/data/release/MDD-{target}-{today}.tar.gz', '.'], cwd=f'dist/{target}')
 
-exit()
 for target in targets:
     market_full = target[2:].lower()
     security = target[:2].lower()
