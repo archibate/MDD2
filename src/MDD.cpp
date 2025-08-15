@@ -672,9 +672,10 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(std::vector<int32_t> &approachStockI
 {
     for (int32_t id: approachStockIds) {
         auto &compute = g_stockComputes[id];
-        compute.wantSign = static_cast<uint32_t>(timestampLinear(compute.fState.nextTickTimestamp));
+        compute.wantSign = static_cast<uint32_t>(timestampLinear(compute.fState.nextTickTimestamp)) / 100U;
     }
-    for (int32_t offset = 0; offset < 16; ++offset) {
+    static_assert(kWantSignLookAhead <= 16 && kWantSignLookAhead > 0);
+    for (int32_t offset = 0; offset < kWantSignLookAhead; ++offset) {
         for (int32_t id: approachStockIds) {
             auto &compute = g_stockComputes[id];
             if (compute.fState.snapshots.empty()) [[unlikely]] {
@@ -713,6 +714,7 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(std::vector<int32_t> &approachStockI
             bool wantBuy = predictModel(factorList.rawFactors);
             compute.wantSign |= static_cast<uint64_t>(wantBuy ? WantBuy : DontBuy) << (32 + offset * 2);
             g_wantSigns[id].store(compute.wantSign, std::memory_order_relaxed);
+            // SPDLOG_INFO("computed model: stock={:06d} timestamp={} offset={} wantBuy={}", compute.stockCode, timestamp, offset, wantBuy);
 
 #if RECORD_FACTORS
             compute.factorListCache[offset] = factorList;
@@ -728,8 +730,16 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(std::vector<int32_t> &approachStockI
 
 HEAT_ZONE_REQORDER Intent checkWantBuyAtTimestamp(int32_t id, int32_t timestamp)
 {
-    timestamp = (timestampLinear(timestamp) + 90) / 100 * 100;
-    g_wantSigns[id].wantSign.load(std::memory_order_relaxed);
+    int32_t linearTimestamp = (static_cast<uint32_t>(timestampLinear(timestamp)) + 90U) / 100U;
+    uint64_t wantSign = g_wantSigns[id].load(std::memory_order_relaxed);
+    int32_t offset = (linearTimestamp - static_cast<int32_t>(static_cast<uint32_t>(wantSign))) / 100U;
+    Intent intent;
+    if (offset >= kWantSignLookAhead || offset < 0) [[unlikely]] {
+        intent = NotSure;
+    } else {
+        intent = static_cast<Intent>(static_cast<uint8_t>(wantSign >> (32 + offset * 2)) & 0b11);
+    }
+    return intent;
 }
 
 HEAT_ZONE_REQORDER void sendBuyRequest(int32_t id)
@@ -838,7 +848,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 #endif
     if (limitUp) {
         auto intent = checkWantBuyAtTimestamp(id, tick.timestamp);
-        if (intent == WantSign::WantBuy || ALWAYS_BUY) [[likely]] {
+        if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
             sendBuyRequest(id);
         }
 
@@ -870,7 +880,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
     if (limitUp) {
         int32_t timestamp = tick.tickMergeSse.tickTime * 10;
         auto intent = checkWantBuyAtTimestamp(id, timestamp);
-        if (intent == WantSign::WantBuy || ALWAYS_BUY) [[likely]] {
+        if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
             sendBuyRequest(id);
         }
 
@@ -903,7 +913,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
                         tick.tradeSz.transactTime - g_szOffsetTransactTime);
                     if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
                         auto intent = checkWantBuyAtTimestamp(id, timestamp);
-                        if (intent == WantSign::WantBuy || ALWAYS_BUY) [[likely]] {
+                        if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
                             sendBuyRequest(id);
                         }
 
@@ -925,7 +935,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
     if (limitUp) {
         int32_t timestamp = tick.tick.m_tick_time * 10;
         auto intent = checkWantBuyAtTimestamp(id, timestamp);
-        if (intent == WantSign::WantBuy || ALWAYS_BUY) [[likely]] {
+        if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
             sendBuyRequest(id);
         }
 
@@ -956,7 +966,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
                         tick.head.m_quote_update_time - g_szOffsetTransactTime);
                     if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
                         auto intent = checkWantBuyAtTimestamp(id, timestamp);
-                        if (intent == WantSign::WantBuy || ALWAYS_BUY) [[likely]] {
+                        if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
                             sendBuyRequest(id);
                         }
 
@@ -1055,7 +1065,9 @@ void MDD::handleStatic(MDS::Stat &stat)
     compute.preClosePrice = preClosePrice;
 
     compute.openPrice = preClosePrice;
-    compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
+    // compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
+    compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.01)) - 1;
+    // compute.upperLimitPriceApproach = upperLimitPrice - 5;
 
     compute.fState.currSnapshot.lastPrice = preClosePrice;
     compute.fState.currSnapshot.numTrades = 0;
@@ -1068,8 +1080,8 @@ void MDD::handleStatic(MDS::Stat &stat)
     compute.fState.nextTickTimestamp = 9'30'00'000;
 
 #if RECORD_FACTORS
-    compute.factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<WantSign>().wantBuyTimestamp)>);
-    memset(compute.factorListCache.get(), -1, sizeof(FactorList) * std::tuple_size_v<decltype(std::declval<WantSign>().wantBuyTimestamp)>);
+    compute.factorListCache = std::make_unique<FactorList[]>(kWantSignLookAhead);
+    memset(compute.factorListCache.get(), -1, sizeof(FactorList) * kWantSignLookAhead);
 #endif
 
 #if DUMMY_QUANTITY
@@ -1233,65 +1245,27 @@ COLD_ZONE void logLimitUp(int32_t id, int32_t timestamp, Intent oldIntent)
     int32_t linearTimestamp = (static_cast<uint32_t>(timestampLinear(timestamp)) + 90U) / 100U;
     uint64_t wantSign = g_wantSigns[id].load(std::memory_order_relaxed);
     int32_t offset = linearTimestamp - static_cast<int32_t>(static_cast<uint32_t>(wantSign));
-    Intent intent;
-    if (offset >= 16 || offset < 0) {
-        intent = NotSure;
+    Intent nowIntent;
+    if (offset >= kWantSignLookAhead || offset < 0) {
+        nowIntent = NotSure;
     } else {
-        intent = static_cast<Intent>(static_cast<uint8_t>(wantSign >> (32 + offset * 2)) & 0b11);
+        nowIntent = static_cast<Intent>(static_cast<uint8_t>(wantSign >> (32 + offset * 2)) & 0b11);
     }
 
     auto &compute = g_stockComputes[id];
     auto &state = g_stockStates[id];
 
 #if RECORD_FACTORS
-    if (intent != NotSure) {
+    if (nowIntent != NotSure) {
         compute.factorListCache[offset].dumpFactors(timestampDelinear(linearTimestamp), compute.stockCode);
     }
 #endif
-    SPDLOG_INFO("limit up model status: stock={:06d} price={} timestamp={}/{} intent={} oldIntent={}", compute.stockCode, compute.upperLimitPrice, timestamp, timestampDelinear(linearTimestamp), intent, oldIntent);
-
-//
-//     int32_t minLinearTimestamp = wantSign.wantBuyTimestamp[0].load(std::memory_order_relaxed);
-//     int32_t minDt = std::abs(minLinearTimestamp - linearTimestamp);
-//     for (int32_t i = 1; i < wantSign.wantBuyTimestamp.size(); ++i) {
-//         int32_t wantTimestamp = wantSign.wantBuyTimestamp[i].load(std::memory_order_relaxed);
-//         int32_t dt = std::abs(wantTimestamp - linearTimestamp);
-//         if (dt < minDt) {
-//             minDt = dt;
-//             minLinearTimestamp = wantTimestamp;
-//         }
-//     }
-//     minLinearTimestamp += minLinearTimestamp & 1;
-//
-//     Intent intent = WantSign::WantBuy;
-//     if (minDt > kWantBuyTimeTolerance) {
-//         intent = WantSign::NotSure;
-//     } else if (!(minLinearTimestamp & 1)) {
-//         intent = WantSign::DontBuy;
-//     }
-//
-//     std::atomic_thread_fence(std::memory_order_seq_cst);
-//     auto &compute = g_stockComputes[id];
-//     auto &state = g_stockStates[id];
-//
-//     for (int32_t i = 0; i < wantSign.wantBuyTimestamp.size(); ++i) {
-//         int32_t wantTimestamp = wantSign.wantBuyTimestamp[i].load(std::memory_order_relaxed);
-//         wantTimestamp += wantTimestamp & 1;
-//         if (minLinearTimestamp == wantTimestamp) {
-// #if RECORD_FACTORS
-//             compute.factorListCache[i].dumpFactors(timestampDelinear(minLinearTimestamp), compute.stockCode);
-// #endif
-//             break;
-//         }
-//     }
-
-    // SPDLOG_INFO("limit up model status: stock={:06d} upPrice={} tickTime={} roundTime={} bestTime={} minDt={} toleranceDt={} intent={} oldIntent={}", compute.stockCode, compute.upperLimitPrice, timestamp, timestampDelinear(linearTimestamp), timestampDelinear(minLinearTimestamp), minDt, kWantBuyTimeTolerance, intent, oldIntent);
+    SPDLOG_INFO("limit up model status: stock={:06d} price={} timestamp={} wantTime={} offset={} nowIntent={} oldIntent={}", compute.stockCode, compute.upperLimitPrice, timestamp, timestampDelinear(static_cast<uint32_t>(wantSign) * 100U), offset, nowIntent, oldIntent);
 }
 
 HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
 {
     if (compute.upperLimitPrice == 0) [[unlikely]] {
-        compute.approachingLimitUp = false;
         return;
     }
 
@@ -1407,7 +1381,6 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
     const int32_t startId = (g_numStocks * channel) / kChannelCount;
     const int32_t stopId = (g_numStocks * (channel + 1)) / kChannelCount;
 
-#if 1
     while (!stop.stop_requested()) [[likely]] {
         approachStockIds.clear();
         for (int32_t id = startId; id != stopId; ++id) {
@@ -1421,6 +1394,9 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
                 int32_t id = linearizeStockId(stock);
                 if (id == -1) [[unlikely]] {
                     continue;
+                }
+                if (id < startId || id >= stopId) [[unlikely]] {
+                    throw std::out_of_range("received tick id out of range");
                 }
                 addComputeTick(g_stockComputes[id], *pTick);
             }

@@ -185,7 +185,7 @@ void MDS::startReceive()
         setThisThreadAffinity(kMDSBindCpu);
         SPDLOG_DEBUG("loaded {} ticks", tickBuf.size());
         g_isStarted.store(true);
-        monotonicSleepFor(100'000'000);
+        monotonicSleepFor(10'000'000);
 
         SPDLOG_DEBUG("publishing {} open snapshots", g_marketStatics.size());
         for (auto &stat: g_marketStatics) {
