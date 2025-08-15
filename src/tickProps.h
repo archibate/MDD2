@@ -56,29 +56,29 @@ inline int32_t snapTimestamp(MDS::Snap &snap)
 inline double snapOpenPrice(MDS::Snap &snap)
 {
 #if REPLAY
-    int32_t stock = snap.openPrice;
+    double price = snap.lastPrice;
 #elif NE
-    int32_t stock = snap.marketType == NescForesight::SSE
+    double price = snap.marketType == NescForesight::SSE
                                ? snap.snapshotSse->openPrice / 1000.0
                                : snap.snapshotSz->openPrice / 1000000.0;
 #elif OST
 #error not implemented
 #endif
-    return stock;
+    return price;
 }
 
 inline double snapPreClosePrice(MDS::Snap &snap)
 {
 #if REPLAY
-    int32_t stock = snap.preClosePrice;
+    double price = snap.preClosePrice;
 #elif NE
-    int32_t stock = snap.marketType == NescForesight::SSE
+    double price = snap.marketType == NescForesight::SSE
                                ? snap.snapshotSse->preClosePrice / 1000.0
                                : snap.snapshotSz->preClosePrice / 10000.0;
 #elif OST
 #error not implemented
 #endif
-    return stock;
+    return price;
 }
 
 inline double snapPrice(MDS::Snap &snap, int32_t n)

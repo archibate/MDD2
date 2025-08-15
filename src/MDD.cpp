@@ -979,8 +979,10 @@ void MDD::handleSnap(MDS::Snap &snap)
             if (quantity > 100'0000) {
                 quantity = 100'0000;
             }
-            if (quantity > 80) {
-                makeGCSellRequest(gcSellRequest, stock, snapPrice(snap, 1), quantity);
+            if (quantity > 80 || BYPASS_OES) {
+                double price = snapPrice(snap, 1);
+                makeGCSellRequest(gcSellRequest, stock, price, quantity);
+                SPDLOG_DEBUG("sold GC001/R-001: stock={} price={} quantity={}", stock, price, quantity);
                 OES::sendReqOrder(gcSellRequest);
             }
         }
@@ -1606,7 +1608,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 #undef PER_TYPE
         default: body = "?"; break;
     }
-    SPDLOG_DEBUG("order response: rspType={} requestID={} errorID={} errorMsg={} userLocalID={} | {}",
+    SPDLOG_DEBUG("order response: rspType={} requestID={} errorID={} errorMsg=`{}` userLocalID={} | {}",
                 rspOrder.rspType,
                 rspOrder.requestID,
                 rspOrder.errorID,
@@ -1626,7 +1628,7 @@ HEAT_ZONE_RSPORDER void MDD::handleRspOrder(OES::RspOrder &rspOrder)
 #undef PER_TYPE
         default: body = "?"; break;
     }
-    SPDLOG_DEBUG("order response: rspType={} requestID={} errorID={} errorMsg={} userLocalID={} | {}",
+    SPDLOG_DEBUG("order response: rspType={} requestID={} errorID={} errorMsg=`{}` userLocalID={} | {}",
                 rspOrder.rspType,
                 rspOrder.requestID,
                 rspOrder.errorID,
