@@ -26,7 +26,7 @@ def linear_time(time: pd.Series):
 factors = pd.read_csv('build/factors.csv')
 
 if 1:
-    correct = pd.read_csv('build/predictions_real_20250102.csv').rename(columns={'code': 'ts_code', 'limit_up_time': 'timestamp'})
+    correct = pd.read_csv('build/prediction_real.csv').rename(columns={'code': 'ts_code', 'limit_up_time': 'timestamp'})
     del correct['date']
     del correct['up_stat']
     del correct['limit']
@@ -47,8 +47,8 @@ correct, factors = correct.merge(factors[['ts_code']], how='inner', on='ts_code'
 correct = correct[[x for x in factors.columns if x in correct.columns]]
 factors = factors[correct.columns]
 
-# print(factors)
-# print(correct)
+print(correct)
+print(factors)
 
 # afternoon vwap_skew_kurt incorrect
 # some SR incorrect
@@ -75,19 +75,19 @@ diff = diff.sort_values('timestamp').reset_index()
 diff = diff[diff['time'].abs() < 0.8]
 assert isinstance(diff, pd.DataFrame)
 
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'TS' in c or 'QUA' in c or 'SR' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_h' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_o' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_o_1_' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_h_1_' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'vwap' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'amaount' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'amount' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'volume' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'turnover' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'crowdind' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'time' in c]])
-print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'up' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'TS' in c or 'QUA' in c or 'SR' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_h' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_o' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_o_1_' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'momentum_h_1_' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'vwap' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'amaount' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'amount' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'volume' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'turnover' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'crowdind' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'time' in c]])
+# print(diff.round(2)[['ts_code', 'timestamp', 'time'] + [c for c in factors.columns if 'up' in c]])
 
 
 del diff['ts_code']

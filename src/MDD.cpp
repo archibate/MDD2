@@ -1065,8 +1065,8 @@ void MDD::handleStatic(MDS::Stat &stat)
     compute.preClosePrice = preClosePrice;
 
     compute.openPrice = preClosePrice;
-    // compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
-    compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.01)) - 1;
+    compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
+    // compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.01)) - 1;
     // compute.upperLimitPriceApproach = upperLimitPrice - 5;
 
     compute.fState.currSnapshot.lastPrice = preClosePrice;
@@ -1257,7 +1257,7 @@ COLD_ZONE void logLimitUp(int32_t id, int32_t timestamp, Intent oldIntent)
 
 #if RECORD_FACTORS
     if (nowIntent != NotSure) {
-        compute.factorListCache[offset].dumpFactors(timestampDelinear(linearTimestamp), compute.stockCode);
+        compute.factorListCache[offset].dumpFactors(timestampDelinear(linearTimestamp * 100), compute.stockCode);
     }
 #endif
     SPDLOG_INFO("limit up model status: stock={:06d} price={} timestamp={} wantTime={} offset={} nowIntent={} oldIntent={}", compute.stockCode, compute.upperLimitPrice, timestamp, timestampDelinear(static_cast<uint32_t>(wantSign) * 100U), offset, nowIntent, oldIntent);
