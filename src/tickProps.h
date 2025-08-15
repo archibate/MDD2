@@ -56,7 +56,7 @@ inline int32_t snapTimestamp(MDS::Snap &snap)
 inline double snapOpenPrice(MDS::Snap &snap)
 {
 #if REPLAY
-    double price = snap.lastPrice;
+    double price = snap.lastPrice / 100.0;
 #elif NE
     double price = snap.marketType == NescForesight::SSE
                                ? snap.snapshotSse->openPrice / 1000.0
@@ -70,7 +70,7 @@ inline double snapOpenPrice(MDS::Snap &snap)
 inline double snapPreClosePrice(MDS::Snap &snap)
 {
 #if REPLAY
-    double price = snap.preClosePrice;
+    double price = snap.preClosePrice / 100.0;
 #elif NE
     double price = snap.marketType == NescForesight::SSE
                                ? snap.snapshotSse->preClosePrice / 1000.0
@@ -85,7 +85,7 @@ inline double snapPrice(MDS::Snap &snap, int32_t n)
 {
     if (n == 0) {
 #if REPLAY
-        return snap.lastPrice;
+        return snap.lastPrice / 100.0;
 #elif NE
         return snap.marketType == NescForesight::SSE
                                ? snap.snapshotSse->lastPrice / 1000.0
@@ -95,7 +95,7 @@ inline double snapPrice(MDS::Snap &snap, int32_t n)
 #endif
     } else if (n > 0) {
 #if REPLAY
-        return snap.bidPrice[n - 1];
+        return snap.bidPrice[n - 1] / 100.0;
 #elif NE
         return snap.marketType == NescForesight::SSE
                                ? snap.snapshotSse->bidInfo[n - 1].price / 1000.0
@@ -105,7 +105,7 @@ inline double snapPrice(MDS::Snap &snap, int32_t n)
 #endif
     } else {
 #if REPLAY
-        return snap.askPrice[-n - 1];
+        return snap.askPrice[-n - 1] / 100.0;
 #elif NE
         return snap.marketType == NescForesight::SSE
                                ? snap.snapshotSse->askInfo[-n - 1].price / 1000.0

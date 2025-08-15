@@ -99,9 +99,6 @@ struct alignas(64) Compute
     FState fState;
     BState bState;
 
-    int32_t futureTimestamp{};
-    bool firstComputeDone{};
-
     struct UpSell {
         int32_t price;
         int32_t quantity;
@@ -1039,7 +1036,7 @@ void MDD::handleStatic(MDS::Stat &stat)
     compute.fState.iirState = std::make_unique<IIRState>();
     compute.bState.iirState = std::make_unique<IIRState>();
 
-    compute.futureTimestamp = compute.fState.nextTickTimestamp = 9'30'00'000;
+    compute.fState.nextTickTimestamp = 9'30'00'000;
 
 #if RECORD_FACTORS
     compute.factorListCache = std::make_unique<FactorList[]>(std::tuple_size_v<decltype(std::declval<WantCache>().wantBuyTimestamp)>);
