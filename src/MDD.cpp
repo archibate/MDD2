@@ -658,7 +658,7 @@ HEAT_ZONE_COMPUTE void computeKaiyuan(Compute &compute, FactorList &factorList)
     }
 }
 
-HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id, int32_t timestamp)
+HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id, int32_t timeOffset)
 {
     auto &compute = g_stockComputes[id];
     if (compute.fState.snapshots.empty()) [[unlikely]] {
@@ -667,6 +667,7 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(int32_t id, int32_t timestamp)
     if (compute.upperLimitPrice == 0 || compute.openPrice == compute.upperLimitPrice) [[unlikely]] {
         return;
     }
+    int32_t timestamp = timestampAdvance(compute.fState.nextTickTimestamp, timeOffset * 100);
 
     compute.bState.nextTickTimestamp = compute.fState.nextTickTimestamp;
     compute.bState.currSnapshot = compute.fState.currSnapshot;
@@ -1396,10 +1397,9 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
             }
         }
 
-        for (int32_t i = 0; i < 16; ++i) {
+        for (int32_t offset = 0; offset < 16; ++offset) {
             for (int32_t id: approachStockIds) {
-                auto &compute = g_stockComputes[id];
-                computeFutureWantBuy(id, timestampAdvance(compute.fState.nextTickTimestamp, i * 100));
+                computeFutureWantBuy(id, offset);
             }
         }
     }
