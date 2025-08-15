@@ -18,11 +18,12 @@ namespace
 
 std::jthread g_replayThread;
 absl::flat_hash_set<int32_t> g_subscribedStocks;
+std::vector<MDS::Stat> g_marketStatics;
 std::atomic_bool g_isFinished{false};
 std::atomic_bool g_isStarted{false};
 int32_t g_date;
 
-MDS::Stat getStatic(int32_t stock)
+void loadMarketStatic()
 {
     std::string line;
     std::ifstream csv((REPLAY_DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-metadata.csv").c_str());
@@ -41,9 +42,6 @@ MDS::Stat getStatic(int32_t stock)
 
         std::getline(iss, token, ',');
         stat.stock = std::stoi(token);
-        if (stat.stock != stock) {
-            continue;
-        }
         std::getline(iss, token, ',');
         std::getline(iss, token, ',');
         stat.openPrice = std::round(100 * std::stod(token));
@@ -61,10 +59,8 @@ MDS::Stat getStatic(int32_t stock)
         stat.lowerLimitPrice = std::round(100 * std::stod(token));
         std::getline(iss, token, ',');
         stat.floatMV = std::stod(token) * 10000.0;
-        return stat;
+        g_marketStatics.push_back(stat);
     }
-
-    return {};
 }
 
 }
@@ -132,7 +128,7 @@ void readReplayTicks(std::vector<MDS::Tick> &tickBuf)
     std::fclose(fp);
     fp = nullptr;
 
-    SPDLOG_INFO("sorting {} ticks", tickBuf.size());
+    SPDLOG_DEBUG("sorting {} ticks", tickBuf.size());
     radixSort<8, 4, sizeof(uint32_t), offsetof(MDS::Tick, timestamp), sizeof(MDS::Tick)>(tickBuf.data(), tickBuf.size());
 }
 
@@ -174,12 +170,11 @@ void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
 
 void MDS::startReceive()
 {
-    SPDLOG_INFO("start publishing statics");
-    for (int32_t stock: g_subscribedStocks) {
-        auto stat = getStatic(stock);
-        if (stat.stock == 0) {
-            SPDLOG_WARN("stock static not found for stock={:06d}", stock);
-        }
+    SPDLOG_INFO("loading market statics");
+    loadMarketStatic();
+
+    SPDLOG_DEBUG("publishing {} statics", g_marketStatics.size());
+    for (auto &stat: g_marketStatics) {
         MDD::handleStatic(stat);
     }
 
@@ -188,11 +183,23 @@ void MDS::startReceive()
         std::vector<Tick> tickBuf;
         readReplayTicks(tickBuf);
         setThisThreadAffinity(kMDSBindCpu);
-        SPDLOG_INFO("start publishing {} ticks", tickBuf.size());
+        SPDLOG_DEBUG("loaded {} ticks", tickBuf.size());
         g_isStarted.store(true);
         monotonicSleepFor(100'000'000);
 
+        SPDLOG_DEBUG("publishing {} open snapshots", g_marketStatics.size());
+        for (auto &stat: g_marketStatics) {
+            MDS::Snap snap{};
+            snap.stock = stat.stock;
+            snap.timestamp = 9'25'00'000;
+            snap.preClosePrice = stat.preClosePrice;
+            snap.lastPrice = stat.openPrice;
+            MDD::handleSnap(snap);
+        }
+
+        SPDLOG_INFO("start replaying");
         replayMain(tickBuf, stop);
+        SPDLOG_DEBUG("replay finished");
         g_isFinished.store(true);
     });
 }

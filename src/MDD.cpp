@@ -34,9 +34,6 @@
 namespace
 {
 
-int64_t g_initTotalFund;
-int64_t g_availableFund;
-
 #if (NE || OST) && SZ
 const uint64_t g_szOffsetTransactTime = static_cast<uint64_t>(getToday()) * UINT64_C(1'00'00'00'000);
 #endif
@@ -115,6 +112,9 @@ using TickRing = spsc_ring<MDS::Tick, 0x40000>; // 16MB
 
 std::array<std::jthread, kChannelCount> g_computeThreads;
 
+int64_t g_initTotalFund; // owned by mds thread
+int64_t g_availableFund; // owned by mds thread
+
 int32_t *g_stockCodes; // constant, owned by all
 size_t g_numStocks; // constant, owned by all
 int32_t *g_prevLimitUpStockCodes; // constant, owned by all
@@ -123,7 +123,7 @@ size_t g_numPrevLimitUpStocks; // constant, owned by all
 alignas(4096) std::array<int16_t, 0x2000> g_stockIdLut; // constant, owned by all
 
 double *g_prevLimitUpReturns; // owned by mds_snap thread
-double g_prevLimitUpMeanReturn = NAN; // shared by mds thread and mds_snap thread
+double g_prevLimitUpMeanReturn; // shared by mds thread and mds_snap thread
 
 
 State *g_stockStates; // owned by mds thread

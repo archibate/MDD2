@@ -258,10 +258,10 @@ MODELDECL {ty} {key}f(const {ty} *a) {{
 
 model_version = '20250804'
 benchmark_values = {
-    # 'regression': 0.005,
-    # 'classification': 0.6,
-    'regression': 0.003,
-    'classification': 0.55,
+    'regression': 0.005,
+    'classification': 0.6,
+    # 'regression': 0.003,
+    # 'classification': 0.55,
 }
 
 
