@@ -531,8 +531,9 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRspInsertOrder(CXeleRspOrderInsertField* pR
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRspOrderInsert;
-    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(pRspField->UserLocalID);
     rsp.requestID = nRequestID;
+    // rsp.symbolID = securityId(pRspField->SecuritiesID);
     rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderInsert = pRspField;
     MDD::handleRspOrder(rsp);
@@ -570,8 +571,9 @@ void XeleTdSpi::onErrRtnInsertOrder(CXeleRspOrderInsertField* pRspField, CXeleRs
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRspOrderInsert;
-    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(pRspField->UserLocalID);
     rsp.requestID = nRequestID;
+    // rsp.symbolID = securityId(pRspField->SecuritiesID);
     rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderInsert = pRspField;
     MDD::handleRspOrder(rsp);
@@ -603,8 +605,9 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRspCancelOrder(CXeleRspOrderActionField* pR
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRspOrderAction;
-    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(pRspField->OrigUserLocalID);
     rsp.requestID = nRequestID;
+    // rsp.symbolID = 0;
     rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderAction = pRspField;
     MDD::handleRspOrder(rsp);
@@ -635,8 +638,9 @@ void XeleTdSpi::onErrRtnCancelOrder(CXeleRspOrderActionField* pRspField, CXeleRs
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRspOrderAction;
-    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(pRspField->OrigUserLocalID);
     rsp.requestID = nRequestID;
+    // rsp.symbolID = 0;
     rsp.errorID = pRspField->ErrorId;
     rsp.xeleRspOrderAction = pRspField;
     MDD::handleRspOrder(rsp);
@@ -664,8 +668,9 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnOrder(CXeleRtnOrderField* pRspField, CXe
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRtnOrder;
-    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(pRspField->UserLocalID);
     rsp.requestID = nRequestID;
+    // rsp.symbolID = securityId(pRspField->SecuritiesID);
     rsp.errorID = 0;
     rsp.xeleRtnOrder = pRspField;
     MDD::handleRspOrder(rsp);
@@ -705,8 +710,9 @@ HEAT_ZONE_RSPORDER void XeleTdSpi::onRtnTrade(CXeleRtnTradeField* pRspField, CXe
 {
     OES::RspOrder rsp;
     rsp.rspType = OES::RspOrder::XeleRtnTrade;
-    rsp.userLocalID = g_orderRefLut.orderRefLookup(nRequestID);
+    rsp.userLocalID = g_orderRefLut.orderRefLookup(pRspField->UserLocalID);
     rsp.requestID = nRequestID;
+    // rsp.symbolID = securityId(pRspField->SecuritiesID);
     rsp.errorID = 0;
     rsp.xeleRtnTrade = pRspField;
     MDD::handleRspOrder(rsp);

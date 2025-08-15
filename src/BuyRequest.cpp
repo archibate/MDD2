@@ -91,5 +91,5 @@ void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimi
 
 void makeGCSellRequest(OES::ReqOrder &reqOrder, int32_t stockCode, double price, int64_t quantity)
 {
-    // todo
+    // todo: implement this
 }

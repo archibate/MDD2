@@ -90,6 +90,7 @@ struct RspOrder
     TXeleRequestIDType requestID;
     TXeleErrorIdType errorID;
     uint32_t userLocalID;
+    // uint32_t symbolID;
 
     union
     {
