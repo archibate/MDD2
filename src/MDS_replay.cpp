@@ -2,7 +2,12 @@
 #if REPLAY
 #include "MDS.h"
 #include "MDD.h"
+#include "L2/Tick.h"
+#include "L2/Stat.h"
+#include "XeleCompat.h"
+#include "dateTime.h"
 #include "timestamp.h"
+#include "securityId.h"
 #include "threadAffinity.h"
 #include "clockMonotonic.h"
 #include "radixSort.h"
@@ -16,9 +21,13 @@
 namespace
 {
 
+#if REPLAY && SZ
+const uint64_t g_szOffsetTransactTime = static_cast<uint64_t>(getToday()) * UINT64_C(1'00'00'00'000);
+#endif
+
 std::jthread g_replayThread;
 absl::flat_hash_set<int32_t> g_subscribedStocks;
-std::vector<MDS::Stat> g_marketStatics;
+std::vector<L2::Stat> g_marketStatics;
 std::atomic_bool g_isFinished{false};
 std::atomic_bool g_isStarted{false};
 int32_t g_date;
@@ -34,7 +43,7 @@ void loadMarketStatic()
 
     std::getline(csv, line);
 
-    MDS::Stat stat{};
+    L2::Stat stat{};
     while (std::getline(csv, line)) {
         std::istringstream iss(line);
         std::string token;
@@ -102,7 +111,7 @@ void MDS::start(const char *config)
 namespace
 {
 
-void readReplayTicks(std::vector<MDS::Tick> &tickBuf)
+void readReplayTicks(std::vector<L2::Tick> &tickBuf)
 {
     std::FILE *fp = std::fopen((REPLAY_DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-l2-ticks.dat").c_str(), "rb");
     if (!fp) {
@@ -118,10 +127,10 @@ void readReplayTicks(std::vector<MDS::Tick> &tickBuf)
         throw std::runtime_error("cannot tell ticks file size");
     }
     std::rewind(fp);
-    tickBuf.resize(pos / sizeof(MDS::Tick));
+    tickBuf.resize(pos / sizeof(L2::Tick));
     SPDLOG_INFO("reading {} ticks from file", tickBuf.size());
 
-    size_t n = std::fread(tickBuf.data(), sizeof(MDS::Tick), tickBuf.size(), fp);
+    size_t n = std::fread(tickBuf.data(), sizeof(L2::Tick), tickBuf.size(), fp);
     if (n != tickBuf.size()) [[unlikely]] {
         throw std::runtime_error("cannot read all ticks from file");
     }
@@ -129,10 +138,59 @@ void readReplayTicks(std::vector<MDS::Tick> &tickBuf)
     fp = nullptr;
 
     SPDLOG_DEBUG("sorting {} ticks", tickBuf.size());
-    radixSort<8, 4, sizeof(uint32_t), offsetof(MDS::Tick, timestamp), sizeof(MDS::Tick)>(tickBuf.data(), tickBuf.size());
+    radixSort<8, 4, sizeof(uint32_t), offsetof(L2::Tick, timestamp), sizeof(L2::Tick)>(tickBuf.data(), tickBuf.size());
 }
 
-void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
+void l2ToMdsTick(L2::Tick const &l2, MDS::Tick &mds)
+{
+#if SH
+    mds.tickMergeSse.messageType = XeleCompat::MSG_TYPE_TICK_MERGE_SSE;
+    mds.tickMergeSse.sequence = 0; /* unused */
+    mds.tickMergeSse.exchangeID = 1;
+    fmtSecurityId(mds.tickMergeSse.securityID, l2.stock);
+    mds.tickMergeSse.tickType = l2.isTrade() ? 'T' : (l2.isOrderCancel() ? 'D' : 'A');
+    mds.tickMergeSse.tickBSFlag = l2.isBuy() ? '0' : '1';
+    mds.tickMergeSse.bizIndex = 0; /* unused */
+    mds.tickMergeSse.channelNo = 0; /* unused */
+    mds.tickMergeSse.tickTime = static_cast<uint32_t>(l2.timestamp) / 10;
+    mds.tickMergeSse.buyOrderNo = static_cast<uint64_t>(l2.buyOrderNo);
+    mds.tickMergeSse.sellOrderNo = static_cast<uint64_t>(l2.sellOrderNo);
+    mds.tickMergeSse.price = static_cast<uint32_t>(l2.price) * 10;
+    mds.tickMergeSse.qty = static_cast<uint64_t>(l2.quantity) * 10;
+    memset(mds.tickMergeSse.padding, 0, sizeof(mds.tickMergeSse.padding));
+#endif
+
+#if SZ
+    if (l2.isTrade()) {
+        mds.tradeSz.messageType = XeleCompat::MSG_TYPE_TRADE_SZ;
+        mds.tradeSz.sequence = 0; /* unused */
+        mds.tradeSz.exchangeID = 2;
+        fmtSecurityId(mds.tradeSz.securityID, l2.stock);
+        mds.tradeSz.execType = l2.isOrderCancel() ? 0x1 : 0x2;
+        mds.tradeSz.applSeqNum = 0; /* unused */
+        mds.tradeSz.transactTime = g_szOffsetTransactTime + l2.timestamp;
+        mds.tradeSz.tradePrice = static_cast<uint64_t>(l2.price) * 100;
+        mds.tradeSz.tradeQty = static_cast<uint64_t>(l2.quantity) * 100;
+        mds.tradeSz.bidapplSeqnum = static_cast<uint64_t>(l2.buyOrderNo);
+        mds.tradeSz.offerapplSeqnum = static_cast<uint64_t>(l2.sellOrderNo);
+    } else {
+        mds.orderSz.messageType = XeleCompat::MSG_TYPE_ORDER_SZ;
+        mds.orderSz.sequence = 0; /* unused */
+        mds.orderSz.exchangeID = 2;
+        fmtSecurityId(mds.orderSz.securityID, l2.stock);
+        mds.orderSz.side = l2.isBuy() ? '1' : '2';
+        mds.orderSz.orderType = '2';
+        mds.orderSz.applSeqNum = static_cast<uint64_t>(l2.orderNo()); /* unused */
+        mds.orderSz.transactTime = g_szOffsetTransactTime + l2.timestamp;
+        mds.orderSz.price = static_cast<uint64_t>(l2.price) * 100;
+        mds.orderSz.qty = static_cast<uint64_t>(l2.quantity) * 100;
+        mds.orderSz.channelNo = 0; /* unused */
+        mds.orderSz.mdstreamid = 0; /* unused */
+    }
+#endif
+}
+
+void replayMain(std::vector<L2::Tick> &tickBuf, std::stop_token stop)
 {
     if (MDS::g_timeScale > 0) {
         // int64_t lastTimestamp = timestampAbsLinear(9'30'00'000);
@@ -142,10 +200,10 @@ void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
         monotonicSleepFor(100'000'000);
 
         for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
-            MDS::Tick &tick = tickBuf[i];
+            L2::Tick &l2tick = tickBuf[i];
 
-            if (tick.timestamp > lastTimestamp) {
-                int64_t thisTimestamp = timestampAbsLinear(tick.timestamp);
+            if (l2tick.timestamp > lastTimestamp) {
+                int64_t thisTimestamp = timestampAbsLinear(l2tick.timestamp);
                 int64_t dt = thisTimestamp - lastTimestamp;
                 if (dt >= 1'000'000) {
                     dt -= (dt - 1'000'000) / 10;
@@ -155,13 +213,17 @@ void replayMain(std::vector<MDS::Tick> &tickBuf, std::stop_token stop)
                 monotonicSleepUntil(nextSleepTime);
             }
 
-            MDD::handleTick(tick);
+            MDS::Tick mdsTick;
+            l2ToMdsTick(l2tick, mdsTick);
+            MDD::handleTick(mdsTick);
         }
 
     } else {
         for (size_t i = 0; i < tickBuf.size() && !stop.stop_requested(); ++i) [[likely]] {
-            MDS::Tick &tick = tickBuf[i];
-            MDD::handleTick(tick);
+            L2::Tick &l2tick = tickBuf[i];
+            MDS::Tick mdsTick;
+            l2ToMdsTick(l2tick, mdsTick);
+            MDD::handleTick(mdsTick);
         }
     }
 }
@@ -174,13 +236,18 @@ void MDS::startReceive()
     loadMarketStatic();
 
     SPDLOG_DEBUG("publishing {} statics", g_marketStatics.size());
-    for (auto &stat: g_marketStatics) {
-        MDD::handleStatic(stat);
+    for (auto &l2stat: g_marketStatics) {
+        MDS::Stat mdsStat{};
+        mdsStat.stock = l2stat.stock;
+        mdsStat.preClosePrice = l2stat.preClosePrice;
+        mdsStat.upperLimitPrice = l2stat.upperLimitPrice;
+        mdsStat.lowerLimitPrice = l2stat.lowerLimitPrice;
+        MDD::handleStatic(mdsStat);
     }
 
     g_replayThread = std::jthread([] (std::stop_token stop) {
         SPDLOG_INFO("start loading L2 ticks");
-        std::vector<Tick> tickBuf;
+        std::vector<L2::Tick> tickBuf;
         readReplayTicks(tickBuf);
         setThisThreadAffinity(kMDSBindCpu);
         SPDLOG_DEBUG("loaded {} ticks", tickBuf.size());
@@ -193,6 +260,7 @@ void MDS::startReceive()
             snap.stock = stat.stock;
             snap.timestamp = 9'25'00'000;
             snap.preClosePrice = stat.preClosePrice;
+            snap.openPrice = stat.openPrice;
             snap.lastPrice = stat.openPrice;
             MDD::handleSnap(snap);
         }

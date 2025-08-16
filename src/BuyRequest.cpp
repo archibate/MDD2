@@ -1,6 +1,7 @@
 #include "BuyRequest.h"
 #include "config.h"
 #include "OES.h"
+#include "securityId.h"
 #include <spdlog/spdlog.h>
 
 void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimitPrice, int32_t quantity)
@@ -35,7 +36,7 @@ void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimi
     for (size_t i = 0; i < kExchangeFronts.size(); ++i) {
         auto *xeleInsert = reqOrderBatch->xeleReqBatchOrderInsert.ReqOrderInsertField + i;
 #endif
-        std::sprintf(xeleInsert->SecuritiesID, "%06d", stockCode);
+        fmtSecurityId(xeleInsert->SecuritiesID, stockCode);
         xeleInsert->Direction = XELE_ORDER_BUY;
         xeleInsert->LimitPrice = upperLimitPrice * 0.01;
         xeleInsert->Volume = quantity;
@@ -62,7 +63,7 @@ void makeBuyRequest(BuyRequest &buyRequest, int32_t stockCode, int32_t upperLimi
 #if SZ
     reqOrder->inputOrder.ExchangeID = UT_EXG_SZSE;
 #endif
-    std::sprintf(reqOrder->inputOrder.InstrumentID, "%06d", stockCode);
+    fmtSecurityId(reqOrder->inputOrder.InstrumentID, stockCode);
     reqOrder->inputOrder.OrderRef = -1;
 #if BEST_ORDER
     reqOrder->inputOrder.OrderPriceType = UT_OPT_BestPriceThisSide;

@@ -10,10 +10,10 @@
 #include "IIRState.h"
 #include "FactorList.h"
 #include "dateTime.h"
-#include "tickProps.h"
 #include "radixSort.h"
 #include "simdAlgo.h"
 #include "timestamp.h"
+#include "securityId.h"
 #include "BuyRequest.h"
 #include "Reflect.h"
 #include "heatZone.h"
@@ -34,26 +34,18 @@
 namespace
 {
 
-#if (NE || OST) && SZ
+#if SZ
 const uint64_t g_szOffsetTransactTime = static_cast<uint64_t>(getToday()) * UINT64_C(1'00'00'00'000);
 #endif
 
 struct State
 {
-#if (NE || OST) && SH
+#if SH
     uint32_t upperLimitPrice1000{};
 #endif
-#if (NE || OST) && SZ
+#if SZ
     uint64_t upperLimitPrice10000{};
     int64_t upRemainQty100{};
-    tsl::robin_set<uint32_t> upSellOrderIds;
-#endif
-#if REPLAY && SH
-    int32_t upperLimitPrice{};
-#endif
-#if REPLAY && SZ
-    int32_t upperLimitPrice{};
-    uint64_t upRemainQty{};
     tsl::robin_set<uint32_t> upSellOrderIds;
 #endif
 };
@@ -70,7 +62,7 @@ struct alignas(64) Compute
 
     struct FState
     {
-        int32_t nextTickTimestamp{};
+        uint32_t nextTickTimestamp{};
         Snapshot currSnapshot{};
         std::vector<Snapshot> snapshots;
         std::unique_ptr<IIRState> iirState{};
@@ -78,7 +70,7 @@ struct alignas(64) Compute
 
     struct BState
     {
-        int32_t nextTickTimestamp{};
+        uint32_t nextTickTimestamp{};
         Snapshot currSnapshot{};
         size_t oldSnapshotsCount{};
         std::unique_ptr<IIRState> iirState{};
@@ -315,7 +307,7 @@ HEAT_ZONE_SNAPSHOT void stepSnapshot(Compute &compute)
     compute.fState.currSnapshot.amount = 0;
 }
 
-HEAT_ZONE_SNAPSHOT void stepSnapshotUntil(Compute &compute, int32_t timestamp)
+HEAT_ZONE_SNAPSHOT void stepSnapshotUntil(Compute &compute, uint32_t timestamp)
 {
     if (timestamp > compute.fState.nextTickTimestamp) {
         stepSnapshot(compute);
@@ -675,7 +667,7 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(std::vector<int32_t> &approachStockI
         compute.wantSign = static_cast<uint32_t>(timestampLinear(compute.fState.nextTickTimestamp)) / 100U;
     }
     static_assert(kWantSignLookAhead <= 16 && kWantSignLookAhead > 0);
-    for (int32_t offset = 0; offset < kWantSignLookAhead; ++offset) {
+    for (uint32_t offset = 0; offset < kWantSignLookAhead; ++offset) {
         for (int32_t id: approachStockIds) {
             auto &compute = g_stockComputes[id];
             if (compute.fState.snapshots.empty()) [[unlikely]] {
@@ -685,7 +677,7 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(std::vector<int32_t> &approachStockI
                 continue;
             }
 
-            int32_t timestamp = timestampAdvance(compute.fState.nextTickTimestamp, offset * 100);
+            uint32_t timestamp = timestampAdvance(compute.fState.nextTickTimestamp, offset * 100);
 
             compute.bState.nextTickTimestamp = compute.fState.nextTickTimestamp;
             compute.bState.currSnapshot = compute.fState.currSnapshot;
@@ -728,13 +720,13 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(std::vector<int32_t> &approachStockI
     }
 }
 
-HEAT_ZONE_REQORDER Intent checkWantBuyAtTimestamp(int32_t id, int32_t timestamp)
+HEAT_ZONE_REQORDER Intent checkWantBuyAtTimestamp(int32_t id, uint32_t timestamp)
 {
-    int32_t linearTimestamp = (static_cast<uint32_t>(timestampLinear(timestamp)) + 90U) / 100U;
+    uint32_t linearTimestamp = (static_cast<uint32_t>(timestampLinear(timestamp)) + 90U) / 100U;
     uint64_t wantSign = g_wantSigns[id].load(std::memory_order_relaxed);
-    int32_t offset = (linearTimestamp - static_cast<int32_t>(static_cast<uint32_t>(wantSign))) / 100U;
+    uint32_t offset = (linearTimestamp - static_cast<uint32_t>(wantSign)) / 100U;
     Intent intent;
-    if (offset >= kWantSignLookAhead || offset < 0) [[unlikely]] {
+    if (offset >= kWantSignLookAhead) [[unlikely]] {
         intent = NotSure;
     } else {
         intent = static_cast<Intent>(static_cast<uint8_t>(wantSign >> (32 + offset * 2)) & 0b11);
@@ -776,42 +768,29 @@ HEAT_ZONE_TICK void pushTickToRing(int32_t id, MDS::Tick &tick)
 void unsubscribeStock(int32_t id)
 {
     auto &state = g_stockStates[id];
-#if REPLAY
-    state.upperLimitPrice = 0;
-#elif (NE || OST) && SH
+#if SH
     state.upperLimitPrice1000 = 0;
-#elif (NE || OST) && SZ
+#endif
+#if SZ
     state.upperLimitPrice10000 = 0;
 #endif
 }
 
-void logStop(int32_t id, int32_t timestamp, Intent intent)
+void logStop(int32_t id, uint32_t timestamp, Intent intent)
 {
     int32_t stock = g_stockCodes[id];
     MDS::Tick endSign{};
-#if REPLAY
-    endSign.quantity = 0;
-    endSign.stock = stock;
-    endSign.timestamp = timestamp;
-    endSign.price = static_cast<int32_t>(intent);
-#elif NE && SH
+#if SH
     endSign.tickMergeSse.tickType = 0;
-    std::sprintf(endSign.tickMergeSse.securityID, "%06d", stock);
+    fmtSecurityId(endSign.tickMergeSse.securityID, stock);
     endSign.tickMergeSse.tickTime = timestamp / 10;
     endSign.tickMergeSse.tickBSFlag = static_cast<char>(intent);
-#elif NE && SZ
+#endif
+#if SZ
     endSign.tradeSz.messageType = 0;
-    std::sprintf(endSign.tradeSz.securityID, "%06d", stock);
+    fmtSecurityId(endSign.tradeSz.securityID, stock);
     endSign.tradeSz.transactTime = g_szOffsetTransactTime + timestamp;
     endSign.tradeSz.execType = static_cast<uint8_t>(intent);
-#elif OST && SH
-    endSign.tick.m_tick_type = 0;
-    std::sprintf(endSign.tick.m_symbol_id, "%06d", stock);
-    endSign.tick.m_tick_time = timestamp;
-#elif OST && SZ
-    endSign.head.m_message_type = 0;
-    std::sprintf(endSign.head.m_symbol, "%06d", stock);
-    endSign.head.m_quote_update_time = g_szOffsetTransactTime + timestamp;
 #endif
     pushTickToRing(id, endSign);
 
@@ -823,62 +802,21 @@ void logStop(int32_t id, int32_t timestamp, Intent intent)
 
 HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 {
-    int32_t stock = tickStockCode(tick);
+    int32_t stock = securityId(tick.commonHead.securityID);
     int32_t id = linearizeStockId(stock);
     if (id == -1) [[unlikely]] {
         return;
     }
     auto &state = g_stockStates[id];
-#if REPLAY
+
 #if SH
-    bool limitUp = tick.buyOrderNo != 0
-        && tick.sellOrderNo == 0
-        && tick.quantity > 0
-        && tick.price == state.upperLimitPrice
-        && tick.timestamp >= 9'30'00'000
-        && tick.timestamp < 14'57'00'000;
-#endif
-#if SZ
-    bool limitUp = tick.buyOrderNo != 0
-        && tick.sellOrderNo != 0
-        && tick.price == state.upperLimitPrice
-        && tick.quantity > state.upRemainQty
-        && tick.timestamp >= 9'30'00'000
-        && tick.timestamp < 14'57'00'000;
-#endif
-    if (limitUp) {
-        auto intent = checkWantBuyAtTimestamp(id, tick.timestamp);
-        if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
-            sendBuyRequest(id);
-        }
-
-        logStop(id, tick.timestamp, intent);
-        return;
-    }
-
-#if SZ
-    if (tick.isSellOrder()) {
-        if (tick.isOrderCancel()) {
-            if (state.upSellOrderIds.contains(tick.sellOrderNo)) {
-                state.upRemainQty -= -tick.quantity;
-            }
-        } else if (tick.price == state.upperLimitPrice) {
-            state.upRemainQty += tick.quantity;
-            state.upSellOrderIds.insert(tick.sellOrderNo);
-        }
-    } else if (tick.isTrade() && tick.price == state.upperLimitPrice) {
-        state.upRemainQty -= tick.quantity;
-    }
-#endif
-
-#elif NE && SH
     bool limitUp = tick.tickMergeSse.tickType == 'A'
         && tick.tickMergeSse.tickBSFlag == '0'
         && tick.tickMergeSse.price == state.upperLimitPrice1000
         && tick.tickMergeSse.tickTime >= 9'30'00'00
         && tick.tickMergeSse.tickTime < 14'57'00'00;
     if (limitUp) {
-        int32_t timestamp = tick.tickMergeSse.tickTime * 10;
+        uint32_t timestamp = tick.tickMergeSse.tickTime * 10;
         auto intent = checkWantBuyAtTimestamp(id, timestamp);
         if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
             sendBuyRequest(id);
@@ -887,9 +825,10 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
         logStop(id, timestamp, intent);
         return;
     }
+#endif
 
-#elif NE && SZ
-    if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ) {
+#if SZ
+    if (tick.messageType == XeleCompat::MSG_TYPE_ORDER_SZ) {
         if (tick.orderSz.side == '2'
             && tick.orderSz.orderType == '2'
             && tick.orderSz.price == state.upperLimitPrice10000) {
@@ -909,7 +848,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
                 state.upRemainQty100 -= tick.tradeSz.tradeQty;
 
                 if (state.upRemainQty100 < 0) {
-                    int32_t timestamp = static_cast<uint32_t>(
+                    uint32_t timestamp = static_cast<uint32_t>(
                         tick.tradeSz.transactTime - g_szOffsetTransactTime);
                     if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
                         auto intent = checkWantBuyAtTimestamp(id, timestamp);
@@ -925,58 +864,6 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
             }
         }
     }
-
-#elif OST && SH
-    bool limitUp = tick.tick.m_tick_type == 'A'
-        && tick.tick.m_side_flag == '0'
-        && tick.tick.m_order_price == state.upperLimitPrice1000
-        && tick.tick.m_tick_time >= 9'30'00'00
-        && tick.tick.m_tick_time < 14'57'00'00;
-    if (limitUp) {
-        int32_t timestamp = tick.tick.m_tick_time * 10;
-        auto intent = checkWantBuyAtTimestamp(id, timestamp);
-        if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
-            sendBuyRequest(id);
-        }
-
-        logStop(id, timestamp, intent);
-        return;
-    }
-
-#elif OST && SZ
-    if (tick.head.m_message_type == sze_msg_type_order) {
-        if (tick.order.m_side == '2'
-            && tick.order.m_order_type == '2'
-            && tick.order.m_px == state.upperLimitPrice10000) {
-            state.upRemainQty100 += tick.order.m_qty;
-        }
-    } else {
-        // assert(tick.head.m_message_type == sze_msg_type_trade);
-        if (tick.exe.m_exe_px == state.upperLimitPrice10000) {
-            if (tick.exe.m_exe_type == 0x1) {
-                if (state.upSellOrderIds.contains(tick.exe.m_ask_app_seq_num)) {
-                    state.upRemainQty100 -= tick.exe.m_exe_qty;
-                }
-
-            } else {
-                // assert(tick.tradeSz.execType == 0x2);
-                state.upRemainQty100 -= tick.exe.m_exe_qty;
-                if (state.upRemainQty100 < 0) {
-                    int32_t timestamp = static_cast<uint32_t>(
-                        tick.head.m_quote_update_time - g_szOffsetTransactTime);
-                    if (timestamp >= 9'30'00'000 && timestamp < 14'57'00'000) [[likely]] {
-                        auto intent = checkWantBuyAtTimestamp(id, timestamp);
-                        if (intent == WantBuy || ALWAYS_BUY) [[likely]] {
-                            sendBuyRequest(id);
-                        }
-
-                        logStop(id, timestamp, intent);
-                        return;
-                    }
-                }
-            }
-        }
-    }
 #endif
 
     pushTickToRing(id, tick);
@@ -984,92 +871,79 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
 
 void MDD::handleSnap(MDS::Snap &snap)
 {
-    int32_t stock = snapStockCode(snap);
-    int32_t timestamp = snapTimestamp(snap);
-
-    if (timestamp >= 9'25'00'000 && timestamp < 9'26'00'000) {
-        if (size_t index = arrayContains({g_prevLimitUpStockCodes, g_numPrevLimitUpStocks}, stock); index != -1) {
-            double openRate = snapOpenPrice(snap) / snapPreClosePrice(snap) - 1;
+    if (snap.timestamp >= 9'25'00'000 && snap.timestamp < 9'26'00'000) {
+        if (size_t index = arrayContains({g_prevLimitUpStockCodes, g_numPrevLimitUpStocks}, snap.stock); index != -1) {
+            double openRate = static_cast<double>(snap.openPrice) / snap.preClosePrice - 1;
             g_prevLimitUpReturns[index] = openRate;
             g_prevLimitUpMeanReturn = computeMean({g_prevLimitUpReturns, g_numPrevLimitUpStocks});
             std::atomic_thread_fence(std::memory_order_seq_cst);
-            SPDLOG_TRACE("prev-limit-up: stock={:06d} preClosePrice={} openPrice={} openRate={:.03f}% meanOpenRate={:.03f}%", stock, snapPreClosePrice(snap), snapOpenPrice(snap), openRate * 100, g_prevLimitUpMeanReturn * 100);
+            SPDLOG_TRACE("prev-limit-up: stock={:06d} preClosePrice={} openPrice={} openRate={:.03f}% meanOpenRate={:.03f}%", stock, snap.preClosePrice, snap.openPrice, openRate * 100, g_prevLimitUpMeanReturn * 100);
         }
     }
 
-#if SELL_GC001
-#if SH
-    constexpr int32_t kGCStockCode = 204001; // GC001
-#endif
-#if SZ
-    constexpr int32_t kGCStockCode = 131810; // R-001
-#endif
-    if (stock == kGCStockCode && timestamp >= 14'57'00'000) {
-        static uint32_t gcState = 0;
-        if (gcState == 0) {
-            std::jthread(OES::queryAccountStatus).detach();
-        } else if (gcState == 5) {
-            OES::ReqOrder gcSellRequest;
-            std::atomic_thread_fence(std::memory_order_seq_cst);
-            int64_t quantity = (g_availableFund / 1000'00) * 10;
-            if (quantity > 100'0000) {
-                quantity = 100'0000;
-            }
-            if (quantity > 80 || BYPASS_OES) {
-                double price = snapPrice(snap, 1);
-                makeGCSellRequest(gcSellRequest, stock, price, quantity);
-                SPDLOG_DEBUG("sold GC001/R-001: stock={} price={} quantity={}", stock, price, quantity);
-                OES::sendReqOrder(gcSellRequest);
-            }
-        }
-        ++gcState;
-    }
-#endif
+// #if SELL_GC001
+// #if SH
+//     constexpr int32_t kGCStockCode = 204001; // GC001
+// #endif
+// #if SZ
+//     constexpr int32_t kGCStockCode = 131810; // R-001
+// #endif
+//     if (stock == kGCStockCode && timestamp >= 14'57'00'000) {
+//         static uint32_t gcState = 0;
+//         if (gcState == 0) {
+//             std::jthread(OES::queryAccountStatus).detach();
+//         } else if (gcState == 5) {
+//             OES::ReqOrder gcSellRequest;
+//             std::atomic_thread_fence(std::memory_order_seq_cst);
+//             int64_t quantity = (g_availableFund / 1000'00) * 10;
+//             if (quantity > 100'0000) {
+//                 quantity = 100'0000;
+//             }
+//             if (quantity > 80 || BYPASS_OES) {
+//                 double price = snapPrice(snap, 1);
+//                 makeGCSellRequest(gcSellRequest, stock, price, quantity);
+//                 SPDLOG_DEBUG("sold GC001/R-001: stock={} price={} quantity={}", stock, price, quantity);
+//                 OES::sendReqOrder(gcSellRequest);
+//             }
+//         }
+//         ++gcState;
+//     }
+// #endif
 }
 
 void MDD::handleStatic(MDS::Stat &stat)
 {
-    int32_t stock = statStockCode(stat);
-    int32_t id = linearizeStockId(stock);
+    int32_t id = linearizeStockId(stat.stock);
     if (id == -1) [[unlikely]] {
         return;
     }
     auto &state = g_stockStates[id];
 
-    int32_t upperLimitPrice = statUpperLimitPrice(stat);
-    int32_t preClosePrice = statPreClosePrice(stat);
-
-    if (upperLimitPrice == 0) [[unlikely]] {
-        SPDLOG_WARN("invalid static price: stock={:06d} upperLimitPrice={}", stock, upperLimitPrice);
+    if (stat.upperLimitPrice == 0) [[unlikely]] {
+        SPDLOG_WARN("invalid static price: stock={:06d} upperLimitPrice={}", stat.stock, stat.upperLimitPrice);
         unsubscribeStock(id);
         return;
     }
 
 
-#if (NE || OST) && SH
-    state.upperLimitPrice1000 = upperLimitPrice * 10;
+#if SH
+    state.upperLimitPrice1000 = stat.upperLimitPrice * 10;
 #endif
-#if (NE || OST) && SZ
-    state.upperLimitPrice10000 = upperLimitPrice * 100;
-#endif
-#if REPLAY && SH
-    state.upperLimitPrice = upperLimitPrice;
-#endif
-#if REPLAY && SZ
-    state.upperLimitPrice = upperLimitPrice;
+#if SZ
+    state.upperLimitPrice10000 = stat.upperLimitPrice * 100;
 #endif
 
     auto &compute = g_stockComputes[id];
-    compute.stockCode = stock;
-    compute.upperLimitPrice = upperLimitPrice;
-    compute.preClosePrice = preClosePrice;
+    compute.stockCode = stat.stock;
+    compute.upperLimitPrice = stat.upperLimitPrice;
+    compute.preClosePrice = stat.preClosePrice;
 
-    compute.openPrice = preClosePrice;
-    compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.02)) - 1;
-    // compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(upperLimitPrice / 1.01)) - 1;
-    // compute.upperLimitPriceApproach = upperLimitPrice - 5;
+    compute.openPrice = stat.preClosePrice;
+    compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(stat.upperLimitPrice / 1.02)) - 1;
+    // compute.upperLimitPriceApproach = static_cast<int32_t>(std::floor(stat.upperLimitPrice / 1.01)) - 1;
+    // compute.upperLimitPriceApproach = stat.upperLimitPrice - 5;
 
-    compute.fState.currSnapshot.lastPrice = preClosePrice;
+    compute.fState.currSnapshot.lastPrice = stat.preClosePrice;
     compute.fState.currSnapshot.numTrades = 0;
     compute.fState.currSnapshot.volume = 0;
     compute.fState.currSnapshot.amount = 0;
@@ -1088,12 +962,12 @@ void MDD::handleStatic(MDS::Stat &stat)
     int32_t reportQuantity = 100;
 #else
     int32_t reportQuantity = std::max(static_cast<int32_t>(std::min(std::round(
-        (static_cast<double>(kReportMoney) / static_cast<double>(upperLimitPrice))
+        (static_cast<double>(kReportMoney) / static_cast<double>(stat.upperLimitPrice))
         * 0.01), 9999.0)) * INT32_C(100), INT32_C(100));
 #endif
 
     auto &buyRequest = g_buyRequests[id];
-    makeBuyRequest(buyRequest, stock, upperLimitPrice, reportQuantity);
+    makeBuyRequest(buyRequest, stat.stock, stat.upperLimitPrice, reportQuantity);
 }
 
 namespace
@@ -1101,15 +975,7 @@ namespace
 
 HEAT_ZONE_ORDBOOK void addComputeOrder(Compute &compute, MDS::Tick &tick)
 {
-#if REPLAY
-    if (tick.isSellOrder() && tick.price >= compute.upperLimitPriceApproach) {
-        Compute::UpSell sell;
-        sell.price = tick.price;
-        sell.quantity = tick.quantity;
-        compute.upSellOrders.insert({tick.orderNo(), sell});
-    }
-
-#elif NE && SH
+#if SH
     if (tick.tickMergeSse.tickBSFlag == '1'
         && tick.tickMergeSse.price >= compute.upperLimitPriceApproach * 10) {
         Compute::UpSell sell;
@@ -1117,8 +983,9 @@ HEAT_ZONE_ORDBOOK void addComputeOrder(Compute &compute, MDS::Tick &tick)
         sell.quantity = tick.tickMergeSse.qty / 1000;
         compute.upSellOrders.insert({tick.tickMergeSse.sellOrderNo, sell});
     }
+#endif
 
-#elif NE && SZ
+#if SZ
     if (tick.orderSz.side == '2' && tick.orderSz.orderType == '2'
         && tick.orderSz.price >= compute.upperLimitPriceApproach * 100) {
         Compute::UpSell sell;
@@ -1131,23 +998,16 @@ HEAT_ZONE_ORDBOOK void addComputeOrder(Compute &compute, MDS::Tick &tick)
 
 HEAT_ZONE_ORDBOOK void addComputeCancel(Compute &compute, MDS::Tick &tick)
 {
-#if REPLAY
-    if (tick.isSellOrder()) {
-        auto it = compute.upSellOrders.find(tick.orderNo());
-        if (it != compute.upSellOrders.end()) {
-            compute.upSellOrders.erase(it);
-        }
-    }
-
-#elif NE && SH
+#if SH
     if (tick.tickMergeSse.tickBSFlag == '1') {
         auto it = compute.upSellOrders.find(tick.tickMergeSse.sellOrderNo);
         if (it != compute.upSellOrders.end()) {
             compute.upSellOrders.erase(it);
         }
     }
+#endif
 
-#elif NE && SZ
+#if SZ
     if (tick.orderSz.price >= compute.upperLimitPriceApproach * 100) {
         Compute::UpSell sell;
         sell.price = tick.orderSz.price / 100;
@@ -1157,7 +1017,7 @@ HEAT_ZONE_ORDBOOK void addComputeCancel(Compute &compute, MDS::Tick &tick)
 #endif
 }
 
-HEAT_ZONE_ORDBOOK void addRealTrade(Compute &compute, int32_t timestamp, int32_t price, int32_t quantity)
+HEAT_ZONE_ORDBOOK void addRealTrade(Compute &compute, uint32_t timestamp, int32_t price, int32_t quantity)
 {
     stepSnapshotUntil(compute, timestamp);
 
@@ -1170,27 +1030,7 @@ HEAT_ZONE_ORDBOOK void addRealTrade(Compute &compute, int32_t timestamp, int32_t
 
 HEAT_ZONE_ORDBOOK void addComputeTrade(Compute &compute, MDS::Tick &tick)
 {
-#if REPLAY
-    auto it = compute.upSellOrders.find(tick.sellOrderNo);
-    if (it != compute.upSellOrders.end()) {
-        it->second.quantity -= tick.quantity;
-        if (it->second.quantity <= 0) {
-            compute.upSellOrders.erase(it);
-        }
-    }
-
-    if (tick.timestamp < 9'30'00'000) {
-        compute.fState.currSnapshot.lastPrice = compute.openPrice = tick.price;
-        compute.openVolume += tick.quantity;
-        return;
-    }
-
-    if (tick.price >= compute.upperLimitPriceApproach) {
-        compute.approachingLimitUp = true;
-    }
-    addRealTrade(compute, tick.timestamp, tick.price, tick.quantity);
-
-#elif NE && SH
+#if SH
     int32_t quantity = tick.tickMergeSse.qty / 1000;
     int32_t price = tick.tickMergeSse.price / 10;
 
@@ -1212,8 +1052,9 @@ HEAT_ZONE_ORDBOOK void addComputeTrade(Compute &compute, MDS::Tick &tick)
         compute.approachingLimitUp = true;
     }
     addRealTrade(compute, tick.tickMergeSse.tickTime * 10, price, quantity);
+#endif
 
-#elif NE && SZ
+#if SZ
     int32_t quantity = tick.tradeSz.tradeQty / 100;
     int32_t price = tick.tradeSz.tradePrice / 100;
 
@@ -1225,7 +1066,7 @@ HEAT_ZONE_ORDBOOK void addComputeTrade(Compute &compute, MDS::Tick &tick)
         }
     }
 
-    int32_t timestamp = static_cast<uint32_t>(tick.tradeSz.transactTime % UINT64_C(1'00'00'00'000));
+    uint32_t timestamp = static_cast<uint32_t>(tick.tradeSz.transactTime % UINT64_C(1'00'00'00'000));
     if (timestamp < 9'30'00'000) {
         compute.fState.currSnapshot.lastPrice = compute.openPrice = price;
         compute.openVolume += quantity;
@@ -1236,17 +1077,16 @@ HEAT_ZONE_ORDBOOK void addComputeTrade(Compute &compute, MDS::Tick &tick)
         compute.approachingLimitUp = true;
     }
     addRealTrade(compute, timestamp, price, quantity);
-
 #endif
 }
 
-COLD_ZONE void logLimitUp(int32_t id, int32_t timestamp, Intent oldIntent)
+COLD_ZONE void logLimitUp(int32_t id, uint32_t timestamp, Intent oldIntent)
 {
-    int32_t linearTimestamp = (static_cast<uint32_t>(timestampLinear(timestamp)) + 90U) / 100U;
+    uint32_t linearTimestamp = (static_cast<uint32_t>(timestampLinear(timestamp)) + 90U) / 100U;
     uint64_t wantSign = g_wantSigns[id].load(std::memory_order_relaxed);
-    int32_t offset = linearTimestamp - static_cast<int32_t>(static_cast<uint32_t>(wantSign));
+    uint32_t offset = linearTimestamp - static_cast<uint32_t>(wantSign);
     Intent nowIntent;
-    if (offset >= kWantSignLookAhead || offset < 0) {
+    if (offset >= kWantSignLookAhead) {
         nowIntent = NotSure;
     } else {
         nowIntent = static_cast<Intent>(static_cast<uint8_t>(wantSign >> (32 + offset * 2)) & 0b11);
@@ -1269,26 +1109,7 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
         return;
     }
 
-#if REPLAY
-    if (tick.quantity == 0) [[unlikely]] {
-        logLimitUp(&compute - g_stockComputes, tick.timestamp,
-                   static_cast<Intent>(tick.price));
-        compute.upperLimitPrice = 0;
-        return;
-    }
-
-    if (tick.isOrder()) {
-        if (tick.isOrderCancel()) {
-            addComputeCancel(compute, tick);
-        } else {
-            addComputeOrder(compute, tick);
-        }
-
-    } else if (tick.isTrade()) {
-        addComputeTrade(compute, tick);
-    }
-
-#elif NE && SH
+#if SH
     if (tick.tickMergeSse.tickType == 0) [[unlikely]] {
         logLimitUp(&compute - g_stockComputes,
                    tick.tickMergeSse.tickTime * 10,
@@ -1310,8 +1131,9 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
     default:
         break;
     }
+#endif
 
-#elif NE && SZ
+#if SZ
     if (tick.messageType == 0) [[unlikely]] {
         logLimitUp(&compute - g_stockComputes,
                    tick.tradeSz.transactTime - g_szOffsetTransactTime,
@@ -1320,49 +1142,13 @@ HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
         return;
     }
 
-    if (tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ) {
+    if (tick.messageType == XeleCompat::MSG_TYPE_TRADE_SZ) {
         if (tick.tradeSz.execType == 0x1) {
             addComputeCancel(compute, tick);
         } else {
             addComputeTrade(compute, tick);
         }
-    } else if (tick.messageType == NescForesight::MSG_TYPE_ORDER_SZ) [[likely]] {
-        addComputeOrder(compute, tick);
-    }
-
-#elif OST && SH
-    if (tick.tick.m_tick_type == 0) [[unlikely]] {
-        compute.upperLimitPrice = 0;
-        return;
-    }
-
-    switch (tick.tick.m_tick_type) {
-    case 'A':
-        addComputeOrder(compute, tick);
-        break;
-    case 'D':
-        addComputeCancel(compute, tick);
-        break;
-    case 'T':
-        addComputeTrade(compute, tick);
-        break;
-    default:
-        break;
-    }
-
-#elif OST && SZ
-    if (tick.head.m_message_type == 0) [[unlikely]] {
-        compute.upperLimitPrice = 0;
-        return;
-    }
-
-    if (tick.head.m_message_type == sze_msg_type_trade) {
-        if (tick.exe.m_exe_type == 0x1) {
-            addComputeCancel(compute, tick);
-        } else {
-            addComputeTrade(compute, tick);
-        }
-    } else if (tick.head.m_message_type == sze_msg_type_order) [[likely]] {
+    } else if (tick.messageType == XeleCompat::MSG_TYPE_ORDER_SZ) [[likely]] {
         addComputeOrder(compute, tick);
     }
 #endif
@@ -1390,7 +1176,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
         while (true) {
             MDS::Tick *endTicks = g_tickRings[channel].read_some(tickBuf, tickBuf + std::size(tickBuf));
             for (MDS::Tick *pTick = tickBuf; pTick != endTicks; ++pTick) {
-                int32_t stock = tickStockCode(*pTick);
+                int32_t stock = securityId(pTick->commonHead.securityID);
                 int32_t id = linearizeStockId(stock);
                 if (id == -1) [[unlikely]] {
                     continue;

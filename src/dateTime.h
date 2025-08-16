@@ -12,7 +12,7 @@ inline int32_t getToday() noexcept
     std::tm *tm = std::localtime(&now);
     char buf[9];
     buf[std::strftime(buf, sizeof buf, "%Y%m%d", tm)] = 0;
-    return std::atoi(buf);
+    return std::strtoul(buf, nullptr, 10);
 }
 
 inline int32_t getTimestamp() noexcept
@@ -22,8 +22,8 @@ inline int32_t getTimestamp() noexcept
     std::tm *tm = std::localtime(&t);
     char buf[7];
     buf[std::strftime(buf, sizeof buf, "%H%M%S", tm)] = 0;
-    int32_t timestamp = std::atoi(buf);
-    timestamp = timestamp * 1000 + static_cast<int32_t>(
+    uint32_t timestamp = std::strtoul(buf, nullptr, 10);
+    timestamp = timestamp * 1000 + static_cast<uint32_t>(
         duration_cast<std::chrono::milliseconds>(
             now.time_since_epoch()).count() % 1000);
     return timestamp;

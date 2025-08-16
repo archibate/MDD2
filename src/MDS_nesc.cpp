@@ -69,9 +69,6 @@ HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
 {
     // assert(buf[0] == MSG_TYPE_TICK_MERGE_SSE);
     auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));
-    if (tick.tickMergeSse.channelNo > 6 || tick.tickMergeSse.channelNo < 1) [[unlikely]] {
-        return;
-    }
     MDD::handleTick(tick);
 }
 #endif
@@ -88,22 +85,48 @@ HEAT_ZONE_TICK void handleSzTradeAndOrder(const uint8_t *buf, int len)
 void handleShSnapShotLevel1(const uint8_t *buf, int len)
 {
     // assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SSE);
-    auto snapshot = reinterpret_cast<const NescForesight::MarketDataSnapshotSse *>(buf);
-    MDS::Snap snap = {
-        .marketType = NescForesight::SSE,
-        .snapshotSse = snapshot,
-    };
+    auto *snapshot = reinterpret_cast<const NescForesight::MarketDataSnapshotSse *>(buf);
+    MDS::Snap snap{};
+    snap.stock = securityId(snapshot->securityID);
+    snap.amount = snapshot->totalValueTrade / 1000;
+    snap.volume = snapshot->totalVolumeTrade / 1000;
+    snap.numTrades = snapshot->numTrades;
+    snap.lastPrice = snapshot->lastPrice / 10;
+    snap.preClosePrice = snapshot->preClosePrice / 10;
+    snap.openPrice = snapshot->openPrice / 10;
+    snap.highPrice = snapshot->highPrice / 10;
+    snap.lowPrice = snapshot->lowPrice / 10;
+    for (int i = 0; i < 5; ++i) {
+        snap.askPrice[i] = snapshot->askInfo[i].price / 10;
+        snap.askQuantity[i] = snapshot->askInfo[i].qty / 1000;
+        snap.bidPrice[i] = snapshot->bidInfo[i].price / 10;
+        snap.bidQuantity[i] = snapshot->bidInfo[i].qty / 1000;
+    }
     MDD::handleSnap(snap);
 }
 
 void handleSzSnapShotLevel1(const uint8_t *buf, int len)
 {
     // assert(buf[0] == MSG_TYPE_SNAPSHOT_L1_SZ);
-    auto snapshot = reinterpret_cast<const NescForesight::MarketDataSnapshotSz *>(buf);
-    MDS::Snap snap = {
-        .marketType = NescForesight::SZE,
-        .snapshotSz = snapshot,
-    };
+    auto *snapshot = reinterpret_cast<const NescForesight::MarketDataSnapshotSz *>(buf);
+    MDS::Snap snap{};
+    snap.stock = securityId(snapshot->securityID);
+    snap.amount = snapshot->totalValueTrade / 100;
+    snap.volume = snapshot->totalVolumeTrade / 100;
+    snap.numTrades = snapshot->numTrades;
+    snap.lastPrice = snapshot->lastPrice / 10000;
+    snap.preClosePrice = snapshot->preClosePrice / 100;
+    snap.openPrice = snapshot->openPrice / 10000;
+    snap.highPrice = snapshot->highPrice / 10000;
+    snap.lowPrice = snapshot->lowPrice / 10000;
+    snap.upperLimitPrice = snapshot->upperlmtPrice / 10000;
+    snap.upperLimitPrice = snapshot->lowerlmtPrice / 10000;
+    for (int i = 0; i < 5; ++i) {
+        snap.askPrice[i] = snapshot->askInfo[i].price / 10000;
+        snap.askQuantity[i] = snapshot->askInfo[i].qty / 100;
+        snap.bidPrice[i] = snapshot->bidInfo[i].price / 10000;
+        snap.bidQuantity[i] = snapshot->bidInfo[i].qty / 100;
+    }
     MDD::handleSnap(snap);
 }
 
@@ -310,7 +333,6 @@ void MDS::startReceive()
     NescForesight::SseStaticInfoField g_sseStatic;
     NescForesight::SzStaticInfoField g_szStatic;
 
-// #if SH
     SPDLOG_INFO("querying SH static info, please wait");
     if (g_nesc.QuerySseStaticInfo(g_sseStatic) != 0) {
         SPDLOG_ERROR("nesc QuerySseStaticInfo failed");
@@ -318,15 +340,14 @@ void MDS::startReceive()
     }
     SPDLOG_DEBUG("publishing {} SH static info", g_sseStatic.count);
     for (int i = 0; i < g_sseStatic.count; ++i) {
-        MDS::Stat stat = {
-            .marketType = NescForesight::SSE,
-            .staticSseInfo = g_sseStatic.staticInfos[i],
-        };
+        MDS::Stat stat{};
+        stat.stock = securityId(g_sseStatic.staticInfos[i].securityID);
+        stat.preClosePrice = static_cast<uint32_t>(std::round(g_sseStatic.staticInfos[i].prevClosePx * 100));
+        stat.upperLimitPrice = static_cast<uint32_t>(std::round(g_sseStatic.staticInfos[i].upperLimitPrice * 100));
+        stat.lowerLimitPrice = static_cast<uint32_t>(std::round(g_sseStatic.staticInfos[i].lowerLimitPrice * 100));
         MDD::handleStatic(stat);
     }
-// #endif
 
-// #if SZ
     SPDLOG_INFO("querying SZ static info, please wait");
     if (g_nesc.QuerySzStaticInfo(g_szStatic) != 0) {
         SPDLOG_ERROR("nesc QuerySzStaticInfo failed");
@@ -334,16 +355,15 @@ void MDS::startReceive()
     }
     SPDLOG_DEBUG("publishing {} SZ static info", g_szStatic.count);
     for (int i = 0; i < g_szStatic.count; ++i) {
-        MDS::Stat stat = {
-            .marketType = NescForesight::SZE,
-            .staticSzInfo = g_szStatic.staticInfos[i],
-        };
+        MDS::Stat stat{};
+        stat.stock = securityId(g_szStatic.staticInfos[i].securityID);
+        stat.preClosePrice = static_cast<uint32_t>(std::round(g_szStatic.staticInfos[i].prevClosePx * 100));
+        stat.upperLimitPrice = static_cast<uint32_t>(std::round(g_szStatic.staticInfos[i].upperLimitPrice * 100));
+        stat.lowerLimitPrice = static_cast<uint32_t>(std::round(g_szStatic.staticInfos[i].lowerLimitPrice * 100));
         MDD::handleStatic(stat);
     }
-// #endif
 
-    SPDLOG_INFO("querying static info done");
-
+    SPDLOG_INFO("starting nesc receive");
     if (g_nesc.Start() != 0) {
         SPDLOG_ERROR("mds nesc start failed");
         throw std::runtime_error("mds nesc start failed");
