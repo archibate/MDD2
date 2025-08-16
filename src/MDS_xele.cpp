@@ -2,6 +2,7 @@
 #if XC
 #include "MDS.h"
 #include "MDD.h"
+#include "krmds.h"
 #include "timestamp.h"
 #include "threadAffinity.h"
 #include "securityId.h"
@@ -18,6 +19,9 @@
 
 namespace
 {
+
+std::string g_kr_username;
+std::string g_kr_password;
 
 XeleMd g_xeleMd;
 std::atomic_flag g_isStopped{false};
@@ -44,12 +48,11 @@ HEAT_ZONE_TICK void handleSzTradeAndOrder(uint8_t *buf, int len)
 
 void MDS::start(const char *config)
 {
-    std::string username;
-    std::string password;
-
     try {
         nlohmann::json json;
         std::ifstream(config) >> json;
+        g_kr_username = json["kr_mds_username"];
+        g_kr_password = json["kr_mds_password"];
 
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
@@ -116,6 +119,9 @@ void MDS::start(const char *config)
 
 void MDS::startReceive()
 {
+    SPDLOG_INFO("starting kr mdsapi");
+    KrRun(g_kr_username, g_kr_password);
+
     SPDLOG_INFO("starting xele receive");
     if (g_xeleMd.Start() != 0) {
         SPDLOG_ERROR("mds xele start failed");

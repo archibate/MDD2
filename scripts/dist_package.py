@@ -1,60 +1,47 @@
 #!/usr/bin/env python
 
 
+common_options = [
+    '-DCMAKE_BUILD_TYPE=Release',
+    '-DBUILD_SPEED=ON',
+    '-DRECORD_FACTORS=ON',
+    '-DASYNC_LOGGER=OFF',
+    '-DNO_EXCEPTION=OFF',
+    '-DDETAIL_LOG=OFF',
+    '-DSELL_GC001=OFF',
+    '-DBYPASS_OES=OFF',
+]
 
 targets = {
-    'NESH': [
-        '-DCMAKE_BUILD_TYPE=Release',
-        '-DBUILD_SPEED=ON',
-        '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=ON',
+    'XCSH': [
+        '-DALWAYS_BUY=OFF',
         '-DDUMMY_QUANTITY=ON',
-        '-DASYNC_LOGGER=OFF',
-        '-DDETAIL_LOG=OFF',
-        '-DSELL_GC001=OFF',
-        '-DTARGET_SECURITY=NE',
-        '-DTARGET_MARKET=SH',
-        '-DBYPASS_OES=OFF',
-        '-DSZ_IS_SECOND=OFF',
     ],
+
     'NESZ': [
-        '-DCMAKE_BUILD_TYPE=Release',
-        '-DBUILD_SPEED=ON',
-        '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=ON',
+        '-DALWAYS_BUY=OFF',
         '-DDUMMY_QUANTITY=ON',
-        '-DASYNC_LOGGER=OFF',
-        '-DDETAIL_LOG=OFF',
-        '-DSELL_GC001=OFF',
-        '-DTARGET_SECURITY=NE',
-        '-DTARGET_MARKET=SZ',
-        '-DBYPASS_OES=OFF',
-        '-DSZ_IS_SECOND=OFF',
     ],
-    'NESZ2': [
-        '-DCMAKE_BUILD_TYPE=Release',
-        '-DBUILD_SPEED=ON',
-        '-DRECORD_FACTORS=ON',
-        '-DALWAYS_BUY=ON',
+
+    'NESH': [
+        '-DALWAYS_BUY=OFF',
         '-DDUMMY_QUANTITY=ON',
-        '-DASYNC_LOGGER=OFF',
-        '-DDETAIL_LOG=OFF',
-        '-DSELL_GC001=ON',
-        '-DTARGET_SECURITY=NE',
-        '-DTARGET_MARKET=SZ',
-        '-DBYPASS_OES=ON',
-        '-DSZ_IS_SECOND=ON',
+    ],
+
+    'NESZ': [
+        '-DALWAYS_BUY=OFF',
+        '-DDUMMY_QUANTITY=ON',
+    ],
+
+    'NESZ2': [
+        '-DALWAYS_BUY=OFF',
+        '-DDUMMY_QUANTITY=ON',
     ],
 }
 
 markets = [
     'sh',
     'sz',
-]
-
-securities = [
-    'ne',
-    # 'xc',
 ]
 
 
@@ -78,6 +65,7 @@ if len(sys.argv) > 1 and any(k in sys.argv[1:] for k in targets):
 print('today:', today)
 print('targets:', targets)
 
+print(f'-- Fetching market state')
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 for market in markets:
     subprocess.check_call(['/opt/miniconda3/bin/python', 'scripts/fetch_state.py', market.upper(), today])
@@ -128,6 +116,16 @@ def prepare_file(out, *paths):
 
 for target, options in targets.items():
     shutil.rmtree(f'build/{target}', ignore_errors=True)
+    market = target[2:4].lower()
+    is_second = target.endswith('2')
+    security = target[:2].lower()
+    target_options = [
+        f'-DTARGET_SECURITY={security}',
+        f'-DTARGET_MARKET={market}',
+        f'-DSZ_IS_SECOND={"ON" if is_second else "OFF"}',
+    ]
+    options = common_options + target_options + options
+    print(f'-- Building {target}: {options}')
     subprocess.check_call([
         'cmake', '-B', f'build/{target}', '-G', 'Ninja', '-Wno-dev',
     ] + options)
@@ -138,6 +136,7 @@ for target, options in targets.items():
 shutil.rmtree(f'dist', ignore_errors=True)
 for target in targets:
     os.makedirs(f'dist/{target}', exist_ok=True)
+    print(f'-- Packing {target}')
 
     market = target[2:4].lower()
     security = target[:2].lower()
@@ -174,9 +173,11 @@ exec -a mdd_v2 $wd/ld-linux-x86-64.so.2 $wd/mdd_v2 $wd/config_{target}_{today}.j
     subprocess.check_call(['chmod', '+x', f'dist/{target}/start'])
 
 for target in targets:
+    print(f'-- Compressing {target}')
     subprocess.check_call(['tar', 'zcvf', f'/data/release/MDD-{target}-{today}.tar.gz', '.'], cwd=f'dist/{target}')
 
 for target in targets:
+    print(f'-- Publishing {target}')
     market_full = target[2:].lower()
     security = target[:2].lower()
     subprocess.check_call([f'scripts/{security}-upload.sh', market_full, f'/data/release/MDD-{target}-{today}.tar.gz', f'/tmp/MDD-{target}-{today}.tar.gz'])

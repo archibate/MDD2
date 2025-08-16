@@ -552,6 +552,9 @@ HEAT_ZONE_COMPUTE void computeVolatility(Compute &compute, FactorList &factorLis
             factor.consecVolumeRatio = static_cast<double>(lcsVolume) / totalVolume;
 
             computeSkewKurt(factor.consecVwapSkew, factor.consecVwapKurt, vwap.data() + range.start, vwap.data() + range.stop + 1);
+        } else {
+            factorList.volatility[l].vwapSkew = NAN;
+            factorList.volatility[l].vwapKurt = NAN;
         }
     }
 }
