@@ -3,24 +3,6 @@
 #include "config.h"
 #include "XeleCompat.h"
 #include <cstdint>
-// #if REPLAY
-// #include "L2/Stat.h"
-// #include "L2/Tick.h"
-// #include "L2/Snap.h"
-// #elif XC
-// #include <xele/XeleMd.h>
-// #include <xele/SseXeleMdStruct.h>
-// #include <xele/SzeXeleMdStruct.h>
-// #include <xele/XeleSecuritiesUserApiData.h>
-// #elif NE
-// #include <nesc/Const.h>
-// #include <nesc/SseMdStruct.h>
-// #include <nesc/SzeMdStruct.h>
-// #elif OST
-// #include "ostmd/sse_hpf_quote.h"
-// #include "ostmd/sze_hpf_quote.h"
-// #include <UTApiStruct.h>
-// #endif
 
 
 namespace MDS
@@ -61,7 +43,7 @@ struct Tick
         XeleCompat::TickMergeSse tickMergeSse;
         XeleCompat::TradeSz tradeSz;
         XeleCompat::OrderSz orderSz;
-        XeleCompat::CommonHeadSz commonHead;
+        XeleCompat::CommonHead commonHead;
         uint8_t messageType;
     };
 };

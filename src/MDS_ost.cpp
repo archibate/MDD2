@@ -10,6 +10,9 @@
 #include <fstream>
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
+#include "ostmd/sse_hpf_quote.h"
+#include "ostmd/sze_hpf_quote.h"
+#include <UTApiStruct.h>
 
 namespace
 {

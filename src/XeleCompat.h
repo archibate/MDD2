@@ -88,7 +88,6 @@ struct TickMergeSse
     uint64_t sellOrderNo;    //卖方订单号
     uint32_t price;          //价格，实际值除以1000
     uint64_t qty;            //数量，实际值除以1000
-    char     padding[3];        //填充至64字节
     // uint64_t tradeMoney;     //TickType=T成交时，代表成交金额，实际值除以100000；
     // //TickType=A新增委托时，代表已成交委托数量，实际值除以1000，其他无意义
     // uint32_t msgSeqID;       //消息序号（仅定位调试使用）
@@ -134,7 +133,7 @@ struct OrderSz
     uint16_t mdstreamid;                //行情类别
 };
 
-struct CommonHeadSz
+struct CommonHead
 {
     uint8_t messageType;
     uint32_t sequence;

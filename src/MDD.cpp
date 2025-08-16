@@ -664,7 +664,19 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(std::vector<int32_t> &approachStockI
 {
     for (int32_t id: approachStockIds) {
         auto &compute = g_stockComputes[id];
-        compute.wantSign = static_cast<uint32_t>(timestampLinear(compute.fState.nextTickTimestamp)) / 100U;
+        uint32_t currentTimestamp = static_cast<uint32_t>(timestampLinear(compute.fState.nextTickTimestamp)) / 100U;
+
+        compute.wantSign = g_wantSigns[id].load(std::memory_order_relaxed);
+        uint32_t previousTimestamp = static_cast<uint32_t>(compute.wantSign);
+        uint32_t previousOffset = currentTimestamp - previousTimestamp;
+
+        if (previousOffset < kWantSignLookAhead) {
+            compute.wantSign >>= previousOffset;
+            compute.wantSign &= UINT64_C(0xffffffff00000000);
+            compute.wantSign |= currentTimestamp;
+        } else {
+            compute.wantSign = currentTimestamp;
+        }
     }
     static_assert(kWantSignLookAhead <= 16 && kWantSignLookAhead > 0);
     for (uint32_t offset = 0; offset < kWantSignLookAhead; ++offset) {
@@ -704,6 +716,7 @@ HEAT_ZONE_COMPUTE void computeFutureWantBuy(std::vector<int32_t> &approachStockI
             factorList.prevUMeanReturn = g_prevLimitUpMeanReturn;
 
             bool wantBuy = predictModel(factorList.rawFactors);
+            compute.wantSign &= ~(UINT64_C(0b11) << (32 + offset * 2));
             compute.wantSign |= static_cast<uint64_t>(wantBuy ? WantBuy : DontBuy) << (32 + offset * 2);
             g_wantSigns[id].store(compute.wantSign, std::memory_order_relaxed);
             // SPDLOG_INFO("computed model: stock={:06d} timestamp={} offset={} wantBuy={}", compute.stockCode, timestamp, offset, wantBuy);
@@ -836,7 +849,7 @@ HEAT_ZONE_TICK void MDD::handleTick(MDS::Tick &tick)
             state.upSellOrderIds.insert(tick.orderSz.applSeqNum);
         }
     } else {
-        // assert(tick.messageType == NescForesight::MSG_TYPE_TRADE_SZ);
+        // assert(tick.messageType == XeleCompat::MSG_TYPE_TRADE_SZ);
         if (tick.tradeSz.execType == 0x1) {
             if (state.upSellOrderIds.contains(tick.tradeSz.offerapplSeqnum)) {
                 state.upRemainQty100 -= tick.tradeSz.tradeQty;

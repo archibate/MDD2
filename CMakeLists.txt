@@ -11,6 +11,7 @@ option(LIMIT_SPEED "Limit request speed < 300/s" ON)
 option(ALWAYS_BUY "Always purchase regardless model" OFF)
 option(DUMMY_QUANTITY "Use dummy 100 quantity for buy" OFF)
 option(ASYNC_LOGGER "Enable spdlog async logger" OFF)
+option(NO_EXCEPTION "Disable C++ RTTI and exceptions" OFF)
 option(DETAIL_LOG "Enable detail log (trace level)" OFF)
 option(SELL_GC001 "Sell GC001/R-001 on market end" OFF)
 option(BEST_ORDER "Enable best-order-this-side report" OFF)
@@ -150,6 +151,18 @@ if (CMAKE_BUILD_TYPE MATCHES "Release")
             -fno-stack-protector
             -fno-asynchronous-unwind-tables
         )
-        target_compile_options(${PROJECT_NAME} PRIVATE -w)
     endif()
+endif()
+
+if (NO_EXCEPTION)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            -fno-exception
+            -fno-rtti
+        )
+    endif()
+endif()
+
+if (CMAKE_BUILD_TYPE MATCHES "Release")
+    target_compile_options(${PROJECT_NAME} PRIVATE -w)
 endif()

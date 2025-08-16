@@ -121,7 +121,7 @@ void readReplayTicks(std::vector<L2::Tick> &tickBuf)
     }
     std::rewind(fp);
     tickBuf.resize(pos / sizeof(L2::Tick));
-    SPDLOG_INFO("reading {} ticks from file", tickBuf.size());
+    SPDLOG_DEBUG("reading {} ticks from file", tickBuf.size());
 
     size_t n = std::fread(tickBuf.data(), sizeof(L2::Tick), tickBuf.size(), fp);
     if (n != tickBuf.size()) [[unlikely]] {
@@ -149,8 +149,7 @@ void l2ToMdsTick(L2::Tick const &l2, MDS::Tick &mds)
     mds.tickMergeSse.buyOrderNo = static_cast<uint64_t>(l2.buyOrderNo);
     mds.tickMergeSse.sellOrderNo = static_cast<uint64_t>(l2.sellOrderNo);
     mds.tickMergeSse.price = static_cast<uint32_t>(l2.price) * 10;
-    mds.tickMergeSse.qty = static_cast<uint64_t>(l2.quantity) * 10;
-    memset(mds.tickMergeSse.padding, 0, sizeof(mds.tickMergeSse.padding));
+    mds.tickMergeSse.qty = static_cast<uint64_t>(l2.quantity) * 1000;
 #endif
 
 #if SZ
@@ -171,6 +170,7 @@ void l2ToMdsTick(L2::Tick const &l2, MDS::Tick &mds)
         mds.orderSz.sequence = 0; /* unused */
         mds.orderSz.exchangeID = 2;
         fmtSecurityId(mds.orderSz.securityID, l2.stock);
+        mds.orderSz.rsvd = 0;
         mds.orderSz.side = l2.isBuy() ? '1' : '2';
         mds.orderSz.orderType = '2';
         mds.orderSz.applSeqNum = static_cast<uint64_t>(l2.orderNo()); /* unused */
@@ -225,7 +225,7 @@ void replayMain(std::vector<L2::Tick> &tickBuf, std::stop_token stop)
 
 void MDS::startReceive()
 {
-    SPDLOG_INFO("loading market statics");
+    SPDLOG_DEBUG("loading market statics");
     loadMarketStatic();
 
     SPDLOG_DEBUG("publishing {} statics", g_marketStatics.size());

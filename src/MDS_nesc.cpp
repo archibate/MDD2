@@ -6,7 +6,11 @@
 #include "threadAffinity.h"
 #include "securityId.h"
 #include "heatZone.h"
+#include "XeleCompat.h"
 #include <nesc/NescMd.h>
+#include <nesc/Const.h>
+#include <nesc/SseMdStruct.h>
+#include <nesc/SzeMdStruct.h>
 #include <spdlog/spdlog.h>
 #include <fmt/core.h>
 #include <stdexcept>
@@ -23,7 +27,7 @@ std::atomic_flag g_isStopped{false};
 #if SH
 HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
 {
-    // assert(buf[0] == MSG_TYPE_TICK_MERGE_SSE);
+    // assert(buf[0] == XeleCompat::MSG_TYPE_TICK_MERGE_SSE);
     auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));
     MDD::handleTick(tick);
 }
@@ -32,7 +36,7 @@ HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
 #if SZ
 HEAT_ZONE_TICK void handleSzTradeAndOrder(const uint8_t *buf, int len)
 {
-    // assert(buf[0] == MSG_TYPE_TRADE_SZ || buf[0] == MSG_TYPE_ORDER_SZ);
+    // assert(buf[0] == XeleCompat::MSG_TYPE_TRADE_SZ || buf[0] == XeleCompat::MSG_TYPE_ORDER_SZ);
     auto &tick = const_cast<MDS::Tick &>(*reinterpret_cast<MDS::Tick const *>(buf));
     MDD::handleTick(tick);
 }
