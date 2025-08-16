@@ -28,6 +28,7 @@
 #include <tsl/robin_set.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <fmt/ranges.h>
 #include <magic_enum/magic_enum_format.hpp>
 #include <emmintrin.h>
 
@@ -814,7 +815,7 @@ void logStop(int32_t id, uint32_t timestamp, Intent intent)
 #endif
     pushTickToRing(id, endSign);
 
-    SPDLOG_DEBUG("detected limit up: stock={:06d} timestamp={} intent={}", g_stockCodes[id], timestamp, intent);
+    SPDLOG_INFO("detected limit up: stock={:06d} timestamp={} intent={}", g_stockCodes[id], timestamp, intent);
     unsubscribeStock(id);
 }
 
@@ -897,7 +898,7 @@ void MDD::handleSnap(MDS::Snap &snap)
             g_prevLimitUpReturns[index] = openRate;
             g_prevLimitUpMeanReturn = computeMean({g_prevLimitUpReturns, g_numPrevLimitUpStocks});
             std::atomic_thread_fence(std::memory_order_seq_cst);
-            SPDLOG_TRACE("prev-limit-up: stock={:06d} preClosePrice={} openPrice={} openRate={:.03f}% meanOpenRate={:.03f}%", stock, snap.preClosePrice, snap.openPrice, openRate * 100, g_prevLimitUpMeanReturn * 100);
+            SPDLOG_TRACE("prev-limit-up: stock={:06d} preClosePrice={} openPrice={} openRate={:.03f}% meanOpenRate={:.03f}%", snap.stock, snap.preClosePrice, snap.openPrice, openRate * 100, g_prevLimitUpMeanReturn * 100);
         }
     }
 
@@ -1120,7 +1121,7 @@ COLD_ZONE void logLimitUp(int32_t id, uint32_t timestamp, Intent oldIntent)
         compute.factorListCache[offset].dumpFactors(timestampDelinear(linearTimestamp * 100), compute.stockCode);
     }
 #endif
-    SPDLOG_INFO("limit up model status: stock={:06d} price={} timestamp={} wantTime={} offset={} nowIntent={} oldIntent={}", compute.stockCode, compute.upperLimitPrice, timestamp, timestampDelinear(static_cast<uint32_t>(wantSign) * 100U), offset, nowIntent, oldIntent);
+    SPDLOG_DEBUG("limit up model status: stock={:06d} price={} timestamp={} wantTime={} offset={} nowIntent={} oldIntent={}", compute.stockCode, compute.upperLimitPrice, timestamp, timestampDelinear(static_cast<uint32_t>(wantSign) * 100U), offset, nowIntent, oldIntent);
 }
 
 HEAT_ZONE_ORDBOOK void addComputeTick(Compute &compute, MDS::Tick &tick)
@@ -1193,6 +1194,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
             g_stockComputes[id].approachingLimitUp = false;
         }
 
+        size_t round = 0;
         while (true) {
             MDS::Tick *endTicks = g_tickRings[channel].read_some(tickBuf, tickBuf + std::size(tickBuf));
             for (MDS::Tick *pTick = tickBuf; pTick != endTicks; ++pTick) {
@@ -1209,6 +1211,13 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
             if (endTicks < tickBuf + std::size(tickBuf) / 2) {
                 break;
             }
+            round += endTicks - tickBuf;
+            if (round > 3 * std::size(tickBuf)) {
+                SPDLOG_TRACE("tick burst channel={} nBurst={}", channel, round);
+            }
+            if (round > 5 * std::size(tickBuf)) {
+                break;
+            }
         }
 
         for (int32_t id = startId; id != stopId; ++id) {
@@ -1219,6 +1228,9 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
         }
 
         computeFutureWantBuy(approachStockIds);
+        if (approachStockIds.size() >= 3) {
+            SPDLOG_TRACE("approach burst channel={} nBurst={} stocks={}", channel, approachStockIds.size(), approachStockIds);
+        }
     }
 }
 

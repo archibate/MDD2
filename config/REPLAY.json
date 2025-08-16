@@ -1,6 +1,6 @@
 {
-    "date": 20250813,
-    "$comment_date": 20250721,
+    "$comment.date": 20250813,
+    "date": 20250102,
     "time_scale": 10.0,
     "comment": "replay config"
 }

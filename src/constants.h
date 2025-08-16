@@ -46,6 +46,6 @@ constexpr std::array<int32_t, kChannelCount> kChannelCpus = {
 };
 #endif
 
-constexpr int32_t kWantSignLookAhead = 10;
+constexpr uint32_t kWantSignLookAhead = 10;
 
 constexpr int64_t kReportMoney = 49'0000'00;

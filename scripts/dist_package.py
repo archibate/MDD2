@@ -7,7 +7,7 @@ common_options = [
     '-DRECORD_FACTORS=ON',
     '-DASYNC_LOGGER=OFF',
     '-DNO_EXCEPTION=ON',
-    '-DDETAIL_LOG=OFF',
+    '-DDETAIL_LOG=ON',
     '-DSELL_GC001=OFF',
     '-DBYPASS_OES=OFF',
 ]
@@ -160,8 +160,8 @@ for target in targets:
 set -e
 cd `dirname "$0"`
 wd=$PWD
-mkdir -p /root/log
-cd /root/log
+mkdir -p ../log
+cd ../log
 
 exec -a mdd_v2 $wd/ld-linux-x86-64.so.2 $wd/mdd_v2 $wd/config_{target}_{today}.json'
 ''')

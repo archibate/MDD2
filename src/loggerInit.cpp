@@ -38,7 +38,7 @@ struct LoggerInit
 #endif
         logger->set_pattern("%C%m%d %H%M%S.%f %^%L (%s:%#) %v%$");
         logger->set_level(spdlog::level::trace);
-        logger->flush_on(spdlog::level::info);
+        logger->flush_on(spdlog::level::warn);
         spdlog::set_default_logger(logger);
         spdlog::set_level(spdlog::level::trace);
     }
