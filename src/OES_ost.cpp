@@ -191,8 +191,8 @@ void OES::start(const char *config)
 
     SPDLOG_INFO("ost trade api version {}", CUTApi::GetApiVersion());
     SPDLOG_DEBUG("ost trade: CreateApi");
-    SPDLOG_DEBUG("ost trade bound to cpu: {}", kOESRecvCpu);
-    CUTApi *api = CUTApi::CreateApi("", kOESRecvCpu);
+    SPDLOG_DEBUG("ost trade bound to cpu: {}", kOESBindCpu);
+    CUTApi *api = CUTApi::CreateApi("", kOESBindCpu);
 
     SPDLOG_DEBUG("ost trade: RegisterSpi");
 	g_spi = new OstUserSpi(api);

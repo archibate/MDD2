@@ -22,7 +22,7 @@
 #include <thread>
 #include <fstream>
 #include <cmath>
-#include <algorithm>
+#include <iterator>
 #include <absl/container/btree_map.h>
 // #include <absl/container/flat_hash_set.h>
 #include <tsl/robin_set.h>
@@ -1207,7 +1207,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
 void MDD::start(const char *config)
 {
     parseDailyConfig(config);
-    SPDLOG_INFO("found {} stocks", g_numStocks);
+    SPDLOG_INFO("found {} stocks to subscribe", g_numStocks);
 
     monotonicSleepFor(5'000'000);
 
@@ -1230,11 +1230,8 @@ void MDD::start(const char *config)
     monotonicSleepFor(200'000'000);
 #endif
 
-    SPDLOG_INFO("subscribing {} stocks", g_numStocks);
-    MDS::subscribe(g_stockCodes, g_numStocks);
-
     monotonicSleepFor(10'000'000);
-    SPDLOG_DEBUG("starting {} compute threads", kChannelCount);
+    SPDLOG_INFO("starting {} compute threads", kChannelCount);
     for (int32_t c = 0; c < kChannelCount; ++c) {
         g_computeThreads[c] = std::jthread([c] (std::stop_token stop) {
             setThisThreadAffinity(kChannelCpus[c]);

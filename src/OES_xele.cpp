@@ -19,21 +19,6 @@
 namespace
 {
 
-// void fmtSecurityId(TXeleSecuritiesIDType securityID, int32_t stock)
-// {
-//     securityID[5] = '0' + stock % 10;
-//     stock /= 10;
-//     securityID[4] = '0' + stock % 10;
-//     stock /= 10;
-//     securityID[3] = '0' + stock % 10;
-//     stock /= 10;
-//     securityID[2] = '0' + stock % 10;
-//     stock /= 10;
-//     securityID[1] = '0' + stock % 10;
-//     stock /= 10;
-//     securityID[0] = '0' + stock % 10;
-// }
-
 class XeleTdSpi final : public XeleSecuritiesTraderSpi
 {
 public:
@@ -318,7 +303,10 @@ int callReqLogin()
 #if NE && SZ && SZ2
     param.ManagerURL = "tcp://10.107.39.12:50000;tcp://10.107.39.13:50000";
 #endif
-#if XC
+#if XC && SH
+    param.ManagerURL = "tcp://10.208.47.27:50000;tcp://10.208.47.28:50000";
+#endif
+#if XC && SZ
     param.ManagerURL = "tcp://10.208.48.27:50000;tcp://10.208.48.28:50000";
 #endif
     param.QueryURL = "";
@@ -363,10 +351,10 @@ int callReqLogin()
     param.solarfareTradeEthName = "enp1s0f0";
 #endif
 #if XC && SH
-    param.solarfareTradeEthName = "enp1s0f0";
+    param.solarfareTradeEthName = "enp1s0f1";
 #endif
 #if XC && SZ
-    param.solarfareTradeEthName = "enp1s0f1";
+    param.solarfareTradeEthName = "enp1s0f0";
 #endif
     param.openEncryption = 0;
     param.CaptureSignal = 0;

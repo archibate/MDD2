@@ -82,10 +82,6 @@ void MDS::startReceive()
     OstStart(g_ostmdConfigFile.c_str(), kMDSBindCpu);
 }
 
-void MDS::subscribe(int32_t const *stocks, int32_t n)
-{
-}
-
 void MDS::stop()
 {
     if (!g_isStopped.test_and_set()) {

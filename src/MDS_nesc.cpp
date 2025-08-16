@@ -11,6 +11,7 @@
 #include <fmt/core.h>
 #include <stdexcept>
 #include <fstream>
+#include <iterator>
 #include <nlohmann/json.hpp>
 
 namespace
@@ -18,51 +19,6 @@ namespace
 
 NescForesight::NescMdUDPClient g_nesc;
 std::atomic_flag g_isStopped{false};
-
-}
-
-void MDS::subscribe(int32_t const *stocks, int32_t n)
-{
-    static const NescForesight::EMdMsgType messageTypes[] = {
-#if SZ
-        NescForesight::eSzTrade,
-        NescForesight::eSzOrder,
-#endif
-#if SH
-        NescForesight::eShTickMerge,
-#endif
-        NescForesight::eSzSnapShotLevel1,
-        NescForesight::eShSnapShotLevel1,
-    };
-
-#if SUBSCRIBE_PARTIAL
-    std::vector<std::string> securityIdStrs;
-    std::vector<const char *> securityIds;
-    securityIdStrs.reserve(n);
-    securityIds.reserve(n);
-    for (int32_t i = 0; i < n; ++i) {
-        securityIdStrs.push_back(fmt::format("{:06d}", i));
-        securityIds.push_back(securityIdStrs.back().c_str());
-    }
-
-    if (g_nesc.SubscribeMarketData(
-        messageTypes, sizeof(messageTypes) / sizeof(messageTypes[0]),
-        NescForesight::MarketType(MARKET_ID),
-        securityIds.data(), securityIds.size()) != 0) {
-        SPDLOG_ERROR("mds nesc subscribe failed");
-        throw std::runtime_error("mds nesc subscribe failed");
-    }
-
-#else
-    if (g_nesc.SubscribeAll(messageTypes, sizeof(messageTypes) / sizeof(messageTypes[0])) != 0) {
-        SPDLOG_ERROR("mds nesc subscribe failed");
-        throw std::runtime_error("mds nesc subscribe failed");
-    }
-#endif
-}
-
-namespace
-{
 
 #if SH
 HEAT_ZONE_TICK void handleShTickMerge(const uint8_t *buf, int len)
@@ -317,14 +273,47 @@ void MDS::start(const char *config)
     };
 #endif
 #endif
-    constexpr size_t kNumMdParams = sizeof(mdChannels) / sizeof(mdChannels[0]);
-    NescForesight::MdParam *params[kNumMdParams];
-    for (size_t i = 0; i < kNumMdParams; ++i) {
+    NescForesight::MdParam *params[std::size(mdChannels)];
+    for (size_t i = 0; i < std::size(mdChannels); ++i) {
         params[i] = &mdChannels[i];
     }
-    if (g_nesc.Init(params, kNumMdParams) != 0) {
+    if (g_nesc.Init(params, std::size(mdChannels)) != 0) {
         SPDLOG_ERROR("mds nesc channels init failed");
         throw std::runtime_error("mds nesc channels init failed");
+    }
+
+    static const NescForesight::EMdMsgType kSubscribeMessageTypes[] = {
+#if SZ
+        NescForesight::eSzTrade,
+        NescForesight::eSzOrder,
+#endif
+#if SH
+        NescForesight::eShTickMerge,
+#endif
+        NescForesight::eSzSnapShotLevel1,
+        NescForesight::eShSnapShotLevel1,
+    };
+
+    // std::vector<std::string> securityIdStrs;
+    // std::vector<const char *> securityIds;
+    // securityIdStrs.reserve(n);
+    // securityIds.reserve(n);
+    // for (int32_t i = 0; i < n; ++i) {
+    //     securityIdStrs.push_back(fmt::format("{:06d}", stocks[i]));
+    //     securityIds.push_back(securityIdStrs.back().c_str());
+    // }
+    //
+    // if (g_nesc.SubscribeMarketData(
+    //     kSubscribeMessageTypes, std::size(kSubscribeMessageTypes),
+    //     NescForesight::MarketType(MARKET_ID),
+    //     securityIds.data(), securityIds.size()) != 0) {
+    //     SPDLOG_ERROR("mds nesc subscribe failed");
+    //     throw std::runtime_error("mds nesc subscribe failed");
+    // }
+
+    if (g_nesc.SubscribeAll(kSubscribeMessageTypes, std::size(kSubscribeMessageTypes)) != 0) {
+        SPDLOG_ERROR("mds nesc subscribe failed");
+        throw std::runtime_error("mds nesc subscribe failed");
     }
 }
 

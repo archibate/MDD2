@@ -15,7 +15,6 @@
 #include <stdexcept>
 #include <fstream>
 #include <thread>
-#include <absl/container/flat_hash_set.h>
 #include <nlohmann/json.hpp>
 
 namespace
@@ -26,7 +25,6 @@ const uint64_t g_szOffsetTransactTime = static_cast<uint64_t>(getToday()) * UINT
 #endif
 
 std::jthread g_replayThread;
-absl::flat_hash_set<int32_t> g_subscribedStocks;
 std::vector<L2::Stat> g_marketStatics;
 std::atomic_bool g_isFinished{false};
 std::atomic_bool g_isStarted{false};
@@ -77,11 +75,6 @@ void loadMarketStatic()
 namespace MDS
 {
 double g_timeScale = 1.0 / 10.0;
-}
-
-void MDS::subscribe(int32_t const *stocks, int32_t n)
-{
-    g_subscribedStocks.insert(stocks, stocks + n);
 }
 
 void MDS::start(const char *config)
