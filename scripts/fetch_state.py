@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 
 import pandas as pd
-import tushare as ts
+import rqdatac as rq
+import datetime as dt
 import numpy as np
+import warnings
 import sys
+
+warnings.filterwarnings('ignore')
+rq.init()
 
 today = sys.argv[2]
 market_name = sys.argv[1]
@@ -13,22 +18,12 @@ assert market_name in ['SH', 'SZ'], market_name
 print('Today:', today)
 print('Market:', market_name)
 
-pro = ts.pro_api('e266be1f9c7345bcc6ba56649463c0c78cc69eeb9d8ecb47701a8416')
+today_date = dt.datetime.strptime(today, '%Y%m%d')
+calendar = rq.get_trading_dates(start_date=today_date - dt.timedelta(days=20), end_date=today_date)
 
-calender = pro.trade_cal(
-    exchange={
-        'SH': 'SSE',
-        'SZ': 'SZSE',
-    }[market_name],
-    start_date=today,
-    end_date=today,
-    fields='cal_date,is_open,pretrade_date',
-)
-
-assert len(calender) == 1
-if not calender['is_open'].values[0]:
+if not calendar[-1] != today_date:
     raise RuntimeError(f'today {today} is not a trade day!')
-yesterday = str(calender['pretrade_date'].values[0])
+yesterday = calendar[-2].strftime('%Y%m%d')
 print('Yesterday:', yesterday)
 
 
