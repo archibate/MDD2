@@ -875,7 +875,9 @@ void XeleTdSpi::onRspQryPosition(CXeleRspQryStockPositionField* pRspField, CXele
 void OES::start(const char *config)
 {
     std::string xeleLogPath;
+#if !NO_EXCEPTION
     try {
+#endif
         nlohmann::json json;
         std::ifstream(config) >> json;
         g_username = json["username"];
@@ -884,10 +886,12 @@ void OES::start(const char *config)
             xeleLogPath = json["xeleLogPath"];
         }
 
+#if !NO_EXCEPTION
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
         throw;
     }
+#endif
 
     // SPDLOG_TRACE("oes creating user spi");
     g_userSpi = new XeleTdSpi;
@@ -905,7 +909,7 @@ void OES::start(const char *config)
     if (ret != 0) {
         /// ret可以结合XeleSecuritiesTraderApi.h中ApiReturnValue枚举返回值对应错误来判断常见的异常
         SPDLOG_ERROR("oes xele login error: ret={}", ret);
-        throw std::runtime_error("oes xele login error");
+        std::terminate(); // throw std::runtime_error("oes xele login error");
     }
     // SPDLOG_TRACE("oes call req login ok");
 }

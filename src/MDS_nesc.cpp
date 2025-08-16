@@ -97,16 +97,20 @@ void MDS::start(const char *config)
     std::string username;
     std::string password;
 
+#if !NO_EXCEPTION
     try {
+#endif
         nlohmann::json json;
         std::ifstream(config) >> json;
         username = json["mds_username"];
         password = json["mds_password"];
 
+#if !NO_EXCEPTION
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
         throw;
     }
+#endif
 
     if (!g_nesc.Login(
         /*tcp_ipaddr=*/"10.102.134.46",
@@ -117,7 +121,7 @@ void MDS::start(const char *config)
         /*back_tcp_port=*/30000
     )) {
         SPDLOG_ERROR("mds nesc login failed");
-        throw std::runtime_error("mds nesc login failed");
+        std::terminate(); // throw std::runtime_error("mds nesc login failed");
     }
 
 #if SH
@@ -283,7 +287,7 @@ void MDS::start(const char *config)
     }
     if (g_nesc.Init(params, std::size(mdChannels)) != 0) {
         SPDLOG_ERROR("mds nesc channels init failed");
-        throw std::runtime_error("mds nesc channels init failed");
+        std::terminate(); // throw std::runtime_error("mds nesc channels init failed");
     }
 
     static const NescForesight::EMdMsgType kSubscribeMessageTypes[] = {
@@ -317,7 +321,7 @@ void MDS::start(const char *config)
 
     if (g_nesc.SubscribeAll(kSubscribeMessageTypes, std::size(kSubscribeMessageTypes)) != 0) {
         SPDLOG_ERROR("mds nesc subscribe failed");
-        throw std::runtime_error("mds nesc subscribe failed");
+        std::terminate(); // throw std::runtime_error("mds nesc subscribe failed");
     }
 }
 
@@ -329,7 +333,7 @@ void MDS::startReceive()
     SPDLOG_INFO("querying SH static info, please wait");
     if (g_nesc.QuerySseStaticInfo(g_sseStatic) != 0) {
         SPDLOG_ERROR("nesc QuerySseStaticInfo failed");
-        throw std::runtime_error("nesc QuerySseStaticInfo failed");
+        std::terminate(); // throw std::runtime_error("nesc QuerySseStaticInfo failed");
     }
     SPDLOG_DEBUG("publishing {} SH static info", g_sseStatic.count);
     for (int i = 0; i < g_sseStatic.count; ++i) {
@@ -344,7 +348,7 @@ void MDS::startReceive()
     SPDLOG_INFO("querying SZ static info, please wait");
     if (g_nesc.QuerySzStaticInfo(g_szStatic) != 0) {
         SPDLOG_ERROR("nesc QuerySzStaticInfo failed");
-        throw std::runtime_error("nesc QuerySzStaticInfo failed");
+        std::terminate(); // throw std::runtime_error("nesc QuerySzStaticInfo failed");
     }
     SPDLOG_DEBUG("publishing {} SZ static info", g_szStatic.count);
     for (int i = 0; i < g_szStatic.count; ++i) {
@@ -359,7 +363,7 @@ void MDS::startReceive()
     SPDLOG_INFO("starting nesc receive");
     if (g_nesc.Start() != 0) {
         SPDLOG_ERROR("mds nesc start failed");
-        throw std::runtime_error("mds nesc start failed");
+        std::terminate(); // throw std::runtime_error("mds nesc start failed");
     }
 }
 

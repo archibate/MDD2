@@ -14,12 +14,16 @@ std::atomic<int32_t> orderSysId{1};
 
 void OES::start(const char *config)
 {
+#if !NO_EXCEPTION
     try {
+#endif
         nlohmann::json json;
         std::ifstream(config) >> json;
+#if !NO_EXCEPTION
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
     }
+#endif
 }
 
 bool OES::isStarted()

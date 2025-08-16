@@ -48,16 +48,20 @@ HEAT_ZONE_TICK void handleSzTradeAndOrder(uint8_t *buf, int len)
 
 void MDS::start(const char *config)
 {
+#if !NO_EXCEPTION
     try {
+#endif
         nlohmann::json json;
         std::ifstream(config) >> json;
         g_kr_username = json["kr_mds_username"];
         g_kr_password = json["kr_mds_password"];
 
+#if !NO_EXCEPTION
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
         throw;
     }
+#endif
 
 #if SH
     static MdParam mdChannels[] = {
@@ -113,7 +117,7 @@ void MDS::start(const char *config)
     }
     if (g_xeleMd.Init(params, std::size(mdChannels)) != 0) {
         SPDLOG_ERROR("mds xele channels init failed");
-        throw std::runtime_error("mds xele channels init failed");
+        std::terminate(); // throw std::runtime_error("mds xele channels init failed");
     }
 }
 
@@ -125,7 +129,7 @@ void MDS::startReceive()
     SPDLOG_INFO("starting xele receive");
     if (g_xeleMd.Start() != 0) {
         SPDLOG_ERROR("mds xele start failed");
-        throw std::runtime_error("mds xele start failed");
+        std::terminate(); // throw std::runtime_error("mds xele start failed");
     }
 }
 

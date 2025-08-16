@@ -177,17 +177,21 @@ OstUserSpi *g_spi;
 void OES::start(const char *config)
 {
     std::string ostTradeFrontIP;
+#if !NO_EXCEPTION
     try {
         nlohmann::json json;
         std::ifstream(config) >> json;
         g_username = json["username"];
         g_password = json["password"];
         ostTradeFrontIP = json["ost_trade_front_ip"];
+#endif
 
+#if !NO_EXCEPTION
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
         throw;
     }
+#endif
 
     SPDLOG_INFO("ost trade api version {}", CUTApi::GetApiVersion());
     SPDLOG_DEBUG("ost trade: CreateApi");
@@ -207,7 +211,7 @@ void OES::start(const char *config)
     int err = api->ReqLogin(&login, g_spi->m_requestID.fetch_add(1, std::memory_order_relaxed));
     if (err != 0) {
         SPDLOG_ERROR("ost trade login error: {}", err);
-        throw std::runtime_error("ost trade login error");
+        std::terminate(); // throw std::runtime_error("ost trade login error");
     }
 
     SPDLOG_DEBUG("ost trade: RegisterFront");

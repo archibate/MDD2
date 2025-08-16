@@ -159,8 +159,11 @@ endif()
 if (NO_EXCEPTION)
     if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(${PROJECT_NAME} PRIVATE
-            -fno-exception
+            -fno-exceptions
             -fno-rtti
+        )
+        target_compile_definitions(${PROJECT_NAME} PRIVATE
+            -DSPDLOG_NO_EXCEPTIONS
         )
     endif()
 endif()

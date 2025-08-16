@@ -60,15 +60,19 @@ void MDS::start(const char *config)
 {
     SPDLOG_INFO("starting ostmd");
 
+#if !NO_EXCEPTION
     try {
+#endif
         nlohmann::json json;
         std::ifstream(config) >> json;
         g_ostmdConfigFile = json["ostmd_config_file"];
 
+#if !NO_EXCEPTION
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
         throw;
     }
+#endif
 }
 
 void MDS::startReceive()

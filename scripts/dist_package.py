@@ -6,7 +6,7 @@ common_options = [
     '-DBUILD_SPEED=ON',
     '-DRECORD_FACTORS=ON',
     '-DASYNC_LOGGER=OFF',
-    '-DNO_EXCEPTION=OFF',
+    '-DNO_EXCEPTION=ON',
     '-DDETAIL_LOG=OFF',
     '-DSELL_GC001=OFF',
     '-DBYPASS_OES=OFF',
@@ -39,11 +39,6 @@ targets = {
     ],
 }
 
-markets = [
-    'sh',
-    'sz',
-]
-
 
 import os
 import json
@@ -65,10 +60,10 @@ if len(sys.argv) > 1 and any(k in sys.argv[1:] for k in targets):
 print('today:', today)
 print('targets:', targets)
 
-print(f'-- Fetching market state')
-os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-for market in markets:
-    subprocess.check_call(['/opt/miniconda3/bin/python', 'scripts/fetch_state.py', market.upper(), today])
+# print(f'-- Fetching market state')
+# os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+# for market in ['sh', 'sz']:
+#     subprocess.check_call(['/opt/miniconda3/bin/python', 'scripts/fetch_state.py', market.upper(), today])
 
 def patch_file(path):
     subprocess.check_call(['chmod', '+x', path])

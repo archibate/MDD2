@@ -40,6 +40,7 @@ void abortHandler(int signo)
         SPDLOG_ERROR("  {}", symbols[i]);
     }
     SPDLOG_ERROR("PROGRAM ABORTED");
+#if !NO_EXCEPTION
     auto ep = std::current_exception();
     if (!ep) {
         SPDLOG_ERROR("aborted with no exception");
@@ -52,6 +53,7 @@ void abortHandler(int signo)
             SPDLOG_ERROR("unknown exception thrown");
         }
     }
+#endif
 
     SPDLOG_CRITICAL("faulty exiting with {}", signo);
     _Exit(signo);

@@ -36,7 +36,7 @@ void loadMarketStatic()
     std::ifstream csv((REPLAY_DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-metadata.csv").c_str());
     if (!csv.is_open()) {
         SPDLOG_ERROR("cannot open stock metadata for market={} date={}", MARKET_NAME, g_date);
-        throw std::runtime_error("cannot open stock metadata");
+        std::terminate(); // throw std::runtime_error("cannot open stock metadata");
     }
 
     std::getline(csv, line);
@@ -79,7 +79,9 @@ double g_timeScale = 1.0 / 10.0;
 
 void MDS::start(const char *config)
 {
+#if !NO_EXCEPTION
     try {
+#endif
         nlohmann::json json;
         std::ifstream(config) >> json;
 
@@ -88,16 +90,18 @@ void MDS::start(const char *config)
             g_timeScale = 1.0 / double(json["time_speed"]);
         }
 
+#if !NO_EXCEPTION
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
         throw;
     }
+#endif
 
     SPDLOG_INFO("mds replay date: {}", g_date);
     SPDLOG_INFO("mds replay time speed: {}", 1.0 / g_timeScale);
     if (g_date <= 20000000) {
         SPDLOG_ERROR("invalid date to replay: {}", g_date);
-        throw std::runtime_error("invalid config date");
+        std::terminate(); // throw std::runtime_error("invalid config date");
     }
 }
 
@@ -109,15 +113,15 @@ void readReplayTicks(std::vector<L2::Tick> &tickBuf)
     std::FILE *fp = std::fopen((REPLAY_DATA_PATH "/L2/" MARKET_NAME "L2/" + std::to_string(g_date) + "/stock-l2-ticks.dat").c_str(), "rb");
     if (!fp) {
         SPDLOG_ERROR("cannot open L2 ticks for market={} date={}", MARKET_NAME, g_date);
-        throw std::runtime_error("cannot open stock L2 ticks");
+        std::terminate(); // throw std::runtime_error("cannot open stock L2 ticks");
     }
 
     if (std::fseek(fp, 0, SEEK_END) < 0) {
-        throw std::runtime_error("cannot seek ticks file");
+        std::terminate(); // throw std::runtime_error("cannot seek ticks file");
     }
     long pos = std::ftell(fp);
     if (pos < 0) {
-        throw std::runtime_error("cannot tell ticks file size");
+        std::terminate(); // throw std::runtime_error("cannot tell ticks file size");
     }
     std::rewind(fp);
     tickBuf.resize(pos / sizeof(L2::Tick));
@@ -125,7 +129,7 @@ void readReplayTicks(std::vector<L2::Tick> &tickBuf)
 
     size_t n = std::fread(tickBuf.data(), sizeof(L2::Tick), tickBuf.size(), fp);
     if (n != tickBuf.size()) [[unlikely]] {
-        throw std::runtime_error("cannot read all ticks from file");
+        std::terminate(); // throw std::runtime_error("cannot read all ticks from file");
     }
     std::fclose(fp);
     fp = nullptr;

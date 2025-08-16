@@ -103,7 +103,7 @@ void OstStart(const char *configFile, int ticksBindCpu)
         auto quote = ch.factory();
         if (!quote->init(udp_param)) {
             SPDLOG_ERROR("ostmd channel {} initialize failed", ch.name);
-            throw std::runtime_error("ostmd channel initialize failed");
+            std::terminate(); // throw std::runtime_error("ostmd channel initialize failed");
         }
         udpQuotes.push_back(std::move(quote));
     }

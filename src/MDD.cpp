@@ -196,7 +196,9 @@ void parseDailyConfig(const char *config)
 
     int32_t date = 0;
     std::string factorFile;
+#if !NO_EXCEPTION
     try {
+#endif
         nlohmann::json json;
         std::ifstream(config) >> json;
         SPDLOG_DEBUG("config json: {}", json.dump());
@@ -207,10 +209,12 @@ void parseDailyConfig(const char *config)
         if (json.contains("factor_file")) {
             factorFile = json["factor_file"];
         }
+#if !NO_EXCEPTION
     } catch (std::exception const &e) {
         SPDLOG_ERROR("config json parse failed: {}", e.what());
         throw;
     }
+#endif
 
     SPDLOG_INFO("daily start: market={} date={}", MARKET_NAME, date);
 #if !REPLAY
@@ -224,13 +228,13 @@ void parseDailyConfig(const char *config)
         factorFile = REPLAY_DATA_PATH "/daily_csv/mdd2_factors_" MARKET_NAME_LOWER "_" + std::to_string(date) + ".bin";
 #else
         SPDLOG_ERROR("no factor file provided in config");
-        throw std::runtime_error("no factor file provided in config");
+        std::terminate(); // throw std::runtime_error("no factor file provided in config");
 #endif
     }
     std::ifstream facFile(factorFile, std::ios::binary);
     if (!facFile.is_open()) {
         SPDLOG_ERROR("cannot open daily factors for market={} date={} factorFile=[{}]", MARKET_NAME, date, factorFile);
-        throw std::runtime_error("cannot open daily factors");
+        std::terminate(); // throw std::runtime_error("cannot open daily factors");
     }
     DailyFactorFileHeader header{};
     facFile.read((char *)&header, sizeof(header));
@@ -239,32 +243,32 @@ void parseDailyConfig(const char *config)
     if (header.fileVersion != kFileVersion) {
         SPDLOG_ERROR("daily factor file version mismatch: fileVersion={} expectVersion={}",
                      header.fileVersion, kFileVersion);
-        throw std::runtime_error("daily factor file version mismatch");
+        std::terminate(); // throw std::runtime_error("daily factor file version mismatch");
     }
     if (header.marketID != MARKET_ID) {
         SPDLOG_ERROR("daily factor file market id mismatch: fileMarketId={} expectMarketId={}",
                      header.marketID, MARKET_ID);
-        throw std::runtime_error("daily factor file market id mismatch");
+        std::terminate(); // throw std::runtime_error("daily factor file market id mismatch");
     }
     if (header.factorCount != FactorEnum::kMaxFactors) {
         SPDLOG_ERROR("daily factor file factor count mismatch: fileFactorCount={} expectFactorCount={}",
                      header.factorCount, FactorEnum::kMaxFactors);
-        throw std::runtime_error("daily factor file factor count mismatch");
+        std::terminate(); // throw std::runtime_error("daily factor file factor count mismatch");
     }
     if (header.factorDtypeSize != sizeof(FactorList::ScalarType)) {
         SPDLOG_ERROR("daily factor file factor dtype mismatch: fileDtypeSize={} expectDtypeSize={}",
                      header.factorDtypeSize, sizeof(FactorList::ScalarType));
-        throw std::runtime_error("daily factor file factor dtype mismatch");
+        std::terminate(); // throw std::runtime_error("daily factor file factor dtype mismatch");
     }
 
     if (header.today != date) {
         SPDLOG_ERROR("daily factor file today date mismatch: fileToday={} expectToday={}",
                      header.today, date);
-        throw std::runtime_error("daily factor file today date mismatch");
+        std::terminate(); // throw std::runtime_error("daily factor file today date mismatch");
     }
     if (!header.stockCount) {
         SPDLOG_ERROR("no stock subscription found in daily factor file for market={} date={}", MARKET_NAME, date);
-        throw std::runtime_error("no stock subscription found in daily factor file");
+        std::terminate(); // throw std::runtime_error("no stock subscription found in daily factor file");
     }
     SPDLOG_DEBUG("daily factor file contains numStocks={} numPrevLimitUp={} numFactors={}", header.stockCount, header.prevLimitUpCount, header.factorCount);
 
@@ -273,7 +277,7 @@ void parseDailyConfig(const char *config)
     facFile.read((char *)g_stockCodes, g_numStocks * sizeof(int32_t));
     if (!facFile.good()) {
         SPDLOG_ERROR("failed to read all stock subscribes");
-        throw std::runtime_error("failed to read all stock subscribes");
+        std::terminate(); // throw std::runtime_error("failed to read all stock subscribes");
     }
 
     g_numPrevLimitUpStocks = header.prevLimitUpCount;
@@ -281,7 +285,7 @@ void parseDailyConfig(const char *config)
     facFile.read((char *)g_prevLimitUpStockCodes, g_numPrevLimitUpStocks * sizeof(int32_t));
     if (!facFile.good()) {
         SPDLOG_ERROR("failed to read all prev-limit-up stocks");
-        throw std::runtime_error("failed to read all prev-limit-up stocks");
+        std::terminate(); // throw std::runtime_error("failed to read all prev-limit-up stocks");
     }
     g_prevLimitUpReturns = new double[g_numPrevLimitUpStocks];
     memset(g_prevLimitUpReturns, -1, sizeof(double) * g_numPrevLimitUpStocks);
@@ -291,7 +295,7 @@ void parseDailyConfig(const char *config)
     facFile.read((char *)g_stockFactors, g_numStocks * sizeof(FactorList));
     if (!facFile.good()) {
         SPDLOG_ERROR("failed to read all stock factors");
-        throw std::runtime_error("failed to read all stock factors");
+        std::terminate(); // throw std::runtime_error("failed to read all stock factors");
     }
 
     facFile.close();
@@ -1198,7 +1202,7 @@ HEAT_ZONE_TIMER void computeThreadMain(int32_t channel, std::stop_token stop)
                     continue;
                 }
                 if (id < startId || id >= stopId) [[unlikely]] {
-                    throw std::out_of_range("received tick id out of range");
+                    std::terminate(); // throw std::out_of_range("received tick id out of range");
                 }
                 addComputeTick(g_stockComputes[id], *pTick);
             }
